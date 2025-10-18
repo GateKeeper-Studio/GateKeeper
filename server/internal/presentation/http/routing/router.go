@@ -4,6 +4,9 @@ import (
 	"net/http"
 
 	configureoauthprovider "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/configure-oauth-provider"
+	getproviderdatabyid "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/get-provider-data-by-id"
+	githubcallback "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/github-callback"
+	githublogin "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/github-login"
 	createrole "github.com/gate-keeper/internal/features/handlers/application-role/create-role"
 	deleterole "github.com/gate-keeper/internal/features/handlers/application-role/delete-role"
 	listroles "github.com/gate-keeper/internal/features/handlers/application-role/list-roles"
@@ -57,6 +60,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	getApplicationAuthDataEndpoint := getapplicationauthdata.Endpoint{DbPool: pool}
 
 	configureOauthProviderEndPoint := configureoauthprovider.Endpoint{DbPool: pool}
+	getProviderDataByIDEndpoint := getproviderdatabyid.Endpoint{DbPool: pool}
 
 	listRolesEndpoint := listroles.Endpoint{DbPool: pool}
 	createRoleEndpoint := createrole.Endpoint{DbPool: pool}
@@ -91,6 +95,9 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	verfifyEmailMfaEndpoint := verifyemailmfa.Endpoint{DbPool: pool}
 	verfifyAppMfaEndpoint := verifyappmfa.Endpoint{DbPool: pool}
 	confirmMfaAuthAppSecretEndpoint := confirmmfaauthappsecret.Endpoint{DbPool: pool}
+
+	githubLoginEndpoint := githublogin.Endpoint{DbPool: pool}
+	githubCallbackEndpoint := githubcallback.Endpoint{DbPool: pool}
 
 	r := chi.NewRouter()
 
@@ -142,6 +149,13 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 			r.Post("/confirm-mfa-auth-app-secret", confirmMfaAuthAppSecretEndpoint.Http)
 
 			r.Get("/application/{applicationID}/auth-data", getApplicationAuthDataEndpoint.Http)
+
+			r.Get("/application/oauth-provider/{applicationOAuthProviderID}", getProviderDataByIDEndpoint.Http)
+
+			r.Route("/oauth-provider", func(r chi.Router) {
+				r.Post("/github/login", githubLoginEndpoint.Http)
+				r.Get("/github/callback", githubCallbackEndpoint.Http)
+			})
 		})
 
 		r.Route("/organizations", func(r chi.Router) {

@@ -1,0 +1,62 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Server",
+            "type": "shell",
+            "command": "go",
+            "args": [
+                "run",
+                "./cmd/server"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/server"
+            },
+        },
+        {
+            "label": "Run Server (watch mode)",
+            "type": "shell",
+            "command": "air",
+            "isBackground": true,
+            "options": {
+                "cwd": "${workspaceFolder}/server"
+            },
+        },
+        {
+            "label": "Run Client",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "dev"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/next-app"
+            },
+        },
+        {
+            "label": "Generate SQLC commands",
+            "type": "shell",
+            "command": "go",
+            "args": [
+                "sqlc",
+                "generate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/server/internal/infra/database"
+            },
+        },
+        {
+            "label": "Generate Server Migrations",
+            "type": "shell",
+            "command": "go",
+            "args": [
+                "tern",
+                "migrate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/server/internal/infra/database/migrations"
+            },
+        },
+    ]
+}

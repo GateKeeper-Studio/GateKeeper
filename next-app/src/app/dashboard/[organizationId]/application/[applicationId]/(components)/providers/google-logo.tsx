@@ -1,8 +1,12 @@
-export function GoogleLogo() {
+type Props = {
+  size?: number;
+};
+
+export function GoogleLogo({ size = 100 }: Props) {
   return (
     <svg
-      width="100"
-      height="100"
+      width={size}
+      height={size}
       viewBox="0 0 754 768"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

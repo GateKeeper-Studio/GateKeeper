@@ -1,6 +1,7 @@
 "use client";
 
 import { z } from "zod";
+import axios from "axios";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useState } from "react";
@@ -28,6 +29,10 @@ import { ApplicationAuthData } from "@/services/auth/get-application-auth-data";
 
 import { ErrorAlert } from "@/components/error-alert";
 import { EMfaType, loginApi } from "@/services/auth/login";
+
+import { GithubLogo } from "@/app/dashboard/[organizationId]/application/[applicationId]/(components)/providers/github-logo";
+import { GoogleLogo } from "@/app/dashboard/[organizationId]/application/[applicationId]/(components)/providers/google-logo";
+import { api } from "@/services/base/gatekeeper-api";
 
 type Props = {
   application: ApplicationAuthData | null;
@@ -146,13 +151,6 @@ export function AuthForm({ application }: Props) {
       return;
     }
 
-    // if (loginData.mfaAuthAppRequired) {
-    //   router.push(
-    //     `/auth/${applicationId}/one-time-password?${urlParams.toString()}`
-    //   );
-    //   return;
-    // }
-
     const [authorizeData, authorizeErr] = await authorizeApi({
       email: values.email.trim(),
       sessionCode: loginData.sessionCode,
@@ -181,7 +179,34 @@ export function AuthForm({ application }: Props) {
       return;
     }
 
-    window.location.href = `${redirectUri}?code=${authorizeData.authorizationCode}&state=${state}&redirect_uri=${redirectUri}&client_id=${applicationId}`;
+    const params = new URLSearchParams({
+      code: authorizeData.authorizationCode,
+      state,
+      redirect_uri: redirectUri,
+      client_id: applicationId,
+    });
+
+    window.location.href = `${redirectUri}?${params.toString()}`;
+  }
+
+  async function handleOAuthLogin(
+    provider: ApplicationAuthData["oauthProviders"][number]
+  ) {
+    // const { data } = await axios.post<{ url: string }>(
+    //   "/api/auth/external-login/github",
+    //   {
+    //     oauthProviderId: provider.id,
+    //   }
+    // );
+
+    const { data } = await api.post<{ url: string }>(
+      "/v1/auth/oauth-provider/github/login",
+      {
+        oauthProviderId: provider.id,
+      }
+    );
+
+    window.location.href = data.url;
   }
 
   return (
@@ -280,11 +305,25 @@ export function AuthForm({ application }: Props) {
             </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <Button variant="outline" type="button" disabled={isLoading}>
-              GitHub
-            </Button>
-          </div>
+          {application.oauthProviders.map((provider) => (
+            <div key={provider.id} className="flex flex-col gap-1">
+              <Button
+                variant="outline"
+                type="button"
+                className="flex items-center justify-center gap-2"
+                disabled={isLoading}
+                onClick={() => handleOAuthLogin(provider)}
+                title={`Sign in with ${
+                  provider.name.charAt(0).toUpperCase() + provider.name.slice(1)
+                }`}
+              >
+                {provider.name === "github" && <GithubLogo size={24} />}
+                {provider.name === "google" && <GoogleLogo size={24} />}
+
+                {provider.name.charAt(0).toUpperCase() + provider.name.slice(1)}
+              </Button>
+            </div>
+          ))}
         </>
       )}
     </div>

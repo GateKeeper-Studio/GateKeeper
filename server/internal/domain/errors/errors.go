@@ -82,6 +82,11 @@ var (
 	ErrInvalid2FAMethod    = CustomError{Name: "ErrInvalid2FAMethod", Code: http.StatusBadRequest, Message: "Invalid 2FA method", Title: "Invalid 2FA method"}
 	ErrMfaMethodNotFound   = CustomError{Name: "ErrMfaMethodNotFound", Code: http.StatusNotFound, Message: "MFA method not found", Title: "MFA method not found"}
 	ErrMfaMethodNotEnabled = CustomError{Name: "ErrMfaMethodNotEnabled", Code: http.StatusBadRequest, Message: "MFA method not enabled", Title: "MFA method not enabled"}
+
+	ErrOAuthProviderNotFound  = CustomError{Name: "ErrOAuthProviderNotFound", Code: http.StatusNotFound, Message: "OAuth provider not found", Title: "OAuth provider not found"}
+	ErrInvalidOAuthState      = CustomError{Name: "ErrInvalidOAuthState", Code: http.StatusBadRequest, Message: "Invalid OAuth state", Title: "Invalid OAuth state"}
+	ErrInvalidOAuthProviderID = CustomError{Name: "ErrInvalidOAuthProviderID", Code: http.StatusBadRequest, Message: "Invalid OAuth provider ID", Title: "Invalid OAuth provider ID"}
+	ErrInvalidOAuthCode       = CustomError{Name: "ErrInvalidOAuthCode", Code: http.StatusBadRequest, Message: "Invalid OAuth code", Title: "Invalid OAuth code"}
 )
 
 var ErrorsList = map[string]CustomError{
@@ -137,4 +142,8 @@ var ErrorsList = map[string]CustomError{
 	"ErrInvalid2FAMethod":                    ErrInvalid2FAMethod,
 	"ErrMfaMethodNotFound":                   ErrMfaMethodNotFound,
 	"ErrMfaMethodNotEnabled":                 ErrMfaMethodNotEnabled,
+	"ErrOAuthProviderNotFound":               ErrOAuthProviderNotFound,
+	"ErrInvalidOAuthState":                   ErrInvalidOAuthState,
+	"ErrInvalidOAuthProviderID":              ErrInvalidOAuthProviderID,
+	"ErrInvalidOAuthCode":                    ErrInvalidOAuthCode,
 }

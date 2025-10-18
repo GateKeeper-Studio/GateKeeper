@@ -1,10 +1,21 @@
+"use client";
+
 import { useTheme } from "next-themes";
 
-export function GithubLogo() {
+type Props = {
+  size?: number;
+};
+
+export function GithubLogo({ size = 100 }: Props) {
   const { theme } = useTheme();
 
   return theme === "light" ? (
-    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+    >
       <path
         fillRule="evenodd"
         clipRule="evenodd"
@@ -13,7 +24,12 @@ export function GithubLogo() {
       />
     </svg>
   ) : (
-    <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+    >
       <path
         fillRule="evenodd"
         clipRule="evenodd"

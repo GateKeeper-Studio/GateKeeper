@@ -2,7 +2,6 @@ package configureoauthprovider
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
@@ -33,13 +32,9 @@ func (s *Handler) Handler(ctx context.Context, request Command) error {
 
 	applicationOauthProvider, err := s.repository.GetApplicationOauthProviderByName(ctx, request.ApplicationID, request.Name)
 
-	fmt.Println("test -2", err)
-
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("test -1")
 
 	if applicationOauthProvider != nil {
 		applicationOauthProvider.ClientID = request.ClientID
@@ -53,12 +48,8 @@ func (s *Handler) Handler(ctx context.Context, request Command) error {
 			return err
 		}
 
-		fmt.Println("test 4")
-
 		return nil
 	}
-
-	fmt.Println("test 1")
 
 	newApplicationOauthProvider := entities.NewApplicationOAuthProvider(
 		request.ApplicationID,
@@ -69,15 +60,11 @@ func (s *Handler) Handler(ctx context.Context, request Command) error {
 		request.Enabled,
 	)
 
-	fmt.Println("test 2")
-
 	err = s.repository.AddApplicationOauthProvider(ctx, newApplicationOauthProvider)
 
 	if err != nil {
 		return err
 	}
-
-	fmt.Println("test 3")
 
 	return nil
 }

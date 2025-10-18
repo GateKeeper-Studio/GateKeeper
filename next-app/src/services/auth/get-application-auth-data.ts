@@ -15,8 +15,6 @@ export type ApplicationAuthData = {
   oauthProviders: {
     id: string;
     name: string;
-    clientId: string;
-    clientSecret: string;
   }[];
 };
 

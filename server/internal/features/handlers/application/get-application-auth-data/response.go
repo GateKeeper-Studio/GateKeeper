@@ -11,8 +11,6 @@ type Response struct {
 }
 
 type ApplicationProviders struct {
-	ID           uuid.UUID `json:"id"`
-	Name         string    `json:"name"`
-	ClientID     string    `json:"clientId"`
-	ClientSecret string    `json:"clientSecret"`
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
 }
