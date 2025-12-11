@@ -21,8 +21,10 @@ export function GenerateMfaSecretButton() {
 
           console.log("QR Code generated:", qrCode);
         })
-        .catch((error: unknown) => {
+        .catch((error: Error) => {
           console.error("Error generating MFA token:", error);
+
+          alert(error.message || "Error generating MFA token. Please try again.");
         });
     }
   }

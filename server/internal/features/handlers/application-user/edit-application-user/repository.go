@@ -106,13 +106,14 @@ func (r Repository) UpdateUser(ctx context.Context, user *entities.ApplicationUs
 	now := time.Now().UTC()
 
 	err := r.Store.UpdateUser(ctx, pgstore.UpdateUserParams{
-		ID:               user.ID,
-		Email:            user.Email,
-		PasswordHash:     user.PasswordHash,
-		UpdatedAt:        &now,
-		IsActive:         user.IsActive,
-		IsEmailConfirmed: user.IsEmailConfirmed,
-		ShouldChangePass: user.ShouldChangePass,
+		ID:                 user.ID,
+		Email:              user.Email,
+		PasswordHash:       user.PasswordHash,
+		UpdatedAt:          &now,
+		IsActive:           user.IsActive,
+		IsEmailConfirmed:   user.IsEmailConfirmed,
+		ShouldChangePass:   user.ShouldChangePass,
+		Preferred2faMethod: user.Preferred2FAMethod,
 	})
 
 	return user, err

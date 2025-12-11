@@ -18,10 +18,31 @@ type IRepository interface {
 	UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error)
 	AddMfaTotpSecretValidation(ctx context.Context, mfaUserSecret *entities.MfaUserSecret) error
 	GetMfaMethodByUserID(ctx context.Context, userID uuid.UUID, method string) (*entities.MfaMethod, error)
+	AddMfaMethod(ctx context.Context, mfaMethod *entities.MfaMethod) error
+	RevokeTotpSecretsByUserID(ctx context.Context, userID uuid.UUID) error
 }
 
 type Repository struct {
 	Store *pgstore.Queries
+}
+
+func (r Repository) RevokeTotpSecretsByUserID(ctx context.Context, userID uuid.UUID) error {
+	err := r.Store.RevokeMfaTotpSecretValidationFromUser(ctx, userID)
+
+	return err
+}
+
+func (r Repository) AddMfaMethod(ctx context.Context, mfaMethod *entities.MfaMethod) error {
+	err := r.Store.AddMfaMethod(ctx, pgstore.AddMfaMethodParams{
+		ID:         mfaMethod.ID,
+		UserID:     mfaMethod.UserID,
+		Type:       mfaMethod.Type,
+		Enabled:    mfaMethod.Enabled,
+		CreatedAt:  pgtype.Timestamp{Time: mfaMethod.CreatedAt, Valid: true},
+		LastUsedAt: nil,
+	})
+
+	return err
 }
 
 func (r Repository) GetMfaMethodByUserID(ctx context.Context, userID uuid.UUID, method string) (*entities.MfaMethod, error) {

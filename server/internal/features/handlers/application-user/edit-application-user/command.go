@@ -27,5 +27,5 @@ type RequestBody struct {
 	TemporaryPasswordHash *string     `json:"temporaryPasswordHash"`
 	Roles                 []uuid.UUID `json:"roles" validate:"required"`
 	IsActive              bool        `json:"isActive" validate:"boolean"`
-	Preferred2FAMethod    *string     `json:"preferred2FAMethod" validate:"omitempty,oneof=0 1"`
+	Preferred2FAMethod    *string     `json:"preferred2FAMethod" validate:"omitempty,oneof=totp email sms"`
 }

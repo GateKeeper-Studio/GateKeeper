@@ -44,7 +44,7 @@ export async function createApplicationApi(
       `/v1/organizations/${organizationId}/applications`,
       {
         name,
-        description,
+        description: description || null,
         badges,
         hasMfaAuthApp,
         hasMfaEmail,

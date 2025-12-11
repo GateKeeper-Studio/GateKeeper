@@ -2,6 +2,7 @@ package editapplicationuser
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/gate-keeper/internal/domain/entities"
@@ -59,6 +60,8 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*Response, erro
 		*request.Preferred2FAMethod != entities.MfaMethodSms {
 		return nil, &errors.ErrInvalid2FAMethod
 	}
+
+	log.Printf("Preferred2FAMethod" + *request.Preferred2FAMethod)
 
 	currentTime := time.Now().UTC()
 

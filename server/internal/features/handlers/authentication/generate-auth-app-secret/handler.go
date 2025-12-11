@@ -49,7 +49,19 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	}
 
 	if mfaMethod == nil {
-		return nil, &errors.ErrMfaAuthAppNotEnabled
+		// Create a new TOTP MFA method if it doesn't exist and if the application has MFA Auth App enabled
+		if application.HasMfaAuthApp {
+			mfaMethod = entities.AddMfaMethod(user.ID, entities.MfaMethodTotp)
+
+			err := s.repository.AddMfaMethod(ctx, mfaMethod)
+
+			if err != nil {
+				return nil, err
+			}
+
+		} else {
+			return nil, &errors.ErrMfaAuthAppNotEnabled
+		}
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
@@ -66,6 +78,8 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	if err != nil {
 		return nil, err
 	}
+
+	// s.repository.RevokeTotpSecretsByUserID(ctx, user.ID) // Revoke existing TOTP secrets for the user
 
 	secret := key.Secret()
 

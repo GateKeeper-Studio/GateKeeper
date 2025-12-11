@@ -30,6 +30,7 @@ export async function confirmMfaUserSecret({
 
   if (!response.ok) {
     console.error("Error confirming MFA secret:", data);
+
     throw new Error(
       (data as unknown as { message: string }).message ||
         "Failed to confirm MFA secret"

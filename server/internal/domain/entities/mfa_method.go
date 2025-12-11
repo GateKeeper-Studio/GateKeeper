@@ -20,3 +20,24 @@ type MfaMethod struct {
 	CreatedAt  time.Time
 	LastUsedAt *time.Time // Nullable, can be nil if never used
 }
+
+func AddMfaMethod(mfaMethodID uuid.UUID, mfaMethodType string) *MfaMethod {
+	newId, err := uuid.NewV7()
+
+	if err != nil {
+		panic(err)
+	}
+
+	if mfaMethodType != MfaMethodTotp && mfaMethodType != MfaMethodEmail && mfaMethodType != MfaMethodSms {
+		panic("Invalid MFA method type")
+	}
+
+	return &MfaMethod{
+		ID:         newId,
+		UserID:     mfaMethodID,
+		Type:       mfaMethodType,
+		Enabled:    true,
+		LastUsedAt: nil,
+		CreatedAt:  time.Now().UTC(),
+	}
+}

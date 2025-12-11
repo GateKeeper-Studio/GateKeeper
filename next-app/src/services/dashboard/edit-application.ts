@@ -47,7 +47,7 @@ export async function editApplicationApi(
       {
         id,
         name,
-        description,
+        description: description || null,
         badges,
         hasMfaAuthApp,
         hasMfaEmail,

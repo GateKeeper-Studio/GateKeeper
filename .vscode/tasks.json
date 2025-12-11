@@ -31,15 +31,26 @@
                 "dev"
             ],
             "options": {
+                "cwd": "${workspaceFolder}/client-test"
+            },
+        },
+        {
+            "label": "Run Dashboard",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "dev"
+            ],
+            "options": {
                 "cwd": "${workspaceFolder}/next-app"
             },
         },
         {
             "label": "Generate SQLC commands",
             "type": "shell",
-            "command": "go",
+            "command": "sqlc",
             "args": [
-                "sqlc",
                 "generate"
             ],
             "options": {
@@ -49,9 +60,8 @@
         {
             "label": "Generate Server Migrations",
             "type": "shell",
-            "command": "go",
+            "command": "tern",
             "args": [
-                "tern",
                 "migrate"
             ],
             "options": {
