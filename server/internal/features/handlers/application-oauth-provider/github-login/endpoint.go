@@ -59,6 +59,7 @@ func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
 	queryParams.Set("redirect_uri", serviceResponse.RedirectURI)
 	queryParams.Set("scope", serviceResponse.Scope)
 	queryParams.Set("state", serviceResponse.State)
+	queryParams.Set("application_id", serviceResponse.ApplicationID.String())
 
 	queryString := queryParams.Encode()
 

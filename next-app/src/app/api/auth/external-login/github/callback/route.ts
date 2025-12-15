@@ -18,6 +18,11 @@ type GitHubTokenResponse = {
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
+  console.log("GitHub OAuth callback received with params:", {
+    code: searchParams.get("code"),
+    state: searchParams.get("state"),
+  });
+
   const code = searchParams.get("code");
   const state = searchParams.get("state");
 
@@ -25,9 +30,16 @@ export async function GET(request: NextRequest) {
   const storedState = cookieStore.get("oauth_state")?.value;
   const oauthProviderId = cookieStore.get("oauth_provider_id")?.value;
 
+  console.log("Stored OAuth state and provider ID from cookies:", {
+    storedState,
+    oauthProviderId,
+  });
+
   // Clean up the temporary cookies immediately
   cookieStore.delete("oauth_state");
   cookieStore.delete("oauth_provider_id");
+
+  console.log("Validating OAuth state and provider ID...");
 
   // 1. --- SECURITY CHECK: Validate the state parameter ---
   if (!state || !storedState || state !== storedState || !oauthProviderId) {
@@ -35,6 +47,8 @@ export async function GET(request: NextRequest) {
       new URL("/login?error=invalid_state", request.url)
     );
   }
+
+  console.log("OAuth state and provider ID validation passed.");
 
   if (!code) {
     return NextResponse.redirect(new URL("/login?error=no_code", request.url));

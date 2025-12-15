@@ -2,6 +2,7 @@ package githubcallback
 
 import (
 	"net/http"
+	"net/url"
 
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	http_router "github.com/gate-keeper/internal/presentation/http"
@@ -13,15 +14,28 @@ type Endpoint struct {
 }
 
 func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
-	oauthState, err := request.Cookie("oauth_state")
+	// oauthState, err := request.Cookie("oauth_state")
+
+	// log.Println("Test0: " + err.Error())
+
+	// if err != nil {
+	// 	http_router.SendJson(writter, nil, http.StatusBadRequest)
+	// 	return
+	// }
+
+	parsedUrl, err := url.Parse(request.RequestURI)
+
 	if err != nil {
-		http_router.SendJson(writter, nil, http.StatusBadRequest)
+		http_router.SendJson(writter, "Error on trying to parse the URL", http.StatusBadRequest)
 		return
 	}
 
+	code := parsedUrl.Query().Get("code")
+	state := parsedUrl.Query().Get("state")
+
 	command := Command{
-		
-		StoredState: oauthState.Value,
+		Code:  code,
+		State: state,
 	}
 
 	params := repositories.ParamsRs[Command, *ServiceResponse, Handler]{
@@ -36,20 +50,24 @@ func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
 		panic(errHandler)
 	}
 
-	http.SetCookie(writter, &http.Cookie{
-		Name:   "oauth_state",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
+	redirectUrl, err := url.Parse(response.RedirectURL)
 
-	http.SetCookie(writter, &http.Cookie{
-		Name:   "oauth_provider_id",
-		Value:  "",
-		Path:   "/",
-		MaxAge: -1,
-	})
+	if err != nil {
+		http_router.SendJson(writter, "Error on trying to parse the Redirect URL", http.StatusBadRequest)
+		return
+	}
 
-	http.Redirect(writter, request, response.RedirectURL, http.StatusFound)
+	query := redirectUrl.Query()
+	query.Set("code", "") // to do
+	query.Set("state", response.ClientState)
+	query.Set("code_challenge_method", response.ClientCodeChallengeMethod)
+	query.Set("code_challenge", response.ClientCodeChallenge)
+	query.Set("redirect_uri", response.ClientRedirectUri)
+	query.Set("scope", response.ClientScope)
+	query.Set("response_type", response.ClientResponseType)
+
+	redirectUrl.RawQuery = query.Encode()
+
+	http.Redirect(writter, request, redirectUrl.String(), http.StatusFound)
 	// http_router.SendJson(writter, nil, http.StatusOK)
 }

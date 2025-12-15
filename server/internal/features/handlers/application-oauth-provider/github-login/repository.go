@@ -7,14 +7,37 @@ import (
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type IRepository interface {
 	GetApplicationOAuthProviderByID(ctx context.Context, applicationOauthProviderID uuid.UUID) (*entities.ApplicationOAuthProvider, error)
+	AddExternalOAuthState(ctx context.Context, state *entities.ExternalOAuthState) error
 }
 
 type Repository struct {
 	Store *pgstore.Queries
+}
+
+func (r Repository) AddExternalOAuthState(ctx context.Context, state *entities.ExternalOAuthState) error {
+	err := r.Store.AddExternalOAuthState(ctx, pgstore.AddExternalOAuthStateParams{
+		ID:                         state.ID,
+		ProviderState:              state.ProviderState,
+		ApplicationOauthProviderID: state.ApplicationOAuthProviderID,
+		ClientState:                &state.ClientState,
+		ClientCodeChallengeMethod:  &state.ClientCodeChallengeMethod,
+		ClientCodeChallenge:        &state.ClientCodeChallenge,
+		ClientScope:                &state.ClientScope,
+		ClientResponseType:         &state.ClientResponseType,
+		ClientRedirectUri:          &state.ClientRedirectUri,
+		CreatedAt:                  pgtype.Timestamp{Time: state.CreatedAt, Valid: true},
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r Repository) GetApplicationOAuthProviderByID(ctx context.Context, applicationOauthProviderID uuid.UUID) (*entities.ApplicationOAuthProvider, error) {

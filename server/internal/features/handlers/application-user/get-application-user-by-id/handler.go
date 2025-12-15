@@ -3,6 +3,7 @@ package getapplicationuserbyid
 import (
 	"context"
 
+	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
@@ -59,7 +60,7 @@ func (s *Handler) Handler(ctx context.Context, query Query) (*Response, error) {
 	isMfaEmailConfigured := false
 
 	for _, method := range mfaMethods {
-		if method.Type == "email" && method.Enabled {
+		if method.Type == entities.MfaMethodEmail && method.Enabled {
 			isMfaEmailConfigured = true
 			break
 		}
@@ -68,7 +69,7 @@ func (s *Handler) Handler(ctx context.Context, query Query) (*Response, error) {
 	isMfaAuthAppConfigured := false
 
 	for _, method := range mfaMethods {
-		if method.Type == "auth_app" && method.Enabled {
+		if method.Type == entities.MfaMethodTotp && method.Enabled {
 			isMfaAuthAppConfigured = true
 			break
 		}

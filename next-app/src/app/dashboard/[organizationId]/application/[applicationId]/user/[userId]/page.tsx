@@ -45,6 +45,8 @@ export default async function UserDetailAndEditPage({ params }: Props) {
     { accessToken: "" }
   );
 
+  console.log("User detail data:", data);
+
   return (
     <>
       <Breadcrumbs

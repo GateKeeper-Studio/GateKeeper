@@ -131,6 +131,19 @@ type ExternalLogin struct {
 	ProviderKey string    `db:"provider_key"`
 }
 
+type ExternalOauthState struct {
+	ID                         uuid.UUID        `db:"id"`
+	ProviderState              string           `db:"provider_state"`
+	ApplicationOauthProviderID uuid.UUID        `db:"application_oauth_provider_id"`
+	ClientState                *string          `db:"client_state"`
+	ClientCodeChallengeMethod  *string          `db:"client_code_challenge_method"`
+	ClientCodeChallenge        *string          `db:"client_code_challenge"`
+	ClientScope                *string          `db:"client_scope"`
+	ClientResponseType         *string          `db:"client_response_type"`
+	ClientRedirectUri          *string          `db:"client_redirect_uri"`
+	CreatedAt                  pgtype.Timestamp `db:"created_at"`
+}
+
 type MfaEmailCode struct {
 	ID          uuid.UUID        `db:"id"`
 	MfaMethodID uuid.UUID        `db:"mfa_method_id"`

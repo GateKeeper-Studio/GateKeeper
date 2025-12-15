@@ -47,7 +47,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrUserShouldChangePassword
 	}
 
-	sessionCode, err := s.repository.GetAuthorizationSesson(ctx, user.ID, command.SessionCode)
+	sessionCode, err := s.repository.GetAuthorizationSession(ctx, user.ID, command.SessionCode)
 
 	if err != nil {
 		return nil, err

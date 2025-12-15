@@ -12,7 +12,7 @@ import (
 
 type IRepository interface {
 	GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.ApplicationUser, error)
-	GetAuthorizationSesson(ctx context.Context, userID uuid.UUID, sessionCodeToken string) (*entities.SessionCode, error)
+	GetAuthorizationSession(ctx context.Context, userID uuid.UUID, sessionCodeToken string) (*entities.SessionCode, error)
 	DeleteSessionCodeByID(ctx context.Context, sessionCodeID uuid.UUID) error
 	RemoveAuthorizationCode(ctx context.Context, userID, applicationID uuid.UUID) error
 	AddAuthorizationCode(ctx context.Context, authorizationCode *entities.ApplicationAuthorizationCode) error
@@ -76,7 +76,7 @@ func (r Repository) GetUserByEmail(ctx context.Context, email string, applicatio
 	}, nil
 }
 
-func (r Repository) GetAuthorizationSesson(ctx context.Context, userID uuid.UUID, sessionCodeToken string) (*entities.SessionCode, error) {
+func (r Repository) GetAuthorizationSession(ctx context.Context, userID uuid.UUID, sessionCodeToken string) (*entities.SessionCode, error) {
 	emailConfirmation, err := r.Store.GetAuthorizationSession(ctx, pgstore.GetAuthorizationSessionParams{
 		Token:  sessionCodeToken,
 		UserID: userID,

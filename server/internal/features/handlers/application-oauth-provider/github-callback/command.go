@@ -1,14 +1,10 @@
 package githubcallback
 
-import (
-	"github.com/google/uuid"
-)
-
 type Command struct {
-	Code             string
-	State            string
-	StoredState      string
-	StoredProviderID uuid.UUID
+	Code  string
+	State string
+	// StoredState      string
+	// StoredProviderID uuid.UUID
 }
 
 type githubRequestBody struct {

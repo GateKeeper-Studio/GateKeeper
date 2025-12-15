@@ -203,6 +203,12 @@ export function AuthForm({ application }: Props) {
       "/v1/auth/oauth-provider/github/login",
       {
         oauthProviderId: provider.id,
+        clientCodeChallenge: codeChallenge,
+        clientCodeChallengeMethod: codeChallengeMethod,
+        clientRedirectUri: redirectUri,
+        clientState: state,
+        clientResponseType: responseType,
+        clientScope: scope,
       }
     );
 

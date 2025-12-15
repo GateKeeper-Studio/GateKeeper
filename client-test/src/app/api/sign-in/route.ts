@@ -4,8 +4,6 @@ import { createHash, randomBytes } from "node:crypto";
 export async function POST(request: NextRequest) {
   const { redirectUri } = (await request.json()) as { redirectUri: string };
 
-  console.log({ redirectUri });
-
   const clientId = process.env.GATEKEEPER_CLIENT_ID || "";
 
   const state = randomBytes(16).toString("hex");

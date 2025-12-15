@@ -11,10 +11,34 @@ import (
 
 type IRepository interface {
 	GetApplicationOAuthProviderByID(ctx context.Context, applicationOauthProviderID uuid.UUID) (*entities.ApplicationOAuthProvider, error)
+	GetExternalOAuthStateByState(ctx context.Context, state string) (*entities.ExternalOAuthState, error)
 }
 
 type Repository struct {
 	Store *pgstore.Queries
+}
+
+func (r Repository) GetExternalOAuthStateByState(ctx context.Context, providerState string) (*entities.ExternalOAuthState, error) {
+	oauthState, err := r.Store.GetExternalOAuthStateByState(ctx, providerState)
+
+	if err != nil {
+		return nil, err
+	}
+
+	oauthStateEntity := &entities.ExternalOAuthState{
+		ID:                         oauthState.ID,
+		ProviderState:              oauthState.ProviderState,
+		ClientState:                *oauthState.ClientState,
+		ClientCodeChallengeMethod:  *oauthState.ClientCodeChallengeMethod,
+		ClientCodeChallenge:        *oauthState.ClientCodeChallenge,
+		ClientScope:                *oauthState.ClientScope,
+		ClientResponseType:         *oauthState.ClientResponseType,
+		ClientRedirectUri:          *oauthState.ClientRedirectUri,
+		ApplicationOAuthProviderID: oauthState.ApplicationOauthProviderID,
+		CreatedAt:                  oauthState.CreatedAt.Time,
+	}
+
+	return oauthStateEntity, nil
 }
 
 func (r Repository) GetApplicationOAuthProviderByID(ctx context.Context, applicationOauthProviderID uuid.UUID) (*entities.ApplicationOAuthProvider, error) {

@@ -33,10 +33,26 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		return nil, &errors.ErrOAuthProviderNotFound
 	}
 
+	externalOauthState := entities.AddExternalOAuthState(
+		state,
+		oauthProvider.ID,
+		request.ClientState,
+		request.ClientCodeChallengeMethod,
+		request.ClientCodeChallenge,
+		request.ClientScope,
+		request.ClientResponseType,
+		request.ClientRedirectUri,
+	)
+
+	if err := s.repository.AddExternalOAuthState(ctx, externalOauthState); err != nil {
+		return nil, err
+	}
+
 	return &ServiceResponse{
-		State:       state,
-		ClientID:    oauthProvider.ClientID,
-		RedirectURI: oauthProvider.RedirectURI,
-		Scope:       scope,
+		State:         state,
+		ClientID:      oauthProvider.ClientID,
+		RedirectURI:   oauthProvider.RedirectURI,
+		Scope:         scope,
+		ApplicationID: oauthProvider.ApplicationID,
 	}, nil
 }

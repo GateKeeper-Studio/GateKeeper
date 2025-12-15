@@ -5,5 +5,11 @@ import (
 )
 
 type Command struct {
-	OauthProviderId uuid.UUID
+	OauthProviderId           uuid.UUID `json:"oauthProviderId"`
+	ClientState               string    `json:"clientState"`
+	ClientCodeChallengeMethod string    `json:"clientCodeChallengeMethod"`
+	ClientCodeChallenge       string    `json:"clientCodeChallenge"`
+	ClientScope               string    `json:"clientScope"`
+	ClientResponseType        string    `json:"clientResponseType"`
+	ClientRedirectUri         string    `json:"clientRedirectUri"`
 }
