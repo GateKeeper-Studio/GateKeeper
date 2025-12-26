@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hashSessionObjectWithPassword } from "@/lib/utils/hash-session";
+import { generateCodeChallenge } from "../../sign-in/route";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -14,9 +15,24 @@ export async function GET(request: NextRequest) {
   const responseType = searchParams.get("response_type");
   const scope = searchParams.get("scope");
 
+  console.log({
+    codeChallenge,
+    codeChallengeMethod,
+    responseType,
+    scope,
+  })
+
   // Recupera os cookies armazenados na rota de login
   const stateCookie = request.cookies.get("gk_state");
   const codeVerifierCookie = request.cookies.get("gk_code_verifier");
+
+  const storedCodeChallenge = codeVerifierCookie
+    ? generateCodeChallenge(codeVerifierCookie.value)
+    : null;
+
+  if (!storedCodeChallenge || codeChallenge !== storedCodeChallenge) {
+    return new NextResponse("Invalid Code Challenge", { status: 400 });
+  }
 
   // Validação do state para proteção contra CSRF
   if (!state || state !== stateCookie?.value) {
@@ -24,7 +40,7 @@ export async function GET(request: NextRequest) {
   }
 
   // // Prepara a requisição para trocar o código pelo token
-  const tokenEndpoint = "http://localhost:8080/v1/auth/sign-in";
+  const tokenEndpoint = `${process.env.GATEKEEPER_SERVICE_URL}/v1/auth/sign-in`;
   const responseData = await fetch(tokenEndpoint, {
     method: "POST",
     headers: {

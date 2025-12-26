@@ -91,6 +91,8 @@ var (
 	ErrOAuthProviderMismatch = CustomError{Name: "ErrOAuthProviderMismatch", Code: http.StatusBadRequest, Message: "OAuth provider mismatch for the current user", Title: "OAuth provider mismatch"}
 
 	ErrUserCredentialsNotFound = CustomError{Name: "ErrUserCredentialsNotFound", Code: http.StatusNotFound, Message: "User credentials not found", Title: "User credentials not found"}
+
+	ErrInvalidCodeChallenge = CustomError{Name: "ErrInvalidCodeChallenge", Code: http.StatusBadRequest, Message: "Invalid code challenge", Title: "Invalid code challenge"}
 )
 
 var ErrorsList = map[string]CustomError{
@@ -152,4 +154,5 @@ var ErrorsList = map[string]CustomError{
 	"ErrInvalidOAuthCode":                    ErrInvalidOAuthCode,
 	"ErrOAuthProviderMismatch":               ErrOAuthProviderMismatch,
 	"ErrUserCredentialsNotFound":             ErrUserCredentialsNotFound,
+	"ErrInvalidCodeChallenge":                ErrInvalidCodeChallenge,
 }

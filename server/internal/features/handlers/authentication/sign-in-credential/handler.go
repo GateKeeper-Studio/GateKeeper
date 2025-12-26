@@ -27,6 +27,22 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
+	// Verify CodeChallenge from authorization code
+
+	isCodeChallengeValid, err := application_utils.VerifyCodeChallenge(
+		command.CodeVerifier,
+		authorizationCode.CodeChallenge,
+		authorizationCode.CodeChallengeMethod,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !isCodeChallengeValid {
+		return nil, &errors.ErrInvalidCodeChallenge
+	}
+
 	secrets, err := s.repository.ListSecretsFromApplication(ctx, authorizationCode.ApplicationID)
 
 	if err != nil {

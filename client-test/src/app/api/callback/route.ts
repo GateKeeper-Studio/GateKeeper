@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hashSessionObjectWithPassword } from "@/lib/utils/hash-session";
+import { generateCodeChallenge } from "../sign-in/route";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -7,8 +8,6 @@ export async function GET(request: NextRequest) {
   const state = searchParams.get("state");
   const clientId = searchParams.get("client_id") ?? "";
   const redirectUri = searchParams.get("redirect_uri");
-
-  console.log({ cookies: request.cookies.getAll() });
 
   // Recupera os cookies armazenados na rota de login
   const stateCookie = request.cookies.get("gk_state");
@@ -20,7 +19,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Prepara a requisição para trocar o código pelo token
-  const tokenEndpoint = "http://localhost:8080/v1/auth/sign-in";
+  const tokenEndpoint = `${process.env.GATEKEEPER_SERVICE_URL}/v1/auth/sign-in`;
   const responseData = await fetch(tokenEndpoint, {
     method: "POST",
     headers: {
