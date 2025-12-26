@@ -23,11 +23,24 @@ type ApplicationOAuthProvider struct {
 	UpdatedAt     *time.Time
 }
 
+func VerifyOAuthProviderName(name string) bool {
+	switch name {
+	case OAuthProviderNameGoogle, OAuthProviderNameGitHub:
+		return true
+	default:
+		return false
+	}
+}
+
 func NewApplicationOAuthProvider(applicationID uuid.UUID, name string, clientID string, clientSecret string, redirectURI string, enabled bool) *ApplicationOAuthProvider {
 	newID, err := uuid.NewV7()
 
 	if err != nil {
 		panic(err)
+	}
+
+	if !VerifyOAuthProviderName(name) {
+		panic("Invalid OAuth provider name")
 	}
 
 	return &ApplicationOAuthProvider{

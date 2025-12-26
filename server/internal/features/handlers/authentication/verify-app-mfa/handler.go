@@ -3,6 +3,7 @@ package verifyappmfa
 import (
 	"context"
 
+	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
@@ -42,7 +43,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrEmailNotConfirmed
 	}
 
-	mfaMethod, err := s.repository.GetMfaMethodByUserIDAndMethod(ctx, user.ID, entities.MfaMethodTotp)
+	mfaMethod, err := s.repository.GetMfaMethodByUserIDAndMethod(ctx, user.ID, constants.MfaMethodTotp)
 
 	if err != nil {
 		return nil, err

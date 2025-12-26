@@ -18,10 +18,25 @@ type IRepository interface {
 	AddUserProfile(ctx context.Context, userProfile *entities.UserProfile) error
 	AddUserRole(ctx context.Context, userRole *entities.UserRole) error
 	ListRolesFromApplication(ctx context.Context, applicationID uuid.UUID) (*[]entities.ApplicationRole, error)
+	AddUserCredentials(ctx context.Context, userCredentials *entities.UserCredentials) error
 }
 
 type Repository struct {
 	Store *pgstore.Queries
+}
+
+func (r Repository) AddUserCredentials(ctx context.Context, userCredentials *entities.UserCredentials) error {
+	err := r.Store.AddUserCredentials(ctx, pgstore.AddUserCredentialsParams{
+		ID:                userCredentials.ID,
+		UserID:            userCredentials.UserID,
+		PasswordAlgorithm: userCredentials.PasswordAlgorithm,
+		PasswordHash:      userCredentials.PasswordHash,
+		ShouldChangePass:  userCredentials.ShouldChangePass,
+		CreatedAt:         pgtype.Timestamp{Time: userCredentials.CreatedAt, Valid: true},
+		UpdatedAt:         userCredentials.UpdatedAt,
+	})
+
+	return err
 }
 
 func (r Repository) ListRolesFromApplication(ctx context.Context, applicationID uuid.UUID) (*[]entities.ApplicationRole, error) {
@@ -103,8 +118,6 @@ func (r Repository) AddUser(ctx context.Context, newUser *entities.ApplicationUs
 		ID:               newUser.ID,
 		Email:            newUser.Email,
 		ApplicationID:    newUser.ApplicationID,
-		ShouldChangePass: newUser.ShouldChangePass,
-		PasswordHash:     newUser.PasswordHash,
 		CreatedAt:        pgtype.Timestamp{Time: newUser.CreatedAt, Valid: true},
 		UpdatedAt:        newUser.UpdatedAt,
 		IsActive:         newUser.IsActive,

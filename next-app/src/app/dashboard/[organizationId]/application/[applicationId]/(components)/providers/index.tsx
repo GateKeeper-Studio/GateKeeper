@@ -60,7 +60,7 @@ export function Providers({ application }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="flex flex-wrap gap-4">
       {oauthProviders.map((provider) => (
         <ProviderCard
           key={provider.id}

@@ -120,13 +120,11 @@ func (r Repository) GetUserByID(ctx context.Context, id uuid.UUID) (*entities.Ap
 	return &entities.ApplicationUser{
 		ID:               user.ID,
 		Email:            user.Email,
-		PasswordHash:     user.PasswordHash,
 		CreatedAt:        user.CreatedAt.Time,
 		UpdatedAt:        user.UpdatedAt,
 		IsActive:         user.IsActive,
 		IsEmailConfirmed: user.IsEmailConfirmed,
 		ApplicationID:    user.ApplicationID,
-		ShouldChangePass: user.ShouldChangePass,
 	}, nil
 }
 

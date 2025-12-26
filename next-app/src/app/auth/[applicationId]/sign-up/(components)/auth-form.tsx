@@ -74,13 +74,13 @@ export function AuthForm({}: Props) {
       password: values.password.trim(),
     });
 
+    setIsLoading(false);
+
     if (err) {
-      toast.error(err.message);
+      toast.error(err.response?.data.message || "Error creating account");
       console.error(err);
       return;
     }
-
-    setIsLoading(false);
 
     toast.success("Account created successfully");
 

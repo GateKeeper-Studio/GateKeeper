@@ -3,6 +3,7 @@ package login
 import (
 	"context"
 
+	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	application_utils "github.com/gate-keeper/internal/features/utils"
@@ -38,11 +39,13 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrUserNotActive
 	}
 
-	if user.PasswordHash == nil {
-		return nil, &errors.ErrUserSignUpWithSocial
+	userCredentials, err := s.repository.GetUserCredentialsByUserID(ctx, user.ID)
+
+	if err != nil {
+		return nil, err
 	}
 
-	isPasswordCorrect, err := application_utils.ComparePassword(*user.PasswordHash, command.Password)
+	isPasswordCorrect, err := application_utils.ComparePassword(userCredentials.PasswordHash, command.Password)
 
 	if err != nil {
 		return nil, err
@@ -64,7 +67,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	var changePasswordCode *entities.ChangePasswordCode = nil
 
 	// If the user should change their password, create a new change password code
-	if user.ShouldChangePass {
+	if userCredentials.ShouldChangePass {
 		changePasswordCode = entities.NewChangePasswordCode(user.ID, user.Email)
 
 		if err := s.repository.AddChangePasswordCode(ctx, changePasswordCode); err != nil {
@@ -72,8 +75,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		}
 	}
 
-	// #region mfa email method
-	if user.Preferred2FAMethod != nil && *user.Preferred2FAMethod == entities.MfaMethodEmail {
+	if user.Preferred2FAMethod != nil && *user.Preferred2FAMethod == constants.MfaMethodEmail {
 		userProfile, err := s.repository.GetUserProfileByID(ctx, user.ID)
 
 		if err != nil {
@@ -123,7 +125,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	}
 	// #endregion
 
-	if user.Preferred2FAMethod != nil && *user.Preferred2FAMethod == entities.MfaMethodTotp {
+	if user.Preferred2FAMethod != nil && *user.Preferred2FAMethod == constants.MfaMethodTotp {
 		mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, *user.Preferred2FAMethod)
 
 		if err != nil {

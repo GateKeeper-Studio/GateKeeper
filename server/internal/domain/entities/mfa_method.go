@@ -3,13 +3,8 @@ package entities
 import (
 	"time"
 
+	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/google/uuid"
-)
-
-const (
-	MfaMethodTotp  = "totp"
-	MfaMethodEmail = "email"
-	MfaMethodSms   = "sms"
 )
 
 type MfaMethod struct {
@@ -28,7 +23,7 @@ func AddMfaMethod(mfaMethodID uuid.UUID, mfaMethodType string) *MfaMethod {
 		panic(err)
 	}
 
-	if mfaMethodType != MfaMethodTotp && mfaMethodType != MfaMethodEmail && mfaMethodType != MfaMethodSms {
+	if mfaMethodType != constants.MfaMethodTotp && mfaMethodType != constants.MfaMethodEmail && mfaMethodType != constants.MfaMethodSms {
 		panic("Invalid MFA method type")
 	}
 

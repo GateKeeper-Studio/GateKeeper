@@ -49,7 +49,17 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		return &errors.ErrUserNotFound
 	}
 
-	if user.ShouldChangePass == false {
+	userCredentials, err := s.repository.GetUserCredentialsByUserID(ctx, user.ID)
+
+	if err != nil {
+		return err
+	}
+
+	if userCredentials == nil {
+		return &errors.ErrUserCredentialsNotFound
+	}
+
+	if userCredentials.ShouldChangePass == false {
 		return &errors.ErrUserShouldNotChangePassword
 	}
 
@@ -69,10 +79,10 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		return err
 	}
 
-	user.PasswordHash = &hashedPassword
-	user.ShouldChangePass = false
+	userCredentials.PasswordHash = hashedPassword
+	userCredentials.ShouldChangePass = false
 
-	s.repository.UpdateUser(ctx, user)
+	s.repository.UpdateUserCredentials(ctx, userCredentials)
 	s.repository.RevokeRefreshTokenFromUser(ctx, user.ID)
 	s.repository.RevokeAllChangePasswordCodeByUserID(ctx, user.ID)
 

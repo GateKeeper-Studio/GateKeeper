@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
@@ -35,15 +36,17 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrUserNotActive
 	}
 
-	if user.PasswordHash == nil {
-		return nil, &errors.ErrUserSignUpWithSocial
-	}
-
 	if !user.IsEmailConfirmed {
 		return nil, &errors.ErrEmailNotConfirmed
 	}
 
-	if user.ShouldChangePass {
+	userCredentials, err := s.repository.GetUserCredentialsByUserID(ctx, user.ID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if userCredentials.ShouldChangePass {
 		return nil, &errors.ErrUserShouldChangePassword
 	}
 
@@ -61,7 +64,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrSessionCodeExpired
 	}
 
-	if user.Preferred2FAMethod != nil && *user.Preferred2FAMethod == entities.MfaMethodTotp {
+	if user.Preferred2FAMethod != nil && *user.Preferred2FAMethod == constants.MfaMethodTotp {
 		if command.MfaID == nil {
 			return nil, &errors.ErrMfaCodeRequired
 		}

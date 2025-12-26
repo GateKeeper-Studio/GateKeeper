@@ -85,13 +85,11 @@ type ApplicationUser struct {
 	ID                 uuid.UUID        `db:"id"`
 	ApplicationID      uuid.UUID        `db:"application_id"`
 	Email              string           `db:"email"`
-	PasswordHash       *string          `db:"password_hash"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
 	UpdatedAt          *time.Time       `db:"updated_at"`
 	IsActive           bool             `db:"is_active"`
 	IsEmailConfirmed   bool             `db:"is_email_confirmed"`
 	ShouldChangePass   bool             `db:"should_change_pass"`
-	TwoFactorSecret    *string          `db:"two_factor_secret"`
 	Preferred2faMethod *string          `db:"preferred_2fa_method"`
 }
 
@@ -124,11 +122,15 @@ type EmailConfirmation struct {
 	IsUsed    bool             `db:"is_used"`
 }
 
-type ExternalLogin struct {
-	UserID      uuid.UUID `db:"user_id"`
-	Email       string    `db:"email"`
-	Provider    string    `db:"provider"`
-	ProviderKey string    `db:"provider_key"`
+type ExternalIdentity struct {
+	ID                         uuid.UUID        `db:"id"`
+	UserID                     uuid.UUID        `db:"user_id"`
+	Email                      string           `db:"email"`
+	Provider                   string           `db:"provider"`
+	ProviderUserID             string           `db:"provider_user_id"`
+	ApplicationOauthProviderID uuid.UUID        `db:"application_oauth_provider_id"`
+	CreatedAt                  pgtype.Timestamp `db:"created_at"`
+	UpdatedAt                  *time.Time       `db:"updated_at"`
 }
 
 type ExternalOauthState struct {
@@ -200,6 +202,16 @@ type RefreshToken struct {
 	AvailableRefreshes int32            `db:"available_refreshes"`
 	ExpiresAt          pgtype.Timestamp `db:"expires_at"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
+}
+
+type UserCredential struct {
+	ID                uuid.UUID        `db:"id"`
+	UserID            uuid.UUID        `db:"user_id"`
+	PasswordHash      string           `db:"password_hash"`
+	PasswordAlgorithm string           `db:"password_algorithm"`
+	ShouldChangePass  bool             `db:"should_change_pass"`
+	UpdatedAt         *time.Time       `db:"updated_at"`
+	CreatedAt         pgtype.Timestamp `db:"created_at"`
 }
 
 type UserProfile struct {

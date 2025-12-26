@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Run Server",
+            "label": "🚀 Run Server",
             "type": "shell",
             "command": "go",
             "args": [
@@ -14,7 +14,7 @@
             },
         },
         {
-            "label": "Run Server (watch mode)",
+            "label": "🚀 Run Server (watch mode)",
             "type": "shell",
             "command": "air",
             "isBackground": true,
@@ -23,7 +23,7 @@
             },
         },
         {
-            "label": "Run Client",
+            "label": "💻 Run Client",
             "type": "shell",
             "command": "npm",
             "args": [
@@ -35,7 +35,7 @@
             },
         },
         {
-            "label": "Run Dashboard",
+            "label": "📊 Run Dashboard",
             "type": "shell",
             "command": "npm",
             "args": [

@@ -18,10 +18,33 @@ type IRepository interface {
 	AddAuthorizationCode(ctx context.Context, authorizationCode *entities.ApplicationAuthorizationCode) error
 	GetMfaTotpCodeByID(ctx context.Context, id uuid.UUID) (*entities.MfaTotpCode, error)
 	DeleteMfaTotpCodeByID(ctx context.Context, id uuid.UUID) error
+	GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error)
 }
 
 type Repository struct {
 	Store *pgstore.Queries
+}
+
+func (r Repository) GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error) {
+	userCredentials, err := r.Store.GetUserCredentialsByUserID(ctx, userID)
+
+	if err == repositories.ErrNoRows {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &entities.UserCredentials{
+		ID:                userCredentials.ID,
+		UserID:            userCredentials.UserID,
+		PasswordAlgorithm: userCredentials.PasswordAlgorithm,
+		PasswordHash:      userCredentials.PasswordHash,
+		ShouldChangePass:  userCredentials.ShouldChangePass,
+		CreatedAt:         userCredentials.CreatedAt.Time,
+		UpdatedAt:         userCredentials.UpdatedAt,
+	}, nil
 }
 
 func (r Repository) GetMfaTotpCodeByID(ctx context.Context, id uuid.UUID) (*entities.MfaTotpCode, error) {
@@ -66,13 +89,11 @@ func (r Repository) GetUserByEmail(ctx context.Context, email string, applicatio
 	return &entities.ApplicationUser{
 		ID:               user.ID,
 		Email:            user.Email,
-		PasswordHash:     user.PasswordHash,
 		CreatedAt:        user.CreatedAt.Time,
 		UpdatedAt:        user.UpdatedAt,
 		IsActive:         user.IsActive,
 		IsEmailConfirmed: user.IsEmailConfirmed,
 		ApplicationID:    user.ApplicationID,
-		ShouldChangePass: user.ShouldChangePass,
 	}, nil
 }
 

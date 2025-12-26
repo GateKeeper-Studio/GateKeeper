@@ -35,13 +35,11 @@ func (r Repository) GetUserByEmail(ctx context.Context, email string, applicatio
 	return &entities.ApplicationUser{
 		ID:                 user.ID,
 		Email:              user.Email,
-		PasswordHash:       user.PasswordHash,
 		CreatedAt:          user.CreatedAt.Time,
 		UpdatedAt:          user.UpdatedAt,
 		IsActive:           user.IsActive,
 		IsEmailConfirmed:   user.IsEmailConfirmed,
 		ApplicationID:      user.ApplicationID,
-		ShouldChangePass:   user.ShouldChangePass,
 		Preferred2FAMethod: user.Preferred2faMethod,
 	}, nil
 }

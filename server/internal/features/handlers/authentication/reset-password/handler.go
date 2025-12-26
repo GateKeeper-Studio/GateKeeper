@@ -65,12 +65,30 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		return err
 	}
 
-	user.PasswordHash = &hashedPassword
-	user.ShouldChangePass = false
+	userCredentials, err := s.repository.GetUserCredentialsByUserID(ctx, user.ID)
 
-	s.repository.UpdateUser(ctx, user)
-	s.repository.RevokeRefreshTokenFromUser(ctx, user.ID)
-	s.repository.DeletePasswordResetFromUser(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	userCredentials.PasswordHash = hashedPassword
+	userCredentials.ShouldChangePass = false
+
+	if _, err := s.repository.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	if err := s.repository.UpdateUserCredentials(ctx, userCredentials); err != nil {
+		return err
+	}
+
+	if err := s.repository.RevokeRefreshTokenFromUser(ctx, user.ID); err != nil {
+		return err
+	}
+
+	if err := s.repository.DeletePasswordResetFromUser(ctx, user.ID); err != nil {
+		return err
+	}
 
 	return nil
 }

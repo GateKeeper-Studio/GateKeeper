@@ -2,9 +2,9 @@ package editapplicationuser
 
 import (
 	"context"
-	"log"
 	"time"
 
+	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	application_utils "github.com/gate-keeper/internal/features/utils"
@@ -50,18 +50,26 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*Response, erro
 			return nil, err
 		}
 
-		applicationUser.PasswordHash = &hashedPassword
-		applicationUser.ShouldChangePass = true
+		userCredentials, err := s.repository.GetUserCredentialsByUserID(ctx, applicationUser.ID)
+
+		if err != nil {
+			return nil, err
+		}
+
+		userCredentials.PasswordHash = hashedPassword
+		userCredentials.ShouldChangePass = true
+
+		if err = s.repository.UpdateUserCredentials(ctx, userCredentials); err != nil {
+			return nil, err
+		}
 	}
 
 	if request.Preferred2FAMethod != nil &&
-		*request.Preferred2FAMethod != entities.MfaMethodEmail &&
-		*request.Preferred2FAMethod != entities.MfaMethodTotp &&
-		*request.Preferred2FAMethod != entities.MfaMethodSms {
+		*request.Preferred2FAMethod != constants.MfaMethodEmail &&
+		*request.Preferred2FAMethod != constants.MfaMethodTotp &&
+		*request.Preferred2FAMethod != constants.MfaMethodSms {
 		return nil, &errors.ErrInvalid2FAMethod
 	}
-
-	log.Printf("Preferred2FAMethod" + *request.Preferred2FAMethod)
 
 	currentTime := time.Now().UTC()
 

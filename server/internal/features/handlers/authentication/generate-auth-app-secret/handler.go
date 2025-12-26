@@ -3,6 +3,7 @@ package generateauthappsecret
 import (
 	"context"
 
+	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
@@ -42,7 +43,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrUserNotFound
 	}
 
-	mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, entities.MfaMethodTotp)
+	mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, constants.MfaMethodTotp)
 
 	if err != nil {
 		return nil, err
@@ -51,7 +52,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	if mfaMethod == nil {
 		// Create a new TOTP MFA method if it doesn't exist and if the application has MFA Auth App enabled
 		if application.HasMfaAuthApp {
-			mfaMethod = entities.AddMfaMethod(user.ID, entities.MfaMethodTotp)
+			mfaMethod = entities.AddMfaMethod(user.ID, constants.MfaMethodTotp)
 
 			err := s.repository.AddMfaMethod(ctx, mfaMethod)
 
@@ -86,7 +87,9 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	mfaUserSecret := entities.NewMfaUserSecret(user.ID, secret)
 
 	// s.repository.RevokeMfaUserSecret(ctx, user.ID)
-	s.repository.AddMfaTotpSecretValidation(ctx, mfaUserSecret)
+	if err := s.repository.AddMfaTotpSecretValidation(ctx, mfaUserSecret); err != nil {
+		return nil, err
+	}
 
 	// user.TwoFactorSecret = &secret
 	// s.repository.UpdateUser(ctx, user)

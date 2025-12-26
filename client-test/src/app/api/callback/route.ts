@@ -8,6 +8,8 @@ export async function GET(request: NextRequest) {
   const clientId = searchParams.get("client_id") ?? "";
   const redirectUri = searchParams.get("redirect_uri");
 
+  console.log({ cookies: request.cookies.getAll() });
+
   // Recupera os cookies armazenados na rota de login
   const stateCookie = request.cookies.get("gk_state");
   const codeVerifierCookie = request.cookies.get("gk_code_verifier");
@@ -56,6 +58,9 @@ export async function GET(request: NextRequest) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
   });
+
+  response.cookies.delete("gk_state");
+  response.cookies.delete("gk_code_verifier");
 
   return response;
 }

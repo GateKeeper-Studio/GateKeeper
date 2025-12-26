@@ -19,10 +19,50 @@ type IRepository interface {
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
 	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
 	DeletePasswordResetFromUser(ctx context.Context, userID uuid.UUID) error
+	GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error)
+	UpdateUserCredentials(ctx context.Context, userCredentials *entities.UserCredentials) error
 }
 
 type Repository struct {
 	Store *pgstore.Queries
+}
+
+func (r Repository) UpdateUserCredentials(ctx context.Context, userCredentials *entities.UserCredentials) error {
+	err := r.Store.UpdateUserCredentials(ctx, pgstore.UpdateUserCredentialsParams{
+		UserID:            userCredentials.UserID,
+		PasswordHash:      userCredentials.PasswordHash,
+		PasswordAlgorithm: userCredentials.PasswordAlgorithm,
+		ShouldChangePass:  userCredentials.ShouldChangePass,
+		UpdatedAt:         userCredentials.UpdatedAt,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r Repository) GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error) {
+	userCredentials, err := r.Store.GetUserCredentialsByUserID(ctx, userID)
+
+	if err == repositories.ErrNoRows {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &entities.UserCredentials{
+		ID:                userCredentials.ID,
+		UserID:            userCredentials.UserID,
+		PasswordAlgorithm: userCredentials.PasswordAlgorithm,
+		PasswordHash:      userCredentials.PasswordHash,
+		ShouldChangePass:  userCredentials.ShouldChangePass,
+		CreatedAt:         userCredentials.CreatedAt.Time,
+		UpdatedAt:         userCredentials.UpdatedAt,
+	}, nil
 }
 
 func (r Repository) RevokeRefreshTokenFromUser(ctx context.Context, userID uuid.UUID) error {
@@ -61,11 +101,9 @@ func (r Repository) UpdateUser(ctx context.Context, user *entities.ApplicationUs
 	err := r.Store.UpdateUser(ctx, pgstore.UpdateUserParams{
 		ID:               user.ID,
 		Email:            user.Email,
-		PasswordHash:     user.PasswordHash,
 		UpdatedAt:        &now,
 		IsActive:         user.IsActive,
 		IsEmailConfirmed: user.IsEmailConfirmed,
-		ShouldChangePass: user.ShouldChangePass,
 	})
 
 	return user, err
@@ -135,13 +173,11 @@ func (r Repository) GetUserByID(ctx context.Context, id uuid.UUID) (*entities.Ap
 	return &entities.ApplicationUser{
 		ID:                 user.ID,
 		Email:              user.Email,
-		PasswordHash:       user.PasswordHash,
 		CreatedAt:          user.CreatedAt.Time,
 		UpdatedAt:          user.UpdatedAt,
 		IsActive:           user.IsActive,
 		IsEmailConfirmed:   user.IsEmailConfirmed,
 		ApplicationID:      user.ApplicationID,
-		ShouldChangePass:   user.ShouldChangePass,
 		Preferred2FAMethod: user.Preferred2faMethod,
 	}, nil
 }

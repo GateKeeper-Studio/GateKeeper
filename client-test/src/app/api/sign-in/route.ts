@@ -22,27 +22,27 @@ export async function POST(request: NextRequest) {
   });
 
   // Endpoint do Identity Provider que realiza a autorização
-  const authorizationEndpoint = `http://localhost:3000/auth/${clientId}/sign-in?${params.toString()}`;
+  const authorizationEndpoint = `http://192.168.0.242:3000/auth/${clientId}/sign-in?${params.toString()}`;
   const response = NextResponse.json({ url: authorizationEndpoint });
 
   response.cookies.set("gk_code_verifier", codeVerifier, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    sameSite: "strict",
+    sameSite: "lax",
   });
 
   response.cookies.set("gk_state", state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    sameSite: "strict",
+    sameSite: "lax",
   });
 
   return response;
 }
 
-function generateCodeChallenge(codeVerifier: string): string {
+export function generateCodeChallenge(codeVerifier: string): string {
   const hash = createHash("sha256");
   hash.update(codeVerifier);
 

@@ -58,7 +58,7 @@ func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
 	}
 
 	query := redirectUrl.Query()
-	query.Set("code", "") // to do
+	query.Set("code", response.AuthorizationCode) // to do
 	query.Set("state", response.ClientState)
 	query.Set("code_challenge_method", response.ClientCodeChallengeMethod)
 	query.Set("code_challenge", response.ClientCodeChallenge)

@@ -7,6 +7,7 @@ type ServiceResponse struct {
 	UserData                  *GitHubUserData
 	OauthProviderID           uuid.UUID
 	ClientState               string
+	AuthorizationCode         string
 	ClientCodeChallengeMethod string
 	ClientCodeChallenge       string
 	ClientScope               string

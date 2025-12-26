@@ -3,13 +3,10 @@ CREATE TABLE IF NOT EXISTS "application_user" (
     id UUID PRIMARY KEY,
     application_id UUID NOT NULL,
     email VARCHAR(128) NOT NULL,
-    password_hash VARCHAR(255) NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     is_email_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
-    should_change_pass BOOLEAN NOT NULL DEFAULT FALSE,
-    two_factor_secret VARCHAR(255) NULL,
     preferred_2fa_method VARCHAR(24) NULL,
     /* application_user >- application = fk_application_user_application */
     CONSTRAINT fk_application_user_application FOREIGN KEY (application_id) REFERENCES "application" (id) ON DELETE CASCADE

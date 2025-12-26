@@ -87,6 +87,10 @@ var (
 	ErrInvalidOAuthState      = CustomError{Name: "ErrInvalidOAuthState", Code: http.StatusBadRequest, Message: "Invalid OAuth state", Title: "Invalid OAuth state"}
 	ErrInvalidOAuthProviderID = CustomError{Name: "ErrInvalidOAuthProviderID", Code: http.StatusBadRequest, Message: "Invalid OAuth provider ID", Title: "Invalid OAuth provider ID"}
 	ErrInvalidOAuthCode       = CustomError{Name: "ErrInvalidOAuthCode", Code: http.StatusBadRequest, Message: "Invalid OAuth code", Title: "Invalid OAuth code"}
+
+	ErrOAuthProviderMismatch = CustomError{Name: "ErrOAuthProviderMismatch", Code: http.StatusBadRequest, Message: "OAuth provider mismatch for the current user", Title: "OAuth provider mismatch"}
+
+	ErrUserCredentialsNotFound = CustomError{Name: "ErrUserCredentialsNotFound", Code: http.StatusNotFound, Message: "User credentials not found", Title: "User credentials not found"}
 )
 
 var ErrorsList = map[string]CustomError{
@@ -146,4 +150,6 @@ var ErrorsList = map[string]CustomError{
 	"ErrInvalidOAuthState":                   ErrInvalidOAuthState,
 	"ErrInvalidOAuthProviderID":              ErrInvalidOAuthProviderID,
 	"ErrInvalidOAuthCode":                    ErrInvalidOAuthCode,
+	"ErrOAuthProviderMismatch":               ErrOAuthProviderMismatch,
+	"ErrUserCredentialsNotFound":             ErrUserCredentialsNotFound,
 }

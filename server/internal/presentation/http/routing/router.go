@@ -26,7 +26,6 @@ import (
 	changepassword "github.com/gate-keeper/internal/features/handlers/authentication/change-password"
 	confirmmfaauthappsecret "github.com/gate-keeper/internal/features/handlers/authentication/confirm-mfa-auth-app-secret"
 	confirmuseremail "github.com/gate-keeper/internal/features/handlers/authentication/confirm-user-email"
-	externalloginprovider "github.com/gate-keeper/internal/features/handlers/authentication/external-login-provider"
 	forgotpassword "github.com/gate-keeper/internal/features/handlers/authentication/forgot-password"
 	generateauthappsecret "github.com/gate-keeper/internal/features/handlers/authentication/generate-auth-app-secret"
 	login "github.com/gate-keeper/internal/features/handlers/authentication/login"
@@ -83,7 +82,6 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	authorizeEndpoint := authorize.Endpoint{DbPool: pool}
 	changePasswordEndpoint := changepassword.Endpoint{DbPool: pool}
 	confirmUserEmailEndpoint := confirmuseremail.Endpoint{DbPool: pool}
-	externalLoginProviderEndpoint := externalloginprovider.Endpoint{DbPool: pool}
 	sessionEndpoint := session.Endpoint{DbPool: pool}
 	forgotPasswordEndpoint := forgotpassword.Endpoint{DbPool: pool}
 	generateAuthAppSecretEndpoint := generateauthappsecret.Endpoint{DbPool: pool}
@@ -144,7 +142,6 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 			r.Post("/reset-password", resetRepositoryEndpoint.Http)
 			r.Post("/change-password", changePasswordEndpoint.Http)
 			r.Post("/forgot-password", forgotPasswordEndpoint.Http)
-			r.Post("/external-provider", externalLoginProviderEndpoint.Http)
 			r.Post("/confirm-email/resend", resendEmailConfirmationEndpoint.Http)
 			r.Post("/confirm-mfa-auth-app-secret", confirmMfaAuthAppSecretEndpoint.Http)
 

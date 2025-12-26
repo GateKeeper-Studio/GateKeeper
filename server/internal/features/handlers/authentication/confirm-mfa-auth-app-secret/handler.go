@@ -3,7 +3,7 @@ package confirmmfaauthappsecret
 import (
 	"context"
 
-	"github.com/gate-keeper/internal/domain/entities"
+	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
@@ -31,7 +31,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		return &errors.ErrUserNotFound
 	}
 
-	mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, entities.MfaMethodTotp)
+	mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, constants.MfaMethodTotp)
 
 	if err != nil {
 		return err

@@ -3,8 +3,10 @@ package githubcallback
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"strconv"
+	"strings"
 
+	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	application_utils "github.com/gate-keeper/internal/features/utils"
 	"github.com/gate-keeper/internal/infra/database/repositories"
@@ -26,17 +28,17 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		return nil, &errors.ErrInvalidOAuthCode
 	}
 
-	external_oauth_state, err := s.repository.GetExternalOAuthStateByState(ctx, request.State)
+	externalOauthState, err := s.repository.GetExternalOAuthStateByState(ctx, request.State)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if external_oauth_state == nil {
+	if externalOauthState == nil {
 		return nil, &errors.ErrInvalidOAuthState
 	}
 
-	oauthProvider, err := s.repository.GetApplicationOAuthProviderByID(ctx, external_oauth_state.ApplicationOAuthProviderID)
+	oauthProvider, err := s.repository.GetApplicationOAuthProviderByID(ctx, externalOauthState.ApplicationOAuthProviderID)
 
 	if err != nil {
 		return nil, err
@@ -53,7 +55,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 			Body: githubRequestBody{
 				ClientID:     oauthProvider.ClientID,
 				ClientSecret: oauthProvider.ClientSecret,
-				Code:         request.Code,
+				Code:         request.Code, // From the callback request
 			},
 			Headers: map[string]string{
 				"Accept":       "application/json",
@@ -71,8 +73,43 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 	var githubResponsePayloadObj githubResponsePayload
 
 	if err := json.NewDecoder(accessTokenResp.Body).Decode(&githubResponsePayloadObj); err != nil {
-		log.Println("Error decoding GitHub response: ", err)
 		return nil, err
+	}
+
+	emailsResp, err := application_utils.Fetch(
+		"GET",
+		"https://api.github.com/user/emails",
+		&application_utils.FetchOptions{
+			Headers: map[string]string{
+				"Authorization":        "Bearer " + githubResponsePayloadObj.AccessToken,
+				"X-GitHub-Api-Version": "2022-11-28",
+			},
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer emailsResp.Body.Close()
+
+	var emails []struct {
+		Email    string `json:"email"`
+		Primary  bool   `json:"primary"`
+		Verified bool   `json:"verified"`
+	}
+
+	if err := json.NewDecoder(emailsResp.Body).Decode(&emails); err != nil {
+		return nil, err
+	}
+
+	var primaryEmail string
+
+	for _, e := range emails {
+		if e.Primary && e.Verified {
+			primaryEmail = e.Email
+			break
+		}
 	}
 
 	resp, err := application_utils.Fetch(
@@ -98,15 +135,91 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		return nil, err
 	}
 
+	gitHubUserData.Email = strings.ToLower(primaryEmail) // Set the primary email
+
+	currentUser, err := s.repository.GetUserByEmail(ctx, gitHubUserData.Email, oauthProvider.ApplicationID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// externalProviderKey := entities.OAuthProviderNameGitHub
+
+	if currentUser == nil {
+		newUser, err := entities.CreateApplicationUser(
+			gitHubUserData.Email,
+			nil,
+			oauthProvider.ApplicationID,
+			false,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		if err = s.repository.AddUser(ctx, newUser); err != nil {
+			return nil, err
+		}
+
+		err = s.repository.AddUserProfile(ctx, &entities.UserProfile{
+			UserID:      newUser.ID,
+			DisplayName: gitHubUserData.Name,
+			FirstName:   strings.Split(gitHubUserData.Name, " ")[0],
+			LastName:    strings.Join(strings.Split(gitHubUserData.Name, " ")[1:], " "),
+			PhoneNumber: nil,
+			Address:     nil,
+			PhotoURL:    &gitHubUserData.AvatarURL,
+		})
+
+		if err != nil {
+			return nil, err
+		}
+
+		externalIdentity := entities.CreateExternalIdentity(
+			newUser.ID,
+			gitHubUserData.Email,
+			entities.OAuthProviderNameGitHub,
+			strconv.Itoa(gitHubUserData.ID),
+			oauthProvider.ID,
+		)
+
+		if err := s.repository.AddExternalIdentity(ctx, externalIdentity); err != nil {
+			return nil, err
+		}
+
+		currentUser = newUser
+	}
+
+	authorizationCode, err := entities.CreateApplicationAuthorizationCode(
+		oauthProvider.ApplicationID,
+		currentUser.ID,
+		externalOauthState.ClientRedirectUri,
+		externalOauthState.ClientCodeChallenge,
+		externalOauthState.ClientCodeChallengeMethod,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.repository.RemoveAuthorizationCode(ctx, currentUser.ID, oauthProvider.ApplicationID); err != nil {
+		return nil, err
+	}
+
+	if err := s.repository.AddAuthorizationCode(ctx, authorizationCode); err != nil {
+		return nil, err
+	}
+
 	return &ServiceResponse{
 		RedirectURL:               "http://localhost:3001/api/callback/github",
 		UserData:                  &gitHubUserData,
-		OauthProviderID:           external_oauth_state.ApplicationOAuthProviderID,
-		ClientState:               external_oauth_state.ClientState,
-		ClientCodeChallengeMethod: external_oauth_state.ClientCodeChallengeMethod,
-		ClientCodeChallenge:       external_oauth_state.ClientCodeChallenge,
-		ClientScope:               external_oauth_state.ClientScope,
-		ClientResponseType:        external_oauth_state.ClientResponseType,
-		ClientRedirectUri:         external_oauth_state.ClientRedirectUri,
+		OauthProviderID:           externalOauthState.ApplicationOAuthProviderID,
+		ClientState:               externalOauthState.ClientState,
+		AuthorizationCode:         authorizationCode.ID.String(),
+		ClientCodeChallengeMethod: externalOauthState.ClientCodeChallengeMethod,
+		ClientCodeChallenge:       externalOauthState.ClientCodeChallenge,
+		ClientScope:               externalOauthState.ClientScope,
+		ClientResponseType:        externalOauthState.ClientResponseType,
+		ClientRedirectUri:         externalOauthState.ClientRedirectUri,
 	}, nil
 }

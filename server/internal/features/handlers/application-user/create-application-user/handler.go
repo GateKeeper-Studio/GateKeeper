@@ -73,11 +73,21 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*Response, erro
 		nil,
 	)
 
+	userCredentials := entities.NewUserCredentials(
+		applicationUser.ID,
+		hashedPassword,
+		true, // shouldChangePass on next login
+	)
+
 	if err = s.repository.AddUser(ctx, applicationUser); err != nil {
 		return nil, err
 	}
 
 	if err = s.repository.AddUserProfile(ctx, applicationUserProfile); err != nil {
+		return nil, err
+	}
+
+	if err := s.repository.AddUserCredentials(ctx, userCredentials); err != nil {
 		return nil, err
 	}
 

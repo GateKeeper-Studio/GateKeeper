@@ -5,26 +5,22 @@ INSERT INTO
     "application_user" (
         id,
         email,
-        password_hash,
         application_id,
         created_at,
         updated_at,
         is_active,
         is_email_confirmed,
-        should_change_pass,
         preferred_2fa_method
     )
 VALUES
     (
         sqlc.arg('id'),
         sqlc.arg('email'),
-        sqlc.narg('password_hash'),
         sqlc.arg('application_id'),
         sqlc.arg('created_at'),
         sqlc.narg('updated_at'),
         sqlc.arg('is_active'),
         sqlc.arg('is_email_confirmed'),
-        sqlc.arg('should_change_pass'),
         sqlc.arg('preferred_2fa_method')
     );
 
@@ -34,11 +30,9 @@ UPDATE
     "application_user"
 SET
     email = sqlc.arg('email'),
-    password_hash = sqlc.narg('password_hash'),
     updated_at = sqlc.arg('updated_at'),
     is_active = sqlc.arg('is_active'),
     is_email_confirmed = sqlc.arg('is_email_confirmed'),
-    should_change_pass = sqlc.arg('should_change_pass'),
     preferred_2fa_method = sqlc.arg('preferred_2fa_method')
 WHERE
     id = sqlc.arg('id');
@@ -57,12 +51,10 @@ SELECT
     id,
     email,
     application_id,
-    password_hash,
     created_at,
     updated_at,
     is_active,
     is_email_confirmed,
-    should_change_pass,
     preferred_2fa_method
 FROM
     "application_user"
@@ -75,12 +67,10 @@ SELECT
     id,
     email,
     application_id,
-    password_hash,
     created_at,
     updated_at,
     is_active,
     is_email_confirmed,
-    should_change_pass,
     preferred_2fa_method
 FROM
     "application_user"

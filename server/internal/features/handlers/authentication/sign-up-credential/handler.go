@@ -69,11 +69,21 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		nil,
 	)
 
+	userCredentials := entities.NewUserCredentials(
+		user.ID,
+		hashedPassword,
+		false,
+	)
+
 	if err := s.repository.AddUser(ctx, user); err != nil {
 		return err
 	}
 
 	if err := s.repository.AddUserProfile(ctx, userProfile); err != nil {
+		return err
+	}
+
+	if err := s.repository.AddUserCredentials(ctx, userCredentials); err != nil {
 		return err
 	}
 

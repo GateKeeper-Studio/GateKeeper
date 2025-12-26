@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
@@ -42,12 +43,11 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrEmailNotConfirmed
 	}
 
-	if *user.Preferred2FAMethod != entities.MfaMethodEmail {
+	if *user.Preferred2FAMethod != constants.MfaMethodEmail {
 		return nil, &errors.ErrMfaEmailNotEnabled
 	}
 
-	mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, entities.MfaMethodEmail)
-
+	mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, constants.MfaMethodEmail)
 	if err != nil {
 		return nil, err
 	}

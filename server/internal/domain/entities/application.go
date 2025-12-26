@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
+// Application represents an application within the system. Each application is tied to an organization
 type Application struct {
 	ID                 uuid.UUID
 	OrganizationID     uuid.UUID

@@ -49,10 +49,9 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 	}
 
 	return &ServiceResponse{
-		State:         state,
-		ClientID:      oauthProvider.ClientID,
-		RedirectURI:   oauthProvider.RedirectURI,
-		Scope:         scope,
-		ApplicationID: oauthProvider.ApplicationID,
+		State:       state,
+		ClientID:    oauthProvider.ClientID,
+		RedirectURI: oauthProvider.RedirectURI,
+		Scope:       scope,
 	}, nil
 }

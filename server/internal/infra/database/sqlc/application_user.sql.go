@@ -18,13 +18,11 @@ INSERT INTO
     "application_user" (
         id,
         email,
-        password_hash,
         application_id,
         created_at,
         updated_at,
         is_active,
         is_email_confirmed,
-        should_change_pass,
         preferred_2fa_method
     )
 VALUES
@@ -36,22 +34,18 @@ VALUES
         $5,
         $6,
         $7,
-        $8,
-        $9,
-        $10
+        $8
     )
 `
 
 type AddUserParams struct {
 	ID                 uuid.UUID        `db:"id"`
 	Email              string           `db:"email"`
-	PasswordHash       *string          `db:"password_hash"`
 	ApplicationID      uuid.UUID        `db:"application_id"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
 	UpdatedAt          *time.Time       `db:"updated_at"`
 	IsActive           bool             `db:"is_active"`
 	IsEmailConfirmed   bool             `db:"is_email_confirmed"`
-	ShouldChangePass   bool             `db:"should_change_pass"`
 	Preferred2faMethod *string          `db:"preferred_2fa_method"`
 }
 
@@ -61,13 +55,11 @@ func (q *Queries) AddUser(ctx context.Context, arg AddUserParams) error {
 	_, err := q.db.Exec(ctx, addUser,
 		arg.ID,
 		arg.Email,
-		arg.PasswordHash,
 		arg.ApplicationID,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.IsActive,
 		arg.IsEmailConfirmed,
-		arg.ShouldChangePass,
 		arg.Preferred2faMethod,
 	)
 	return err
@@ -96,12 +88,10 @@ SELECT
     id,
     email,
     application_id,
-    password_hash,
     created_at,
     updated_at,
     is_active,
     is_email_confirmed,
-    should_change_pass,
     preferred_2fa_method
 FROM
     "application_user"
@@ -119,12 +109,10 @@ type GetUserByEmailRow struct {
 	ID                 uuid.UUID        `db:"id"`
 	Email              string           `db:"email"`
 	ApplicationID      uuid.UUID        `db:"application_id"`
-	PasswordHash       *string          `db:"password_hash"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
 	UpdatedAt          *time.Time       `db:"updated_at"`
 	IsActive           bool             `db:"is_active"`
 	IsEmailConfirmed   bool             `db:"is_email_confirmed"`
-	ShouldChangePass   bool             `db:"should_change_pass"`
 	Preferred2faMethod *string          `db:"preferred_2fa_method"`
 }
 
@@ -136,12 +124,10 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 		&i.ID,
 		&i.Email,
 		&i.ApplicationID,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsActive,
 		&i.IsEmailConfirmed,
-		&i.ShouldChangePass,
 		&i.Preferred2faMethod,
 	)
 	return i, err
@@ -152,12 +138,10 @@ SELECT
     id,
     email,
     application_id,
-    password_hash,
     created_at,
     updated_at,
     is_active,
     is_email_confirmed,
-    should_change_pass,
     preferred_2fa_method
 FROM
     "application_user"
@@ -169,12 +153,10 @@ type GetUserByIdRow struct {
 	ID                 uuid.UUID        `db:"id"`
 	Email              string           `db:"email"`
 	ApplicationID      uuid.UUID        `db:"application_id"`
-	PasswordHash       *string          `db:"password_hash"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
 	UpdatedAt          *time.Time       `db:"updated_at"`
 	IsActive           bool             `db:"is_active"`
 	IsEmailConfirmed   bool             `db:"is_email_confirmed"`
-	ShouldChangePass   bool             `db:"should_change_pass"`
 	Preferred2faMethod *string          `db:"preferred_2fa_method"`
 }
 
@@ -187,12 +169,10 @@ func (q *Queries) GetUserById(ctx context.Context, id uuid.UUID) (GetUserByIdRow
 		&i.ID,
 		&i.Email,
 		&i.ApplicationID,
-		&i.PasswordHash,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsActive,
 		&i.IsEmailConfirmed,
-		&i.ShouldChangePass,
 		&i.Preferred2faMethod,
 	)
 	return i, err
@@ -341,23 +321,19 @@ UPDATE
     "application_user"
 SET
     email = $1,
-    password_hash = $2,
-    updated_at = $3,
-    is_active = $4,
-    is_email_confirmed = $5,
-    should_change_pass = $6,
-    preferred_2fa_method = $7
+    updated_at = $2,
+    is_active = $3,
+    is_email_confirmed = $4,
+    preferred_2fa_method = $5
 WHERE
-    id = $8
+    id = $6
 `
 
 type UpdateUserParams struct {
 	Email              string     `db:"email"`
-	PasswordHash       *string    `db:"password_hash"`
 	UpdatedAt          *time.Time `db:"updated_at"`
 	IsActive           bool       `db:"is_active"`
 	IsEmailConfirmed   bool       `db:"is_email_confirmed"`
-	ShouldChangePass   bool       `db:"should_change_pass"`
 	Preferred2faMethod *string    `db:"preferred_2fa_method"`
 	ID                 uuid.UUID  `db:"id"`
 }
@@ -366,11 +342,9 @@ type UpdateUserParams struct {
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
 	_, err := q.db.Exec(ctx, updateUser,
 		arg.Email,
-		arg.PasswordHash,
 		arg.UpdatedAt,
 		arg.IsActive,
 		arg.IsEmailConfirmed,
-		arg.ShouldChangePass,
 		arg.Preferred2faMethod,
 		arg.ID,
 	)
