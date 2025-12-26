@@ -79,5 +79,8 @@ export async function GET(request: NextRequest) {
     secure: process.env.NODE_ENV === "production",
   });
 
+  response.cookies.delete("gk_state");
+  response.cookies.delete("gk_code_verifier");
+
   return response;
 }
