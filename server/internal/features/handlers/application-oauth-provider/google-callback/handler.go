@@ -1,10 +1,10 @@
-package githubcallback
+package googlecallback
 
 import (
 	"context"
 	"encoding/json"
-	"strconv"
-	"strings"
+	"log"
+	"net/url"
 
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
@@ -48,18 +48,33 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		return nil, &errors.ErrOAuthProviderNotFound
 	}
 
+	googleOauthProvider, err := s.repository.GetApplicationOauthProviderByName(ctx, entities.OAuthProviderNameGoogle, oauthProvider.ApplicationID)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if googleOauthProvider == nil {
+		return nil, &errors.ErrOAuthProviderNotFound
+	}
+
+	form := url.Values{}
+	form.Set("client_id", oauthProvider.ClientID)
+	form.Set("client_secret", oauthProvider.ClientSecret)
+	form.Set("code", request.Code)
+	form.Set("grant_type", "authorization_code")
+	form.Set("redirect_uri", googleOauthProvider.RedirectURI)
+	form.Set("code_verifier", *externalOauthState.ClientCodeVerifier)
+
+	log.Println(form.Encode())
+
 	accessTokenResp, err := application_utils.Fetch(
 		"POST",
-		"https://github.com/login/oauth/access_token",
+		"https://oauth2.googleapis.com/token",
 		&application_utils.FetchOptions{
-			Body: githubRequestBody{
-				ClientID:     oauthProvider.ClientID,
-				ClientSecret: oauthProvider.ClientSecret,
-				Code:         request.Code, // From the callback request
-			},
+			Form: form,
 			Headers: map[string]string{
-				"Accept":       "application/json",
-				"Content-Type": "application/json",
+				"Accept": "application/json",
 			},
 		},
 	)
@@ -70,55 +85,18 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 
 	defer accessTokenResp.Body.Close()
 
-	var githubResponsePayloadObj githubResponsePayload
+	var googleResponsePayloadObj googleResponsePayload
 
-	if err := json.NewDecoder(accessTokenResp.Body).Decode(&githubResponsePayloadObj); err != nil {
+	if err := json.NewDecoder(accessTokenResp.Body).Decode(&googleResponsePayloadObj); err != nil {
 		return nil, err
-	}
-
-	emailsResp, err := application_utils.Fetch(
-		"GET",
-		"https://api.github.com/user/emails",
-		&application_utils.FetchOptions{
-			Headers: map[string]string{
-				"Authorization":        "Bearer " + githubResponsePayloadObj.AccessToken,
-				"X-GitHub-Api-Version": "2022-11-28",
-			},
-		},
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	defer emailsResp.Body.Close()
-
-	var emails []struct {
-		Email    string `json:"email"`
-		Primary  bool   `json:"primary"`
-		Verified bool   `json:"verified"`
-	}
-
-	if err := json.NewDecoder(emailsResp.Body).Decode(&emails); err != nil {
-		return nil, err
-	}
-
-	var primaryEmail string
-
-	for _, e := range emails {
-		if e.Primary && e.Verified {
-			primaryEmail = e.Email
-			break
-		}
 	}
 
 	resp, err := application_utils.Fetch(
 		"GET",
-		"https://api.github.com/user",
+		"https://openidconnect.googleapis.com/v1/userinfo",
 		&application_utils.FetchOptions{
 			Headers: map[string]string{
-				"Authorization":        "Bearer " + githubResponsePayloadObj.AccessToken,
-				"X-GitHub-Api-Version": "2022-11-28",
+				"Authorization": "Bearer " + googleResponsePayloadObj.AccessToken,
 			},
 		},
 	)
@@ -129,25 +107,21 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 
 	defer resp.Body.Close()
 
-	var gitHubUserData GitHubUserData
+	var googleUserData GoogleUserData
 
-	if err := json.NewDecoder(resp.Body).Decode(&gitHubUserData); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&googleUserData); err != nil {
 		return nil, err
 	}
 
-	gitHubUserData.Email = strings.ToLower(primaryEmail) // Set the primary email
-
-	currentUser, err := s.repository.GetUserByEmail(ctx, gitHubUserData.Email, oauthProvider.ApplicationID)
+	currentUser, err := s.repository.GetUserByEmail(ctx, googleUserData.Email, oauthProvider.ApplicationID)
 
 	if err != nil {
 		return nil, err
 	}
 
-	// externalProviderKey := entities.OAuthProviderNameGitHub
-
 	if currentUser == nil {
 		newUser, err := entities.CreateApplicationUser(
-			gitHubUserData.Email,
+			googleUserData.Email,
 			oauthProvider.ApplicationID,
 			false,
 		)
@@ -160,14 +134,17 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 			return nil, err
 		}
 
+		log.Println("Google User Data")
+		log.Println(googleUserData)
+
 		err = s.repository.AddUserProfile(ctx, &entities.UserProfile{
 			UserID:      newUser.ID,
-			DisplayName: gitHubUserData.Name,
-			FirstName:   strings.Split(gitHubUserData.Name, " ")[0],
-			LastName:    strings.Join(strings.Split(gitHubUserData.Name, " ")[1:], " "),
+			DisplayName: googleUserData.Name,
+			FirstName:   googleUserData.GivenName,
+			LastName:    googleUserData.FamilyName,
 			PhoneNumber: nil,
 			Address:     nil,
-			PhotoURL:    &gitHubUserData.AvatarURL,
+			PhotoURL:    &googleUserData.Picture,
 		})
 
 		if err != nil {
@@ -176,9 +153,9 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 
 		externalIdentity := entities.CreateExternalIdentity(
 			newUser.ID,
-			gitHubUserData.Email,
+			googleUserData.Email,
 			entities.OAuthProviderNameGitHub,
-			strconv.Itoa(gitHubUserData.ID),
+			googleUserData.ID,
 			oauthProvider.ID,
 		)
 
@@ -210,8 +187,8 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 	}
 
 	return &ServiceResponse{
-		RedirectURL:               "http://localhost:3001/api/callback/github",
-		UserData:                  &gitHubUserData,
+		RedirectURL:               "http://localhost:3001/api/callback/google",
+		UserData:                  &googleUserData,
 		OauthProviderID:           externalOauthState.ApplicationOAuthProviderID,
 		ClientState:               externalOauthState.ClientState,
 		AuthorizationCode:         authorizationCode.ID.String(),

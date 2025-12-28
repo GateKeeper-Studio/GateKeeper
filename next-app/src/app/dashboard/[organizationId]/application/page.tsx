@@ -7,6 +7,7 @@ import { Tabs, TabsTrigger, TabsList, TabsContent } from "@/components/ui/tabs";
 
 import { cn } from "@/lib/utils";
 import { ApplicationCard } from "./(components)/application-card";
+import { cookies } from "next/headers";
 
 type Props = {
   params: Promise<{
@@ -21,13 +22,15 @@ export const metadata: Metadata = {
 export default async function ApplicationsPage({ params }: Props) {
   const { organizationId } = await params;
 
+  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
+
   return (
     <>
       <Breadcrumbs
         items={[
           { name: "Dashboard", path: "/dashboard" },
           {
-            name: organizationId,
+            name: organizationName,
             path: `/dashboard/${organizationId}`,
           },
           {

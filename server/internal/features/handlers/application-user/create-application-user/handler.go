@@ -50,7 +50,6 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*Response, erro
 
 	applicationUser, err := entities.CreateApplicationUser(
 		request.Email,
-		&hashedPassword,
 		request.ApplicationID,
 		true, // shouldChangePass
 	)

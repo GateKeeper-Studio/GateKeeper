@@ -22,6 +22,7 @@ INSERT INTO
     client_code_challenge_method,
     client_code_challenge,
     client_scope,
+    code_verifier,
     client_response_type,
     client_redirect_uri,
     created_at
@@ -43,10 +44,12 @@ VALUES
     $7,
     -- client_scope
     $8,
-    -- client_response_type
+    -- code_verifier
     $9,
+    -- client_response_type
+    $10,
     -- client_redirect_uri
-    $10 -- created_at
+    $11 -- created_at
   )
 `
 
@@ -58,6 +61,7 @@ type AddExternalOAuthStateParams struct {
 	ClientCodeChallengeMethod  *string          `db:"client_code_challenge_method"`
 	ClientCodeChallenge        *string          `db:"client_code_challenge"`
 	ClientScope                *string          `db:"client_scope"`
+	CodeVerifier               string           `db:"code_verifier"`
 	ClientResponseType         *string          `db:"client_response_type"`
 	ClientRedirectUri          *string          `db:"client_redirect_uri"`
 	CreatedAt                  pgtype.Timestamp `db:"created_at"`
@@ -73,6 +77,7 @@ func (q *Queries) AddExternalOAuthState(ctx context.Context, arg AddExternalOAut
 		arg.ClientCodeChallengeMethod,
 		arg.ClientCodeChallenge,
 		arg.ClientScope,
+		arg.CodeVerifier,
 		arg.ClientResponseType,
 		arg.ClientRedirectUri,
 		arg.CreatedAt,
@@ -89,6 +94,7 @@ SELECT
   client_code_challenge_method,
   client_code_challenge,
   client_scope,
+  code_verifier,
   client_response_type,
   client_redirect_uri,
   created_at
@@ -98,10 +104,24 @@ WHERE
   provider_state = $1
 `
 
+type GetExternalOAuthStateByStateRow struct {
+	ID                         uuid.UUID        `db:"id"`
+	ProviderState              string           `db:"provider_state"`
+	ApplicationOauthProviderID uuid.UUID        `db:"application_oauth_provider_id"`
+	ClientState                *string          `db:"client_state"`
+	ClientCodeChallengeMethod  *string          `db:"client_code_challenge_method"`
+	ClientCodeChallenge        *string          `db:"client_code_challenge"`
+	ClientScope                *string          `db:"client_scope"`
+	CodeVerifier               string           `db:"code_verifier"`
+	ClientResponseType         *string          `db:"client_response_type"`
+	ClientRedirectUri          *string          `db:"client_redirect_uri"`
+	CreatedAt                  pgtype.Timestamp `db:"created_at"`
+}
+
 // ----------------------------------QUERIES--------------------------------------
-func (q *Queries) GetExternalOAuthStateByState(ctx context.Context, providerState string) (ExternalOauthState, error) {
+func (q *Queries) GetExternalOAuthStateByState(ctx context.Context, providerState string) (GetExternalOAuthStateByStateRow, error) {
 	row := q.db.QueryRow(ctx, getExternalOAuthStateByState, providerState)
-	var i ExternalOauthState
+	var i GetExternalOAuthStateByStateRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProviderState,
@@ -110,6 +130,7 @@ func (q *Queries) GetExternalOAuthStateByState(ctx context.Context, providerStat
 		&i.ClientCodeChallengeMethod,
 		&i.ClientCodeChallenge,
 		&i.ClientScope,
+		&i.CodeVerifier,
 		&i.ClientResponseType,
 		&i.ClientRedirectUri,
 		&i.CreatedAt,

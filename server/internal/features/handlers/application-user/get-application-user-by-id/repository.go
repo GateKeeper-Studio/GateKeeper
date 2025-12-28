@@ -17,10 +17,32 @@ type IRepository interface {
 	GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error)
 	GetRolesByUserID(ctx context.Context, userID uuid.UUID) ([]entities.ApplicationRole, error)
 	GetUserMfaMethods(ctx context.Context, userID uuid.UUID) ([]*entities.MfaMethod, error)
+	GetApplicationByUserID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
 }
 
 type Repository struct {
 	Store *pgstore.Queries
+}
+
+func (r Repository) GetApplicationByUserID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error) {
+	application, err := r.Store.GetApplicationByID(ctx, applicationID)
+
+	if err == repositories.ErrNoRows {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &entities.Application{
+		ID:             application.ID,
+		Name:           application.Name,
+		Description:    application.Description,
+		OrganizationID: application.OrganizationID,
+		CreatedAt:      application.CreatedAt.Time,
+		UpdatedAt:      application.UpdatedAt,
+	}, nil
 }
 
 func (r Repository) GetOrganizationByID(ctx context.Context, organizationID uuid.UUID) (*entities.Organization, error) {

@@ -1,10 +1,11 @@
-package githublogin
+package googlelogin
 
 import (
 	"context"
 
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
+	application_utils "github.com/gate-keeper/internal/features/utils"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 )
@@ -21,7 +22,7 @@ func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *ServiceResp
 
 func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceResponse, error) {
 	state := entities.GenerateRandomString(32)
-	scope := "read:user user:email"
+	scope := "openid email profile"
 
 	oauthProvider, err := s.repository.GetApplicationOAuthProviderByID(ctx, request.OauthProviderId)
 
@@ -33,13 +34,21 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		return nil, &errors.ErrOAuthProviderNotFound
 	}
 
+	codeVerifier, err := application_utils.GenerateCodeVerifier()
+
+	if err != nil {
+		return nil, err
+	}
+
+	codeChallenge := application_utils.GenerateCodeChallenge(codeVerifier, request.ClientCodeChallengeMethod)
+
 	externalOauthState := entities.AddExternalOAuthState(
 		state,
 		oauthProvider.ID,
 		request.ClientState,
 		request.ClientCodeChallengeMethod,
 		request.ClientCodeChallenge,
-		nil, // This is the CodeVerifier. GitHub does not use PKCE by default
+		&codeVerifier,
 		request.ClientScope,
 		request.ClientResponseType,
 		request.ClientRedirectUri,
@@ -50,9 +59,11 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 	}
 
 	return &ServiceResponse{
-		State:       state,
-		ClientID:    oauthProvider.ClientID,
-		RedirectURI: oauthProvider.RedirectURI,
-		Scope:       scope,
+		State:               state,
+		ClientID:            oauthProvider.ClientID,
+		RedirectURI:         oauthProvider.RedirectURI,
+		Scope:               scope,
+		CodeChallenge:       codeChallenge,
+		CodeChallengeMethod: request.ClientCodeChallengeMethod,
 	}, nil
 }

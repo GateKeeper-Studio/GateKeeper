@@ -16,6 +16,8 @@ export type UserByIdResponse = {
   lastName: string;
   email: string;
   isActive: boolean;
+  applicationId: string;
+  applicationName: string;
   address: string | null;
   photoUrl: string | null;
   isMfaEmailConfigured: boolean;

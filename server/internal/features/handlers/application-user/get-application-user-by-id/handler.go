@@ -75,6 +75,12 @@ func (s *Handler) Handler(ctx context.Context, query Query) (*Response, error) {
 		}
 	}
 
+	application, err := s.repository.GetApplicationByUserID(ctx, user.ApplicationID)
+
+	if err != nil {
+		return nil, err
+	}
+
 	return &Response{
 		ID:                     user.ID,
 		Email:                  user.Email,
@@ -82,6 +88,8 @@ func (s *Handler) Handler(ctx context.Context, query Query) (*Response, error) {
 		DisplayName:            userProfile.DisplayName,
 		FirstName:              userProfile.FirstName,
 		Lastname:               userProfile.LastName,
+		ApplicationID:          user.ApplicationID,
+		ApplicationName:        application.Name,
 		Address:                userProfile.Address,
 		PhotoURL:               userProfile.PhotoURL,
 		IsEmailVerified:        user.IsEmailConfirmed,

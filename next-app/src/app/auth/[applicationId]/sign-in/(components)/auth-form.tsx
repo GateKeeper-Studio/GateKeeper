@@ -192,21 +192,15 @@ export function AuthForm({ application }: Props) {
   async function handleOAuthLogin(
     provider: ApplicationAuthData["oauthProviders"][number]
   ) {
-    // const { data } = await axios.post<{ url: string }>(
-    //   "/api/auth/external-login/github",
-    //   {
-    //     oauthProviderId: provider.id,
-    //   }
-    // );
-
     const { data } = await api.post<{ url: string }>(
-      "/v1/auth/oauth-provider/github/login",
+      `/v1/auth/oauth-provider/${provider.name}/login`,
       {
         oauthProviderId: provider.id,
         clientCodeChallenge: codeChallenge,
         clientCodeChallengeMethod: codeChallengeMethod,
         clientRedirectUri: redirectUri,
         clientState: state,
+        
         clientResponseType: responseType,
         clientScope: scope,
       }

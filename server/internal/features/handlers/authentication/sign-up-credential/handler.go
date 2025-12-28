@@ -53,7 +53,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		return err
 	}
 
-	user, err := entities.CreateApplicationUser(command.Email, &hashedPassword, command.ApplicationID, false)
+	user, err := entities.CreateApplicationUser(command.Email, command.ApplicationID, false)
 
 	if err != nil {
 		return err

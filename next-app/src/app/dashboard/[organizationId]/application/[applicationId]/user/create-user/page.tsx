@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 
 import { Breadcrumbs } from "@/components/bread-crumbs";
 import { UserDetailForm } from "./(components)/user-detail-form";
+import { cookies } from "next/headers";
 
 type Props = {
   params: Promise<{
@@ -20,14 +21,28 @@ export const metadata: Metadata = {
 export default async function CreateUserPage({ params }: Props) {
   const { organizationId, applicationId, userId } = await params;
 
+  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
+  const applicationName = (await cookies()).get("application")?.value || "Application Detail";
+
   return (
     <>
       <Breadcrumbs
         items={[
           { name: "Dashboard", path: "/dashboard" },
-          { name: "Applications", path: "/dashboard/application" },
+          { 
+            name: organizationName, 
+            path: `/dashboard/${organizationId}` 
+          },
           {
-            name: applicationId,
+            name: "Application",
+            path: `/dashboard/${organizationId}/application`,
+          },
+          {
+            name: applicationName || "Application Detail",
+            path: `/dashboard/${organizationId}/application/${applicationId}`,
+          },
+          {
+            name: "Users",
             path: `/dashboard/${organizationId}/application/${applicationId}?tab=users`,
           },
           {

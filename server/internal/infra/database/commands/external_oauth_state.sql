@@ -9,6 +9,7 @@ INSERT INTO
     client_code_challenge_method,
     client_code_challenge,
     client_scope,
+    code_verifier,
     client_response_type,
     client_redirect_uri,
     created_at
@@ -29,6 +30,8 @@ VALUES
     -- client_code_challenge
     sqlc.arg('client_scope'),
     -- client_scope
+    sqlc.arg('code_verifier'),
+    -- code_verifier
     sqlc.arg('client_response_type'),
     -- client_response_type
     sqlc.arg('client_redirect_uri'),
@@ -46,6 +49,7 @@ SELECT
   client_code_challenge_method,
   client_code_challenge,
   client_scope,
+  code_verifier,
   client_response_type,
   client_redirect_uri,
   created_at

@@ -89,7 +89,6 @@ type ApplicationUser struct {
 	UpdatedAt          *time.Time       `db:"updated_at"`
 	IsActive           bool             `db:"is_active"`
 	IsEmailConfirmed   bool             `db:"is_email_confirmed"`
-	ShouldChangePass   bool             `db:"should_change_pass"`
 	Preferred2faMethod *string          `db:"preferred_2fa_method"`
 }
 
@@ -142,6 +141,7 @@ type ExternalOauthState struct {
 	ClientCodeChallenge        *string          `db:"client_code_challenge"`
 	ClientScope                *string          `db:"client_scope"`
 	ClientResponseType         *string          `db:"client_response_type"`
+	CodeVerifier               string           `db:"code_verifier"`
 	ClientRedirectUri          *string          `db:"client_redirect_uri"`
 	CreatedAt                  pgtype.Timestamp `db:"created_at"`
 }

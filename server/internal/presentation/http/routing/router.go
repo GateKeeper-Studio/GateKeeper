@@ -7,6 +7,8 @@ import (
 	getproviderdatabyid "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/get-provider-data-by-id"
 	githubcallback "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/github-callback"
 	githublogin "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/github-login"
+	googlecallback "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/google-callback"
+	googlelogin "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/google-login"
 	createrole "github.com/gate-keeper/internal/features/handlers/application-role/create-role"
 	deleterole "github.com/gate-keeper/internal/features/handlers/application-role/delete-role"
 	listroles "github.com/gate-keeper/internal/features/handlers/application-role/list-roles"
@@ -97,6 +99,9 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	githubLoginEndpoint := githublogin.Endpoint{DbPool: pool}
 	githubCallbackEndpoint := githubcallback.Endpoint{DbPool: pool}
 
+	googleLoginEndpoint := googlelogin.Endpoint{DbPool: pool}
+	googleCallbackEndpoint := googlecallback.Endpoint{DbPool: pool}
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -152,6 +157,9 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 			r.Route("/oauth-provider", func(r chi.Router) {
 				r.Post("/github/login", githubLoginEndpoint.Http)
 				r.Get("/github/callback", githubCallbackEndpoint.Http)
+
+				r.Post("/google/login", googleLoginEndpoint.Http)
+				r.Get("/google/callback", googleCallbackEndpoint.Http)
 			})
 		})
 

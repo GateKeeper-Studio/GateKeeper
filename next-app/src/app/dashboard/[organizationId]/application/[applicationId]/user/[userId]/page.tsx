@@ -5,6 +5,7 @@ import { Breadcrumbs } from "@/components/bread-crumbs";
 import { UserDetailForm } from "./(components)/user-detail-form";
 
 import { getApplicationUserByIdService } from "@/services/dashboard/get-application-user-by-id";
+import { cookies } from "next/headers";
 
 type Props = {
   params: Promise<{
@@ -16,6 +17,8 @@ type Props = {
 
 export async function generateMetadata({ params }: Props) {
   const { applicationId, organizationId, userId } = await params;
+
+  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
 
   const [user, err] = await getApplicationUserByIdService(
     { applicationId, userId, organizationId },
@@ -35,6 +38,7 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function UserDetailAndEditPage({ params }: Props) {
   const { organizationId, applicationId, userId } = await params;
+  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
 
   const [data] = await getApplicationUserByIdService(
     {
@@ -45,20 +49,26 @@ export default async function UserDetailAndEditPage({ params }: Props) {
     { accessToken: "" }
   );
 
-  console.log("User detail data:", data);
-
   return (
     <>
       <Breadcrumbs
         items={[
           { name: "Dashboard", path: "/dashboard" },
-          { name: "Applications", path: "/dashboard/application" },
+          { name: organizationName, path: `/dashboard/${organizationId}` },
           {
-            name: applicationId,
+            name: "Application",
+            path: `/dashboard/${organizationId}/application`,
+          },
+          {
+            name: data?.applicationName || "Application Detail",
+            path: `/dashboard/${organizationId}/application/${applicationId}`,
+          },
+          {
+            name: "Users",
             path: `/dashboard/${organizationId}/application/${applicationId}?tab=users`,
           },
           {
-            name: userId,
+            name: data?.displayName || "User Detail",
             path: `/dashboard/${organizationId}/application/${applicationId}/user/${userId}`,
           },
         ]}

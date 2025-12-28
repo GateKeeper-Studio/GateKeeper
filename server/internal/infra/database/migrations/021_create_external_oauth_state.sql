@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS external_oauth_state (
   client_code_challenge VARCHAR(256),
   client_scope VARCHAR(256),
   client_response_type VARCHAR(50),
+  code_verifier VARCHAR(512) NOT NULL,
   client_redirect_uri VARCHAR(512),
   created_at TIMESTAMP NOT NULL,
   /* external_oauth_state >- application_oauth_provider_id = fk_external_oauth_state_application_oauth_provider*/

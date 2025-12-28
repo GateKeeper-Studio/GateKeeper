@@ -1,6 +1,7 @@
 package application_utils
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 )
@@ -31,4 +32,12 @@ func GenerateCodeChallenge(codeVerifier string, codeChallengeMethod string) stri
 
 	// Base64 URL-safe sem padding (equivalente ao replace do JS)
 	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
+
+func GenerateCodeVerifier() (string, error) {
+	b := make([]byte, 32) // 32 bytes → ~43 chars
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }

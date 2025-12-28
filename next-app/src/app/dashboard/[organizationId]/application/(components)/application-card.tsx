@@ -61,6 +61,9 @@ export function ApplicationCard() {
     data?.map((application) => (
       <Link
         key={application.id}
+        onClick={() => {
+          cookieStore.set("application", application.name);
+        }}
         href={`/dashboard/${organizationId}/application/${application.id}`}
       >
         <Card className="w-[calc(33.333%-8px)] min-w-[400px] transition-all hover:scale-[1.01] hover:cursor-pointer hover:shadow-lg overflow-hidden flex gap-3">

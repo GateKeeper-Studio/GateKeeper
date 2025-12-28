@@ -16,6 +16,7 @@ import { getApplicationByIdService } from "@/services/dashboard/get-application-
 
 import { ApplicationTabs } from "./(components)/application-tabs";
 import { DeleteApplicationDialog } from "./(components)/delete-application-dialog";
+import { cookies } from "next/headers";
 
 type Props = {
   params: Promise<{
@@ -51,6 +52,8 @@ export default async function ApplicationDetailPage({ params }: Props) {
     { accessToken: "" }
   );
 
+  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
+
   if (err) {
     return (
       <div className="flex m-4 w-full">
@@ -71,7 +74,7 @@ export default async function ApplicationDetailPage({ params }: Props) {
         items={[
           { name: "Dashboard", path: `/dashboard` },
 
-          { name: organizationId, path: `/dashboard/${organizationId}` },
+          { name: organizationName, path: `/dashboard/${organizationId}` },
           {
             name: "Applications",
             path: `/dashboard/${organizationId}/application`,

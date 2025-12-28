@@ -7,6 +7,8 @@ import (
 type Response struct {
 	ID                     uuid.UUID          `json:"id"`
 	Email                  string             `json:"email"`
+	ApplicationID          uuid.UUID          `json:"applicationId"`
+	ApplicationName        string             `json:"applicationName"`
 	DisplayName            string             `json:"displayName"`
 	IsActive               bool               `json:"isActive"`
 	FirstName              string             `json:"firstName"`

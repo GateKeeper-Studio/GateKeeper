@@ -24,7 +24,7 @@ type ApplicationUser struct {
 	// TwoFactorSecret     *string
 }
 
-func CreateApplicationUser(email string, passwordHash *string, applicationID uuid.UUID, shouldChangePass bool) (*ApplicationUser, error) {
+func CreateApplicationUser(email string, applicationID uuid.UUID, shouldChangePass bool) (*ApplicationUser, error) {
 	userId, err := uuid.NewV7()
 
 	if err != nil {
@@ -48,12 +48,11 @@ func CreateApplicationUser(email string, passwordHash *string, applicationID uui
 	}, nil
 }
 
-func NewApplicationUser(applicationID, id uuid.UUID, email string, passwordHash *string, createdAt time.Time, updatedAt *time.Time, isActive, isEmailConfirmed, IsMfaEmailEnabled, IsMfaAuthAppEnabled bool, twoFactorSecret *string, shouldChangePass bool) *ApplicationUser {
+func NewApplicationUser(applicationID, id uuid.UUID, email string, createdAt time.Time, updatedAt *time.Time, isActive, isEmailConfirmed, IsMfaEmailEnabled, IsMfaAuthAppEnabled bool, twoFactorSecret *string, shouldChangePass bool) *ApplicationUser {
 	return &ApplicationUser{
-		ID:            id,
-		ApplicationID: applicationID,
-		Email:         email,
-		// PasswordHash:     passwordHash,
+		ID:               id,
+		ApplicationID:    applicationID,
+		Email:            email,
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
 		IsActive:         isActive,

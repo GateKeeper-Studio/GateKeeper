@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ChevronsUpDown, GalleryVerticalEnd, Plus } from "lucide-react";
 
@@ -24,21 +24,41 @@ import {
 export function OrganizationList() {
   const { isMobile } = useSidebar();
   const router = useRouter();
+
+  const selectedOrganizationId = useParams()?.organizationId; 
+  
   const { data, isLoading } = useOrganizationsSWR({
-    accessToken: "fake-token",
+    accessToken: "",
   });
 
   useEffect(() => {
     if (data && data.length > 0) {
+
+      if (selectedOrganizationId) {
+        const org = data.find(
+          (organization) => organization.id === selectedOrganizationId
+        );
+
+        if (org) {
+          setSelectedOrganization(org);
+          cookieStore.set("organization", org.name);
+        }
+        
+        return;
+      }
+      
       setSelectedOrganization(data[0]);
+      cookieStore.set("organization", data[0].name);
     }
-  }, [data]);
+  }, [data, selectedOrganizationId]);
 
   const [selectedOrganization, setSelectedOrganization] =
     useState<Organization | null>(null);
 
   function handleSelect(organization: Organization) {
     setSelectedOrganization(organization);
+
+    cookieStore.set("organization", organization.name);
     router.push(`/dashboard/${organization.id}/application`);
   }
 

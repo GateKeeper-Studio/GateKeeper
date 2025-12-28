@@ -1,4 +1,4 @@
-package githubcallback
+package googlecallback
 
 import (
 	"net/http"

@@ -14,6 +14,7 @@ type ExternalOAuthState struct {
 	ClientState               string
 	ClientCodeChallengeMethod string
 	ClientCodeChallenge       string
+	ClientCodeVerifier        *string
 	ClientScope               string
 	ClientResponseType        string
 	ClientRedirectUri         string
@@ -27,6 +28,7 @@ func AddExternalOAuthState(
 	clientState string,
 	clientCodeChallengeMethod string,
 	clientCodeChallenge string,
+	clientCodeVerifier *string,
 	clientScope string,
 	clientResponseType string,
 	clientRedirectUri string,
@@ -44,6 +46,7 @@ func AddExternalOAuthState(
 		ClientState:                clientState,
 		ClientCodeChallengeMethod:  clientCodeChallengeMethod,
 		ClientCodeChallenge:        clientCodeChallenge,
+		ClientCodeVerifier:         clientCodeVerifier,
 		ClientScope:                clientScope,
 		ClientResponseType:         clientResponseType,
 		ClientRedirectUri:          clientRedirectUri,
