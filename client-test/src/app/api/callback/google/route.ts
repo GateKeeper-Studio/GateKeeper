@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Invalid Code", { status: 400 });
   }
 
-  const response = NextResponse.redirect("http://localhost:3001/auth/callback");
+  const response = NextResponse.redirect("http://192.168.0.140:3001/auth/callback");
 
   const [encryptedSession, err] = await hashSessionObjectWithPassword(
     data,

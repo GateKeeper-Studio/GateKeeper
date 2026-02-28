@@ -1,7 +1,7 @@
 import { ChevronLeft } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
-import { Breadcrumbs } from "@/components/bread-crumbs";
+import { Breadcrumbs } from "@/components/dashboard-header/bread-crumbs";
 
 import { OrganizationsPages } from "..";
 import { EditOrganizationForm } from "./edit-organization-form";
@@ -18,7 +18,7 @@ export function EditOrganization({ setPage }: Props) {
 
   const { data: organization, isLoading } = useOrganizationByIdSWR(
     { id: searchParams.get("organizationId") || "" },
-    { accessToken: "fake-token" }
+    { accessToken: "fake-token" },
   );
 
   return (

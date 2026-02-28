@@ -11,11 +11,11 @@ func NewConnectionPool() (*pgxpool.Pool, error) {
 	ctx := context.Background()
 
 	pool, err := pgxpool.New(ctx, fmt.Sprintf("user=%s password=%s host=%s port=%s dbname=%s",
-		"postgres",
-		"postgres",
+		"gatekeeper",
+		"gatekeeper",
 		"localhost",
 		"5432",
-		"postgres",
+		"gatekeeper",
 	))
 
 	if err != nil {

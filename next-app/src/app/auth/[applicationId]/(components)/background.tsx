@@ -24,7 +24,7 @@ export function Background({
 }: Props) {
   return (
     <>
-      <div className="container relative hidden h-screen flex-col items-center justify-center md:grid lg:max-w-none lg:grid-cols-2 lg:px-0">
+      <div className="relative flex h-screen flex-col items-center justify-center lg:max-w-none lg:grid lg:grid-cols-2 lg:px-0">
         <div className="bg-muted relative hidden h-screen flex-col p-10 text-white lg:flex dark:border-r">
           <div
             className="absolute inset-0 bg-cover"
@@ -51,8 +51,8 @@ export function Background({
           </div>
         </div>
 
-        <div className="flex flex-1 items-center relative justify-center h-full lg:overflow-auto">
-          <div className="lg:p-8">
+        <div className="flex flex-1 items-center relative justify-center h-full overflow-auto w-full">
+          <div className="p-6 sm:p-8 w-full flex justify-center">
             <span className="absolute bottom-4 right-4">
               <ThemeToggle />
             </span>

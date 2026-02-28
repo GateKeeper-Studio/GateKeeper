@@ -27,6 +27,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		command.Badges,
 		command.HasMfaEmail,
 		command.HasMfaAuthApp,
+		command.HasMfaWebauthn,
 		true, // IsActive
 		nil,  // UpdatedAt
 		command.CanSelfSignUp,

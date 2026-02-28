@@ -3,8 +3,8 @@ package googlecallback
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/url"
+	"os"
 
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
@@ -48,25 +48,13 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		return nil, &errors.ErrOAuthProviderNotFound
 	}
 
-	googleOauthProvider, err := s.repository.GetApplicationOauthProviderByName(ctx, entities.OAuthProviderNameGoogle, oauthProvider.ApplicationID)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if googleOauthProvider == nil {
-		return nil, &errors.ErrOAuthProviderNotFound
-	}
-
 	form := url.Values{}
 	form.Set("client_id", oauthProvider.ClientID)
 	form.Set("client_secret", oauthProvider.ClientSecret)
 	form.Set("code", request.Code)
 	form.Set("grant_type", "authorization_code")
-	form.Set("redirect_uri", googleOauthProvider.RedirectURI)
+	form.Set("redirect_uri", oauthProvider.RedirectURI)
 	form.Set("code_verifier", *externalOauthState.ClientCodeVerifier)
-
-	log.Println(form.Encode())
 
 	accessTokenResp, err := application_utils.Fetch(
 		"POST",
@@ -134,9 +122,6 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 			return nil, err
 		}
 
-		log.Println("Google User Data")
-		log.Println(googleUserData)
-
 		err = s.repository.AddUserProfile(ctx, &entities.UserProfile{
 			UserID:      newUser.ID,
 			DisplayName: googleUserData.Name,
@@ -154,7 +139,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		externalIdentity := entities.CreateExternalIdentity(
 			newUser.ID,
 			googleUserData.Email,
-			entities.OAuthProviderNameGitHub,
+			entities.OAuthProviderNameGoogle,
 			googleUserData.ID,
 			oauthProvider.ID,
 		)
@@ -187,7 +172,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 	}
 
 	return &ServiceResponse{
-		RedirectURL:               "http://localhost:3001/api/callback/google",
+		RedirectURL:               os.Getenv("CLIENT_APPLICATION_URL") + "/api/callback/google",
 		UserData:                  &googleUserData,
 		OauthProviderID:           externalOauthState.ApplicationOAuthProviderID,
 		ClientState:               externalOauthState.ClientState,

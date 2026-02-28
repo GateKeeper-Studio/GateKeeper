@@ -16,6 +16,7 @@ type Request = {
 export enum EMfaType {
   MfaApp = "totp",
   MfaEmail = "email",
+  MfaWebauthn = "webauthn",
 }
 
 type Response = {
@@ -25,6 +26,7 @@ type Response = {
   sessionCode: string;
   userId: string;
   changePasswordCode: string;
+  webAuthnOptions?: unknown;
 };
 
 export async function loginApi({

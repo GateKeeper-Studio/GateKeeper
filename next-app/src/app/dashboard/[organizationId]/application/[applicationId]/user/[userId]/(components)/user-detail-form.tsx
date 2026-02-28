@@ -76,6 +76,7 @@ export function UserDetailForm({ user }: Props) {
       isActive: user?.isActive || false,
       IsMfaAuthAppConfigured: user?.isMfaAuthAppConfigured || false,
       isMfaEmailConfigured: user?.isMfaEmailConfigured || false,
+      isMfaWebauthnConfigured: user?.isMfaWebauthnConfigured || false,
     },
   });
 
@@ -97,7 +98,7 @@ export function UserDetailForm({ user }: Props) {
         temporaryPasswordHash: values.temporaryPassword || null,
         isActive: values.isActive,
       },
-      { accessToken: "" }
+      { accessToken: "" },
     );
 
     if (err) {
@@ -112,7 +113,7 @@ export function UserDetailForm({ user }: Props) {
     toast.success("User updated successfully.");
 
     router.push(
-      `/dashboard/${organizationId}/application/${applicationId}/user/${userId}`
+      `/dashboard/${organizationId}/application/${applicationId}/user/${userId}`,
     );
 
     setIsEditEnabled(false);
@@ -214,12 +215,12 @@ export function UserDetailForm({ user }: Props) {
               <TooltipTrigger
                 className={cn(
                   buttonVariants({ variant: "outline" }),
-                  "mb-[6px]"
+                  "mb-[6px]",
                 )}
                 onClick={() => {
                   router.push(
                     `/dashboard/${organizationId}/application/${applicationId}/user/${userId}?edit=${!isEditEnabled}`,
-                    { scroll: false }
+                    { scroll: false },
                   );
 
                   if (isEditEnabled) {
@@ -467,7 +468,12 @@ export function UserDetailForm({ user }: Props) {
 
             <Separator className="my-2" />
 
-            <MultiFactorAuthForm isEditEnabled={isEditEnabled} form={form} />
+            <MultiFactorAuthForm
+              isEditEnabled={isEditEnabled}
+              form={form}
+              userId={userId}
+              applicationId={applicationId}
+            />
 
             <Separator className="my-2" />
 

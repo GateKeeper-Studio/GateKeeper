@@ -1,5 +1,5 @@
 import { Separator } from "@/components/ui/separator";
-import { Breadcrumbs } from "@/components/bread-crumbs";
+import { Breadcrumbs } from "@/components/dashboard-header/bread-crumbs";
 
 import { ThemeSwitcher } from "./theme-switcher";
 import { ColorSwitcher } from "./color-switcher";

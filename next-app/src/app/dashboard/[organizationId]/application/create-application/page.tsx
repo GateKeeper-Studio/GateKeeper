@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Metadata } from "next";
 import { ChevronLeft } from "lucide-react";
 
-import { Breadcrumbs } from "@/components/bread-crumbs";
 import { CreateApplicationForm } from "./(components)/create-application-form";
+import { DashboardHeader } from "@/components/dashboard-header";
 
 type Props = {
   params: Promise<{
@@ -20,22 +20,24 @@ export default async function CreateApplicationPage({ params }: Props) {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { name: "Dashboard", path: `/dashboard` },
-          {
-            name: organizationId,
-            path: `/dashboard/${organizationId}`,
-          },
-          {
-            name: "Applications",
-            path: `/dashboard/${organizationId}/application`,
-          },
-          {
-            name: "Create Application",
-            path: `/dashboard/${organizationId}/application/create-application`,
-          },
-        ]}
+      <DashboardHeader
+        breadcrumbs={{
+          items: [
+            { name: "Dashboard", path: `/dashboard` },
+            {
+              name: organizationId,
+              path: `/dashboard/${organizationId}`,
+            },
+            {
+              name: "Applications",
+              path: `/dashboard/${organizationId}/application`,
+            },
+            {
+              name: "Create Application",
+              path: `/dashboard/${organizationId}/application/create-application`,
+            },
+          ],
+        }}
       />
 
       <main className="flex flex-col p-4">

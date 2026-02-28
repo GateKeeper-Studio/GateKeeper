@@ -19,42 +19,10 @@ type IRepository interface {
 	AddExternalIdentity(ctx context.Context, newExternalIdentity *entities.ExternalIdentity) error
 	RemoveAuthorizationCode(ctx context.Context, userID, applicationID uuid.UUID) error
 	AddAuthorizationCode(ctx context.Context, authorizationCode *entities.ApplicationAuthorizationCode) error
-	GetApplicationOauthProviderByName(ctx context.Context, providerName string, applicationID uuid.UUID) (*entities.ApplicationOAuthProvider, error)
 }
 
 type Repository struct {
 	Store *pgstore.Queries
-}
-
-func (r Repository) GetApplicationOauthProviderByName(ctx context.Context, providerName string, applicationID uuid.UUID) (*entities.ApplicationOAuthProvider, error) {
-	{
-		oauthProvider, err := r.Store.GetApplicationOauthProviderByName(ctx, pgstore.GetApplicationOauthProviderByNameParams{
-			Name:          providerName,
-			ApplicationID: applicationID,
-		})
-
-		if err == repositories.ErrNoRows {
-			return nil, nil
-		}
-
-		if err != nil {
-			return nil, err
-		}
-
-		oauthProviderEntity := &entities.ApplicationOAuthProvider{
-			ID:            oauthProvider.ID,
-			Name:          oauthProvider.Name,
-			Enabled:       oauthProvider.Enabled,
-			ApplicationID: oauthProvider.ApplicationID,
-			CreatedAt:     oauthProvider.CreatedAt.Time,
-			UpdatedAt:     oauthProvider.UpdatedAt,
-			ClientID:      oauthProvider.ClientID,
-			ClientSecret:  oauthProvider.ClientSecret,
-			RedirectURI:   oauthProvider.RedirectUri,
-		}
-
-		return oauthProviderEntity, nil
-	}
 }
 
 func (r Repository) RemoveAuthorizationCode(ctx context.Context, userID, applicationID uuid.UUID) error {

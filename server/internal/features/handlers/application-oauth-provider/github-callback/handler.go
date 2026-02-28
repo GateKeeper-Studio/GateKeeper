@@ -3,6 +3,7 @@ package githubcallback
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strconv"
 	"strings"
 
@@ -210,7 +211,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 	}
 
 	return &ServiceResponse{
-		RedirectURL:               "http://localhost:3001/api/callback/github",
+		RedirectURL:               os.Getenv("CLIENT_APPLICATION_URL") + "/api/callback/github",
 		UserData:                  &gitHubUserData,
 		OauthProviderID:           externalOauthState.ApplicationOAuthProviderID,
 		ClientState:               externalOauthState.ClientState,

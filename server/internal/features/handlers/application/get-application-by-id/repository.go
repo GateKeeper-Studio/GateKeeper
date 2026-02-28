@@ -89,6 +89,7 @@ func (r Repository) GetApplicationByID(ctx context.Context, applicationID uuid.U
 		IsActive:           application.IsActive,
 		HasMfaAuthApp:      application.HasMfaAuthApp,
 		HasMfaEmail:        application.HasMfaEmail,
+		HasMfaWebauthn:     application.HasMfaWebauthn,
 		PasswordHashSecret: application.PasswordHashSecret,
 		UpdatedAt:          application.UpdatedAt,
 		Badges:             strings.Split(*application.Badges, ","),

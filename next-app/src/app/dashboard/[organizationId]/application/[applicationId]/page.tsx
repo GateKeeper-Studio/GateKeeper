@@ -1,7 +1,7 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { ChevronLeft, Pencil } from "lucide-react";
 
-import { Breadcrumbs } from "@/components/bread-crumbs";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Tooltip,
@@ -16,7 +16,7 @@ import { getApplicationByIdService } from "@/services/dashboard/get-application-
 
 import { ApplicationTabs } from "./(components)/application-tabs";
 import { DeleteApplicationDialog } from "./(components)/delete-application-dialog";
-import { cookies } from "next/headers";
+import { DashboardHeader } from "@/components/dashboard-header";
 
 type Props = {
   params: Promise<{
@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: Props) {
 
   const [application, err] = await getApplicationByIdService(
     { applicationId, organizationId },
-    { accessToken: "" }
+    { accessToken: "" },
   );
 
   if (err) {
@@ -49,10 +49,11 @@ export default async function ApplicationDetailPage({ params }: Props) {
 
   const [application, err] = await getApplicationByIdService(
     { applicationId, organizationId },
-    { accessToken: "" }
+    { accessToken: "" },
   );
 
-  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
+  const organizationName =
+    (await cookies()).get("organization")?.value || "Organization Detail";
 
   if (err) {
     return (
@@ -70,20 +71,22 @@ export default async function ApplicationDetailPage({ params }: Props) {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { name: "Dashboard", path: `/dashboard` },
+      <DashboardHeader
+        breadcrumbs={{
+          items: [
+            { name: "Dashboard", path: `/dashboard` },
 
-          { name: organizationName, path: `/dashboard/${organizationId}` },
-          {
-            name: "Applications",
-            path: `/dashboard/${organizationId}/application`,
-          },
-          {
-            name: application?.name || "-",
-            path: `/dashboard/${organizationId}/application/${applicationId}`,
-          },
-        ]}
+            { name: organizationName, path: `/dashboard/${organizationId}` },
+            {
+              name: "Applications",
+              path: `/dashboard/${organizationId}/application`,
+            },
+            {
+              name: application?.name || "-",
+              path: `/dashboard/${organizationId}/application/${applicationId}`,
+            },
+          ],
+        }}
       />
 
       <main className="flex flex-col p-4">

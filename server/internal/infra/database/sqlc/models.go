@@ -19,6 +19,7 @@ type Application struct {
 	IsActive           bool             `db:"is_active"`
 	HasMfaAuthApp      bool             `db:"has_mfa_auth_app"`
 	HasMfaEmail        bool             `db:"has_mfa_email"`
+	HasMfaWebauthn     bool             `db:"has_mfa_webauthn"`
 	PasswordHashSecret string           `db:"password_hash_secret"`
 	Badges             *string          `db:"badges"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
@@ -176,6 +177,23 @@ type MfaTotpSecretValidation struct {
 	UserID      uuid.UUID        `db:"user_id"`
 	Secret      string           `db:"secret"`
 	IsValidated bool             `db:"is_validated"`
+	CreatedAt   pgtype.Timestamp `db:"created_at"`
+	ExpiresAt   pgtype.Timestamp `db:"expires_at"`
+}
+
+type MfaWebauthnCredential struct {
+	ID           uuid.UUID        `db:"id"`
+	MfaMethodID  uuid.UUID        `db:"mfa_method_id"`
+	CredentialID string           `db:"credential_id"`
+	PublicKey    string           `db:"public_key"`
+	SignCount    int32            `db:"sign_count"`
+	CreatedAt    pgtype.Timestamp `db:"created_at"`
+}
+
+type MfaWebauthnSession struct {
+	ID          uuid.UUID        `db:"id"`
+	UserID      uuid.UUID        `db:"user_id"`
+	SessionData string           `db:"session_data"`
 	CreatedAt   pgtype.Timestamp `db:"created_at"`
 	ExpiresAt   pgtype.Timestamp `db:"expires_at"`
 }

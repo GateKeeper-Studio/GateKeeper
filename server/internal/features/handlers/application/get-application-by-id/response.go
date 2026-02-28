@@ -16,6 +16,7 @@ type Response struct {
 	IsActive              bool                   `json:"isActive"`
 	MfaAuthAppEnabled     bool                   `json:"mfaAuthAppEnabled"`
 	MfaEmailEnabled       bool                   `json:"mfaEmailEnabled"`
+	MfaWebauthnEnabled    bool                   `json:"mfaWebauthnEnabled"`
 	CanSelfSignUp         bool                   `json:"canSelfSignUp"`
 	CanSelfForgotPass     bool                   `json:"canSelfForgotPass"`
 	PasswordHashingSecret string                 `json:"passwordHashingSecret"`

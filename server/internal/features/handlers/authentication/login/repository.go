@@ -23,6 +23,8 @@ type IRepository interface {
 	AddChangePasswordCode(ctx context.Context, changePasswordCode *entities.ChangePasswordCode) error
 	GetMfaMethodByUserID(ctx context.Context, userID uuid.UUID, method string) (*entities.MfaMethod, error)
 	GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error)
+	GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error)
+	AddMfaWebauthnSession(ctx context.Context, session *entities.MfaWebauthnSession) error
 }
 
 type Repository struct {
@@ -218,4 +220,33 @@ func (r Repository) GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*
 		PhoneNumber: userProfile.PhoneNumber,
 		PhotoURL:    userProfile.PhotoUrl,
 	}, nil
+}
+
+func (r Repository) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error) {
+	rows, err := r.Store.GetMfaWebauthnCredentialsByMfaMethodID(ctx, mfaMethodID)
+	if err != nil {
+		return nil, err
+	}
+	creds := make([]entities.MfaWebauthnCredentials, 0, len(rows))
+	for _, row := range rows {
+		creds = append(creds, entities.MfaWebauthnCredentials{
+			ID:           row.ID,
+			MfaMethodID:  row.MfaMethodID,
+			CredentialID: row.CredentialID,
+			PublicKey:    row.PublicKey,
+			SignCount:    uint32(row.SignCount),
+			CreatedAt:    row.CreatedAt.Time,
+		})
+	}
+	return creds, nil
+}
+
+func (r Repository) AddMfaWebauthnSession(ctx context.Context, session *entities.MfaWebauthnSession) error {
+	return r.Store.AddMfaWebauthnSession(ctx, pgstore.AddMfaWebauthnSessionParams{
+		ID:          session.ID,
+		UserID:      session.UserID,
+		SessionData: session.SessionData,
+		CreatedAt:   pgtype.Timestamp{Time: session.CreatedAt, Valid: true},
+		ExpiresAt:   pgtype.Timestamp{Time: session.ExpiresAt, Valid: true},
+	})
 }

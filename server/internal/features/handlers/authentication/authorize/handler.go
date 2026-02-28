@@ -85,7 +85,9 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		}
 	}
 
-	s.repository.DeleteSessionCodeByID(ctx, sessionCode.ID)
+	if err := s.repository.DeleteSessionCodeByID(ctx, sessionCode.ID); err != nil {
+		return nil, err
+	}
 
 	authorizationCode, err := entities.CreateApplicationAuthorizationCode(
 		command.ApplicationID,

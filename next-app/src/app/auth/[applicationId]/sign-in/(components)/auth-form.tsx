@@ -126,7 +126,7 @@ export function AuthForm({ application }: Props) {
       router.push(
         `/auth/${applicationId}/mfa-mail?${urlParams.toString()}${
           loginData.mfaId ? `&mfa_id=${loginData.mfaId}` : ""
-        }`
+        }`,
       );
       return;
     }
@@ -135,7 +135,18 @@ export function AuthForm({ application }: Props) {
       router.push(
         `/auth/${applicationId}/mfa-app?${urlParams.toString()}${
           loginData.mfaId ? `&mfa_id=${loginData.mfaId}` : ""
-        }`
+        }`,
+      );
+      return;
+    }
+
+    if (loginData.mfaType == EMfaType.MfaWebauthn && loginData.mfaId) {
+      sessionStorage.setItem(
+        `webauthn_options_${loginData.mfaId}`,
+        JSON.stringify(loginData.webAuthnOptions),
+      );
+      router.push(
+        `/auth/${applicationId}/mfa-webauthn?${urlParams.toString()}&mfa_id=${loginData.mfaId}`,
       );
       return;
     }
@@ -146,7 +157,7 @@ export function AuthForm({ application }: Props) {
       router.push(
         `/auth/${applicationId}/update-password?${urlParams.toString()}${
           loginData.mfaId ? `&mfa_id=${loginData.mfaId}` : ""
-        }`
+        }`,
       );
       return;
     }
@@ -190,7 +201,7 @@ export function AuthForm({ application }: Props) {
   }
 
   async function handleOAuthLogin(
-    provider: ApplicationAuthData["oauthProviders"][number]
+    provider: ApplicationAuthData["oauthProviders"][number],
   ) {
     const { data } = await api.post<{ url: string }>(
       `/v1/auth/oauth-provider/${provider.name}/login`,
@@ -200,10 +211,10 @@ export function AuthForm({ application }: Props) {
         clientCodeChallengeMethod: codeChallengeMethod,
         clientRedirectUri: redirectUri,
         clientState: state,
-        
+
         clientResponseType: responseType,
         clientScope: scope,
-      }
+      },
     );
 
     window.location.href = data.url;

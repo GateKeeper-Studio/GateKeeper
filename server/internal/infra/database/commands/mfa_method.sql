@@ -29,6 +29,14 @@ VALUES
         sqlc.arg('last_used_at')
     );
 
+-- name: EnableMfaMethod :exec
+UPDATE
+    mfa_method
+SET
+    enabled = true
+WHERE
+    id = sqlc.arg('id');
+
 ------------------------------------QUERIES--------------------------------------
 -- name: GetMfaMethodByUserIDAndMethod :one
 SELECT

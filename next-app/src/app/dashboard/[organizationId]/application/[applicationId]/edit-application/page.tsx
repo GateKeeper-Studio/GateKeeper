@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
-import { Breadcrumbs } from "@/components/bread-crumbs";
 import { EditApplicationForm } from "./(components)/edit-application-form";
 import { getApplicationByIdService } from "@/services/dashboard/get-application-by-id";
+import { DashboardHeader } from "@/components/dashboard-header";
 
 type Props = {
   params: Promise<{
@@ -17,7 +17,7 @@ export async function generateMetadata({ params }: Props) {
 
   const [application, err] = await getApplicationByIdService(
     { applicationId, organizationId },
-    { accessToken: "" }
+    { accessToken: "" },
   );
 
   if (err) {
@@ -36,31 +36,35 @@ export default async function EditApplicationPage({ params }: Props) {
 
   const [application, err] = await getApplicationByIdService(
     { applicationId, organizationId },
-    { accessToken: "" }
+    { accessToken: "" },
   );
 
   if (err) {
     return <div>Failed to fetch application</div>;
   }
 
+  console.log({ mfaWebAuthn: application?.mfaWebauthnEnabled });
+
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { name: "Dashboard", path: `/dashboard/${organizationId}` },
-          {
-            name: "Applications",
-            path: `/dashboard/${organizationId}/application`,
-          },
-          {
-            name: application?.name || "-",
-            path: `/dashboard/${organizationId}/application/${applicationId}`,
-          },
-          {
-            name: "Edit Application",
-            path: `/dashboard/${organizationId}/application/${applicationId}/edit-application`,
-          },
-        ]}
+      <DashboardHeader
+        breadcrumbs={{
+          items: [
+            { name: "Dashboard", path: `/dashboard/${organizationId}` },
+            {
+              name: "Applications",
+              path: `/dashboard/${organizationId}/application`,
+            },
+            {
+              name: application?.name || "-",
+              path: `/dashboard/${organizationId}/application/${applicationId}`,
+            },
+            {
+              name: "Edit Application",
+              path: `/dashboard/${organizationId}/application/${applicationId}/edit-application`,
+            },
+          ],
+        }}
       />
 
       <main className="flex flex-col p-4">

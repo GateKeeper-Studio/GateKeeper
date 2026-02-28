@@ -40,7 +40,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		return nil, err
 	}
 
-	codeChallenge := application_utils.GenerateCodeChallenge(codeVerifier, request.ClientCodeChallengeMethod)
+	codeChallenge := application_utils.GenerateCodeChallenge(codeVerifier, "S256")
 
 	externalOauthState := entities.AddExternalOAuthState(
 		state,
@@ -64,6 +64,6 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		RedirectURI:         oauthProvider.RedirectURI,
 		Scope:               scope,
 		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: request.ClientCodeChallengeMethod,
+		CodeChallengeMethod: "S256",
 	}, nil
 }

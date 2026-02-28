@@ -22,6 +22,7 @@ INSERT INTO
         is_active,
         has_mfa_auth_app,
         has_mfa_email,
+        has_mfa_webauthn,
         password_hash_secret,
         badges,
         description,
@@ -44,7 +45,8 @@ VALUES
         $10,
         $11,
         $12,
-        $13
+        $13,
+        $14
     )
 `
 
@@ -55,6 +57,7 @@ type AddApplicationParams struct {
 	IsActive           bool             `db:"is_active"`
 	HasMfaAuthApp      bool             `db:"has_mfa_auth_app"`
 	HasMfaEmail        bool             `db:"has_mfa_email"`
+	HasMfaWebauthn     bool             `db:"has_mfa_webauthn"`
 	PasswordHashSecret string           `db:"password_hash_secret"`
 	Badges             *string          `db:"badges"`
 	Description        *string          `db:"description"`
@@ -73,6 +76,7 @@ func (q *Queries) AddApplication(ctx context.Context, arg AddApplicationParams) 
 		arg.IsActive,
 		arg.HasMfaAuthApp,
 		arg.HasMfaEmail,
+		arg.HasMfaWebauthn,
 		arg.PasswordHashSecret,
 		arg.Badges,
 		arg.Description,
@@ -126,6 +130,7 @@ SELECT
     is_active,
     has_mfa_auth_app,
     has_mfa_email,
+    has_mfa_webauthn,
     password_hash_secret,
     created_at,
     updated_at,
@@ -146,6 +151,7 @@ type GetApplicationByIDRow struct {
 	IsActive           bool             `db:"is_active"`
 	HasMfaAuthApp      bool             `db:"has_mfa_auth_app"`
 	HasMfaEmail        bool             `db:"has_mfa_email"`
+	HasMfaWebauthn     bool             `db:"has_mfa_webauthn"`
 	PasswordHashSecret string           `db:"password_hash_secret"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
 	UpdatedAt          *time.Time       `db:"updated_at"`
@@ -165,6 +171,7 @@ func (q *Queries) GetApplicationByID(ctx context.Context, id uuid.UUID) (GetAppl
 		&i.IsActive,
 		&i.HasMfaAuthApp,
 		&i.HasMfaEmail,
+		&i.HasMfaWebauthn,
 		&i.PasswordHashSecret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -181,6 +188,7 @@ SELECT
     name,
     description,
     badges,
+    has_mfa_webauthn,
     created_at,
     updated_at
 FROM
@@ -195,6 +203,7 @@ type ListApplicationsFromOrganizationRow struct {
 	Name           string           `db:"name"`
 	Description    *string          `db:"description"`
 	Badges         *string          `db:"badges"`
+	HasMfaWebauthn bool             `db:"has_mfa_webauthn"`
 	CreatedAt      pgtype.Timestamp `db:"created_at"`
 	UpdatedAt      *time.Time       `db:"updated_at"`
 }
@@ -214,6 +223,7 @@ func (q *Queries) ListApplicationsFromOrganization(ctx context.Context, organiza
 			&i.Name,
 			&i.Description,
 			&i.Badges,
+			&i.HasMfaWebauthn,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -234,20 +244,22 @@ SET
     name = $1,
     description = $2,
     has_mfa_auth_app = $3,
-    badges = $4,
-    is_active = $5,
-    has_mfa_email = $6,
-    updated_at = $7,
-    can_self_sign_up = $8,
-    can_self_forgot_pass = $9
+    has_mfa_webauthn = $4,
+    badges = $5,
+    is_active = $6,
+    has_mfa_email = $7,
+    updated_at = $8,
+    can_self_sign_up = $9,
+    can_self_forgot_pass = $10
 WHERE
-    id = $10
+    id = $11
 `
 
 type UpdateApplicationParams struct {
 	Name              string     `db:"name"`
 	Description       *string    `db:"description"`
 	HasMfaAuthApp     bool       `db:"has_mfa_auth_app"`
+	HasMfaWebauthn    bool       `db:"has_mfa_webauthn"`
 	Badges            *string    `db:"badges"`
 	IsActive          bool       `db:"is_active"`
 	HasMfaEmail       bool       `db:"has_mfa_email"`
@@ -262,6 +274,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.Name,
 		arg.Description,
 		arg.HasMfaAuthApp,
+		arg.HasMfaWebauthn,
 		arg.Badges,
 		arg.IsActive,
 		arg.HasMfaEmail,

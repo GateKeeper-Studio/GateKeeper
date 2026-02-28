@@ -37,6 +37,9 @@ import (
 	signincredential "github.com/gate-keeper/internal/features/handlers/authentication/sign-in-credential"
 	signupcredential "github.com/gate-keeper/internal/features/handlers/authentication/sign-up-credential"
 	verifyappmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-app-mfa"
+	beginwebauthnregistration "github.com/gate-keeper/internal/features/handlers/authentication/begin-webauthn-registration"
+	verifywebauthnregistration "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-registration"
+	verifywebauthnauth "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-authentication"
 	verifyemailmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-email-mfa"
 	createorganization "github.com/gate-keeper/internal/features/handlers/organization/create-organization"
 	editorganization "github.com/gate-keeper/internal/features/handlers/organization/edit-organization"
@@ -95,6 +98,9 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	verfifyEmailMfaEndpoint := verifyemailmfa.Endpoint{DbPool: pool}
 	verfifyAppMfaEndpoint := verifyappmfa.Endpoint{DbPool: pool}
 	confirmMfaAuthAppSecretEndpoint := confirmmfaauthappsecret.Endpoint{DbPool: pool}
+	beginWebAuthnRegistrationEndpoint := beginwebauthnregistration.Endpoint{DbPool: pool}
+	verifyWebAuthnRegistrationEndpoint := verifywebauthnregistration.Endpoint{DbPool: pool}
+	verifyWebAuthnAuthEndpoint := verifywebauthnauth.Endpoint{DbPool: pool}
 
 	githubLoginEndpoint := githublogin.Endpoint{DbPool: pool}
 	githubCallbackEndpoint := githubcallback.Endpoint{DbPool: pool}
@@ -142,6 +148,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 			r.Post("/generate-auth-secret", generateAuthAppSecretEndpoint.Http)
 			r.Post("/verify-mfa/email", verfifyEmailMfaEndpoint.Http)
 			r.Post("/verify-mfa/app", verfifyAppMfaEndpoint.Http)
+			r.Post("/verify-mfa/webauthn", verifyWebAuthnAuthEndpoint.Http)
 			r.Post("/sign-up", signUpCredentialEndpoint.Http)
 			r.Post("/confirm-email", confirmUserEmailEndpoint.Http)
 			r.Post("/reset-password", resetRepositoryEndpoint.Http)
@@ -149,6 +156,11 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 			r.Post("/forgot-password", forgotPasswordEndpoint.Http)
 			r.Post("/confirm-email/resend", resendEmailConfirmationEndpoint.Http)
 			r.Post("/confirm-mfa-auth-app-secret", confirmMfaAuthAppSecretEndpoint.Http)
+
+			r.Route("/webauthn", func(r chi.Router) {
+				r.Post("/begin-registration", beginWebAuthnRegistrationEndpoint.Http)
+				r.Post("/verify-registration", verifyWebAuthnRegistrationEndpoint.Http)
+			})
 
 			r.Get("/application/{applicationID}/auth-data", getApplicationAuthDataEndpoint.Http)
 

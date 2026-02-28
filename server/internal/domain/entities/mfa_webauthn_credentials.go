@@ -1,12 +1,41 @@
 package entities
 
-import "github.com/google/uuid"
+import (
+	"encoding/base64"
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type MfaWebauthnCredentials struct {
 	ID           uuid.UUID
 	MfaMethodID  uuid.UUID
-	CredentialID string // The credential ID from WebAuthn
-	PublicKey    string // The public key associated with the credential
-	SignCount    uint32 // The signature counter for the credential
-	CreatedAt    int64  // Timestamp when the credential was created
+	CredentialID string // base64-encoded credential ID bytes
+	PublicKey    string // base64-encoded COSE public key bytes
+	SignCount    uint32
+	CreatedAt    time.Time
+}
+
+func NewMfaWebauthnCredentials(mfaMethodID uuid.UUID, credentialID, publicKey []byte, signCount uint32) (*MfaWebauthnCredentials, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MfaWebauthnCredentials{
+		ID:           id,
+		MfaMethodID:  mfaMethodID,
+		CredentialID: base64.StdEncoding.EncodeToString(credentialID),
+		PublicKey:    base64.StdEncoding.EncodeToString(publicKey),
+		SignCount:    signCount,
+		CreatedAt:    time.Now().UTC(),
+	}, nil
+}
+
+func (c *MfaWebauthnCredentials) CredentialIDBytes() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(c.CredentialID)
+}
+
+func (c *MfaWebauthnCredentials) PublicKeyBytes() ([]byte, error) {
+	return base64.StdEncoding.DecodeString(c.PublicKey)
 }

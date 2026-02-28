@@ -1,7 +1,9 @@
-import { Breadcrumbs } from "@/components/bread-crumbs";
-import { ErrorAlert } from "@/components/error-alert";
-import { getOrganizationByIdService } from "@/services/dashboard/get-organization-by-id";
 import { Metadata } from "next";
+
+import { ErrorAlert } from "@/components/error-alert";
+import { DashboardHeader } from "@/components/dashboard-header";
+
+import { getOrganizationByIdService } from "@/services/dashboard/get-organization-by-id";
 
 type Props = {
   params: Promise<{
@@ -16,7 +18,10 @@ export const metadata: Metadata = {
 export default async function OrganizationPage({ params }: Props) {
   const { organizationId } = await params;
 
-  const [organizationData, err] = await getOrganizationByIdService({ organizationId }, { accessToken: "" });
+  const [organizationData, err] = await getOrganizationByIdService(
+    { organizationId },
+    { accessToken: "" },
+  );
 
   if (err) {
     return (
@@ -34,22 +39,26 @@ export default async function OrganizationPage({ params }: Props) {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { name: "Dashboard", path: "/dashboard" },
-          {
-            name: organizationData?.name || "Organization Details",
-            path: `/dashboard/${organizationId}`,
-          },
-          {
-            name: "Applications",
-            path: `/dashboard/${organizationId}/application`,
-          },
-        ]}
+      <DashboardHeader
+        breadcrumbs={{
+          items: [
+            { name: "Dashboard", path: "/dashboard" },
+            {
+              name: organizationData?.name || "Organization Details",
+              path: `/dashboard/${organizationId}`,
+            },
+            {
+              name: "Applications",
+              path: `/dashboard/${organizationId}/application`,
+            },
+          ],
+        }}
       />
 
       <main className="flex flex-col p-4">
-        <h2 className="text-3xl font-bold tracking-tight">{organizationData?.name}</h2>
+        <h2 className="text-3xl font-bold tracking-tight">
+          {organizationData?.name}
+        </h2>
 
         <span className="mt-3 text-sm tracking-tight text-gray-600 dark:text-gray-300">
           {organizationData?.description || "No description provided."}

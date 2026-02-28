@@ -110,6 +110,7 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 		IsActive:              application.IsActive,
 		MfaAuthAppEnabled:     application.HasMfaAuthApp,
 		MfaEmailEnabled:       application.HasMfaEmail,
+		MfaWebauthnEnabled:    application.HasMfaWebauthn,
 		PasswordHashingSecret: application.PasswordHashSecret,
 		Secrets:               secrets,
 		Users:                 *applicationUsersDb,

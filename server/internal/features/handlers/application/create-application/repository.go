@@ -29,6 +29,7 @@ func (r Repository) AddApplication(ctx context.Context, newApplication *entities
 		IsActive:           newApplication.IsActive,
 		HasMfaAuthApp:      newApplication.HasMfaAuthApp,
 		HasMfaEmail:        newApplication.HasMfaEmail,
+		HasMfaWebauthn:     newApplication.HasMfaWebauthn,
 		PasswordHashSecret: newApplication.PasswordHashSecret,
 		Badges:             &badges,
 		UpdatedAt:          newApplication.UpdatedAt,

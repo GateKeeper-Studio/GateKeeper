@@ -1,11 +1,11 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { ChevronLeft } from "lucide-react";
 
-import { Breadcrumbs } from "@/components/bread-crumbs";
 import { UserDetailForm } from "./(components)/user-detail-form";
 
+import { DashboardHeader } from "@/components/dashboard-header";
 import { getApplicationUserByIdService } from "@/services/dashboard/get-application-user-by-id";
-import { cookies } from "next/headers";
 
 type Props = {
   params: Promise<{
@@ -18,11 +18,12 @@ type Props = {
 export async function generateMetadata({ params }: Props) {
   const { applicationId, organizationId, userId } = await params;
 
-  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
+  const organizationName =
+    (await cookies()).get("organization")?.value || "Organization Detail";
 
   const [user, err] = await getApplicationUserByIdService(
     { applicationId, userId, organizationId },
-    { accessToken: "" }
+    { accessToken: "" },
   );
 
   if (err) {
@@ -38,7 +39,8 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function UserDetailAndEditPage({ params }: Props) {
   const { organizationId, applicationId, userId } = await params;
-  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
+  const organizationName =
+    (await cookies()).get("organization")?.value || "Organization Detail";
 
   const [data] = await getApplicationUserByIdService(
     {
@@ -46,32 +48,34 @@ export default async function UserDetailAndEditPage({ params }: Props) {
       organizationId,
       userId,
     },
-    { accessToken: "" }
+    { accessToken: "" },
   );
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { name: "Dashboard", path: "/dashboard" },
-          { name: organizationName, path: `/dashboard/${organizationId}` },
-          {
-            name: "Application",
-            path: `/dashboard/${organizationId}/application`,
-          },
-          {
-            name: data?.applicationName || "Application Detail",
-            path: `/dashboard/${organizationId}/application/${applicationId}`,
-          },
-          {
-            name: "Users",
-            path: `/dashboard/${organizationId}/application/${applicationId}?tab=users`,
-          },
-          {
-            name: data?.displayName || "User Detail",
-            path: `/dashboard/${organizationId}/application/${applicationId}/user/${userId}`,
-          },
-        ]}
+      <DashboardHeader
+        breadcrumbs={{
+          items: [
+            { name: "Dashboard", path: "/dashboard" },
+            { name: organizationName, path: `/dashboard/${organizationId}` },
+            {
+              name: "Application",
+              path: `/dashboard/${organizationId}/application`,
+            },
+            {
+              name: data?.applicationName || "Application Detail",
+              path: `/dashboard/${organizationId}/application/${applicationId}`,
+            },
+            {
+              name: "Users",
+              path: `/dashboard/${organizationId}/application/${applicationId}?tab=users`,
+            },
+            {
+              name: data?.displayName || "User Detail",
+              path: `/dashboard/${organizationId}/application/${applicationId}/user/${userId}`,
+            },
+          ],
+        }}
       />
 
       <main className="flex flex-col p-4">

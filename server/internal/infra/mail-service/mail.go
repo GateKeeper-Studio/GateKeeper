@@ -13,7 +13,6 @@ import (
 )
 
 type IMailService interface {
-	sendMail(ctx context.Context, params SendMailParams) error
 	SendEmailConfirmationEmail(ctx context.Context, to, userName, token string) error
 	SendMfaEmail(ctx context.Context, to, userName, token string) error
 	SendForgotPasswordEmail(ctx context.Context, to, userName, token string, passwordResetID, applicationID uuid.UUID) error

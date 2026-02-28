@@ -1,9 +1,9 @@
 import { Metadata } from "next";
 
 import { Separator } from "@/components/ui/separator";
-import { Breadcrumbs } from "@/components/bread-crumbs";
 
 import { OrganizationsList } from "./(components)/organizations-list";
+import { DashboardHeader } from "@/components/dashboard-header";
 
 export const metadata: Metadata = {
   title: "Organizations - GateKeeper",
@@ -12,7 +12,11 @@ export const metadata: Metadata = {
 export default function DashboardPage() {
   return (
     <>
-      <Breadcrumbs items={[{ name: "Dashboard", path: "/dashboard" }]} />
+      <DashboardHeader
+        breadcrumbs={{
+          items: [{ name: "Dashboard", path: "/dashboard" }],
+        }}
+      />
 
       <main className="flex flex-col p-4">
         <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>

@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
 import { IApplication } from "@/services/dashboard/get-application-by-id";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -7,8 +10,7 @@ import { Roles } from "./roles";
 import { Users } from "./users";
 import { Overview } from "./overview";
 import { Providers } from "./providers";
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { ChartColumn, IdCard, UserRoundKey, Users2 } from "lucide-react";
 
 type Props = {
   application: IApplication | null;
@@ -21,7 +23,7 @@ export function ApplicationTabs({ application, organizationId }: Props) {
   const router = useRouter();
 
   const [currentTab, setCurrentTab] = useState<string>(
-    (tab as string) || "overview"
+    (tab as string) || "overview",
   );
 
   useEffect(() => {
@@ -37,15 +39,27 @@ export function ApplicationTabs({ application, organizationId }: Props) {
       onValueChange={(value) => {
         setCurrentTab(value);
         router.push(
-          `/dashboard/${organizationId}/application/${application?.id}?tab=${value}`
+          `/dashboard/${organizationId}/application/${application?.id}?tab=${value}`,
         );
       }}
     >
       <TabsList>
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        <TabsTrigger value="users">Users</TabsTrigger>
-        <TabsTrigger value="roles">Roles</TabsTrigger>
-        <TabsTrigger value="providers">Providers</TabsTrigger>
+        <TabsTrigger value="overview">
+          <ChartColumn />
+          Overview
+        </TabsTrigger>
+        <TabsTrigger value="users">
+          <Users2 />
+          Users
+        </TabsTrigger>
+        <TabsTrigger value="roles">
+          <UserRoundKey />
+          Roles
+        </TabsTrigger>
+        <TabsTrigger value="providers">
+          <IdCard />
+          Providers
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview">

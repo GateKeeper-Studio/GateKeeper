@@ -39,7 +39,7 @@ export function CreateApplicationForm() {
 
   const { mutate } = useApplicationsSWR(
     { organizationId },
-    { accessToken: "" }
+    { accessToken: "" },
   );
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -63,7 +63,7 @@ export function CreateApplicationForm() {
       { ...values, organizationId },
       {
         accessToken: "fake-access",
-      }
+      },
     );
 
     if (err) {
@@ -84,6 +84,7 @@ export function CreateApplicationForm() {
             badges: response.badges,
             hasMfaAuthApp: response.hasMfaAuthApp,
             hasMfaEmail: response.hasMfaEmail,
+            hasMfaWebauthn: response.hasMfaWebauthn,
             createdAt: new Date(),
             updatedAt: null,
             isActive: true,
@@ -260,6 +261,29 @@ export function CreateApplicationForm() {
 
                   <FormLabel className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                     Authenticator App (Microsoft, Google, etc)
+                  </FormLabel>
+
+                  <FormDescription></FormDescription>
+                  <FormMessage></FormMessage>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="hasMfaWebauthn"
+              render={({ field }) => (
+                <FormItem className="flex items-center space-x-2">
+                  <FormControl>
+                    <Checkbox
+                      checked={!!field.value}
+                      onCheckedChange={field.onChange}
+                      aria-labelledby="terms-label"
+                    />
+                  </FormControl>
+
+                  <FormLabel className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Passkey (WebAuthn)
                   </FormLabel>
 
                   <FormDescription></FormDescription>

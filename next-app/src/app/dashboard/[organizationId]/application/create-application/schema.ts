@@ -16,6 +16,7 @@ export const formSchema = z.object({
   badges: z.array(z.string()),
   hasMfaAuthApp: z.boolean(),
   hasMfaEmail: z.boolean(),
+  hasMfaWebauthn: z.boolean(),
   canSelfSignUp: z.boolean(),
   canSelfForgotPass: z.boolean(),
 });

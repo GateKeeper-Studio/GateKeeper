@@ -1,4 +1,4 @@
-import { Breadcrumbs } from "@/components/bread-crumbs";
+import { Breadcrumbs } from "@/components/dashboard-header/bread-crumbs";
 
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -26,14 +26,14 @@ export function ViewOrganization({ setPage }: Props) {
 
   const { data: organization } = useOrganizationByIdSWR(
     { id: searchParams.get("organizationId") || "" },
-    { accessToken: "fake-token" }
+    { accessToken: "fake-token" },
   );
 
   const { data: applications } = useApplicationsSWR(
     {
       organizationId: organization?.id,
     },
-    { accessToken: "fake-token" }
+    { accessToken: "fake-token" },
   );
 
   return (

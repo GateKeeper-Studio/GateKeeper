@@ -2,6 +2,7 @@ package login
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/entities"
@@ -163,6 +164,83 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 			SessionCode:        nil,
 			UserID:             user.ID,
 			MfaID:              &mfaTotpCode.ID,
+		}
+
+		if changePasswordCode != nil {
+			response.ChangePasswordCode = &changePasswordCode.Token
+		}
+
+		return response, nil
+	}
+
+	if user.Preferred2FAMethod != nil && *user.Preferred2FAMethod == constants.MfaMethodWebauthn {
+		mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, *user.Preferred2FAMethod)
+		if err != nil {
+			return nil, err
+		}
+		if mfaMethod == nil {
+			return nil, &errors.ErrMfaMethodNotFound
+		}
+		if !mfaMethod.Enabled {
+			return nil, &errors.ErrMfaMethodNotEnabled
+		}
+
+		existingCreds, err := s.repository.GetWebAuthnCredentialsByMfaMethodID(ctx, mfaMethod.ID)
+		if err != nil {
+			return nil, err
+		}
+		if len(existingCreds) == 0 {
+			return nil, &errors.ErrWebAuthnNoCredentials
+		}
+
+		userProfile, err := s.repository.GetUserProfileByID(ctx, user.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		wa, err := application_utils.NewWebAuthn()
+		if err != nil {
+			return nil, err
+		}
+
+		waUser := &application_utils.WebAuthnUser{
+			User:        user,
+			Profile:     userProfile,
+			Credentials: existingCreds,
+		}
+
+		credentialAssertion, sessionData, err := wa.BeginLogin(waUser)
+		if err != nil {
+			return nil, err
+		}
+
+		sessionDataJSON, err := json.Marshal(sessionData)
+		if err != nil {
+			return nil, err
+		}
+
+		webauthnSession, err := entities.NewMfaWebauthnSession(user.ID, sessionDataJSON)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := s.repository.AddMfaWebauthnSession(ctx, webauthnSession); err != nil {
+			return nil, err
+		}
+
+		optionsJSON, err := json.Marshal(credentialAssertion)
+		if err != nil {
+			return nil, err
+		}
+
+		options := json.RawMessage(optionsJSON)
+		response := &Response{
+			MfaType:         user.Preferred2FAMethod,
+			Message:         "MFA is required, please complete the WebAuthn challenge",
+			SessionCode:     nil,
+			UserID:          user.ID,
+			MfaID:           &webauthnSession.ID,
+			WebAuthnOptions: &options,
 		}
 
 		if changePasswordCode != nil {

@@ -8,6 +8,7 @@ type Request = {
   badges: string[];
   hasMfaEmail: boolean;
   hasMfaAuthApp: boolean;
+  hasMfaWebauthn: boolean;
   organizationId: string;
   canSelfSignUp: boolean;
   canSelfForgotPass: boolean;
@@ -21,6 +22,7 @@ type Response = {
   badges: string[];
   hasMfaEmail: boolean;
   hasMfaAuthApp: boolean;
+  hasMfaWebauthn: boolean;
   canSelfSignUp: boolean;
   canSelfForgotPass: boolean;
 };
@@ -32,12 +34,13 @@ export async function createApplicationApi(
     badges,
     hasMfaAuthApp,
     hasMfaEmail,
+    hasMfaWebauthn,
     passwordHashSecret,
     organizationId,
     canSelfForgotPass,
     canSelfSignUp,
   }: Request,
-  { accessToken }: IServiceOptions
+  { accessToken }: IServiceOptions,
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.post<Response>(
@@ -48,6 +51,7 @@ export async function createApplicationApi(
         badges,
         hasMfaAuthApp,
         hasMfaEmail,
+        hasMfaWebauthn,
         passwordHashSecret,
         organizationId,
         canSelfForgotPass,
@@ -57,7 +61,7 @@ export async function createApplicationApi(
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-      }
+      },
     );
     return [data, null];
   } catch (error: unknown) {

@@ -13,6 +13,7 @@ export interface IApplication {
   canSelfSignUp: boolean;
   canSelfForgotPass: boolean;
   mfaAuthAppEnabled: boolean;
+  mfaWebauthnEnabled: boolean;
   passwordHashingSecret: string;
   secrets: {
     id: string;
@@ -60,7 +61,7 @@ type Response = IApplication;
 
 export async function getApplicationByIdService(
   { applicationId, organizationId }: Request,
-  { accessToken }: IServiceOptions
+  { accessToken }: IServiceOptions,
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.get<Response>(
@@ -69,7 +70,7 @@ export async function getApplicationByIdService(
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-      }
+      },
     );
 
     return [data, null];

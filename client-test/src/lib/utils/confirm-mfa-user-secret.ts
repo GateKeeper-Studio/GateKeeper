@@ -13,7 +13,7 @@ export async function confirmMfaUserSecret({
   const sessionData = (await sessionResponse.json()) as GateKeeperSession;
 
   const response = await fetch(
-    "http://localhost:8080/v1/auth/confirm-mfa-auth-app-secret",
+    "http://192.168.0.140:8080/v1/auth/confirm-mfa-auth-app-secret",
     {
       method: "POST",
       body: JSON.stringify({

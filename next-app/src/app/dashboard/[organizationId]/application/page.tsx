@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { Metadata } from "next";
+import { cookies } from "next/headers";
 
-import { Breadcrumbs } from "@/components/bread-crumbs";
 import { buttonVariants } from "@/components/ui/button";
 import { Tabs, TabsTrigger, TabsList, TabsContent } from "@/components/ui/tabs";
 
 import { cn } from "@/lib/utils";
+import { DashboardHeader } from "@/components/dashboard-header";
 import { ApplicationCard } from "./(components)/application-card";
-import { cookies } from "next/headers";
 
 type Props = {
   params: Promise<{
@@ -22,22 +22,25 @@ export const metadata: Metadata = {
 export default async function ApplicationsPage({ params }: Props) {
   const { organizationId } = await params;
 
-  const organizationName = (await cookies()).get("organization")?.value || "Organization Detail";
+  const organizationName =
+    (await cookies()).get("organization")?.value || "Organization Detail";
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { name: "Dashboard", path: "/dashboard" },
-          {
-            name: organizationName,
-            path: `/dashboard/${organizationId}`,
-          },
-          {
-            name: "Applications",
-            path: `/dashboard/${organizationId}/application`,
-          },
-        ]}
+      <DashboardHeader
+        breadcrumbs={{
+          items: [
+            { name: "Dashboard", path: "/dashboard" },
+            {
+              name: organizationName,
+              path: `/dashboard/${organizationId}`,
+            },
+            {
+              name: "Applications",
+              path: `/dashboard/${organizationId}/application`,
+            },
+          ],
+        }}
       />
 
       <main className="flex flex-col p-4">
@@ -58,7 +61,7 @@ export default async function ApplicationsPage({ params }: Props) {
               href={`/dashboard/${organizationId}/application/create-application`}
               className={cn(
                 "float-right w-fit",
-                buttonVariants({ variant: "default" })
+                buttonVariants({ variant: "default" }),
               )}
             >
               New Application

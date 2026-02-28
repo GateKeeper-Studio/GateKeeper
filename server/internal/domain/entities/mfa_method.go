@@ -23,7 +23,7 @@ func AddMfaMethod(mfaMethodID uuid.UUID, mfaMethodType string) *MfaMethod {
 		panic(err)
 	}
 
-	if mfaMethodType != constants.MfaMethodTotp && mfaMethodType != constants.MfaMethodEmail && mfaMethodType != constants.MfaMethodSms {
+	if mfaMethodType != constants.MfaMethodTotp && mfaMethodType != constants.MfaMethodEmail && mfaMethodType != constants.MfaMethodSms && mfaMethodType != constants.MfaMethodWebauthn {
 		panic("Invalid MFA method type")
 	}
 

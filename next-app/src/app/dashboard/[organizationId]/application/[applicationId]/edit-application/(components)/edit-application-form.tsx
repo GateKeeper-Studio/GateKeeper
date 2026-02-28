@@ -47,6 +47,7 @@ export function EditApplicationForm({ application }: Props) {
       badges: application?.badges ?? [],
       hasMfaAuthApp: application?.mfaAuthAppEnabled ?? false,
       hasMfaEmail: application?.mfaEmailEnabled ?? false,
+      hasMfaWebauthn: application?.mfaWebauthnEnabled ?? false,
       canSelfForgotPass: application?.canSelfForgotPass ?? false,
       canSelfSignUp: application?.canSelfSignUp ?? false,
     },
@@ -54,7 +55,7 @@ export function EditApplicationForm({ application }: Props) {
 
   const { mutate } = useApplicationsSWR(
     { organizationId },
-    { accessToken: "" }
+    { accessToken: "" },
   );
 
   async function onSubmit() {
@@ -73,7 +74,7 @@ export function EditApplicationForm({ application }: Props) {
         id: application.id,
         isActive: true,
       },
-      { accessToken: "" }
+      { accessToken: "" },
     );
 
     if (err) {
@@ -264,6 +265,29 @@ export function EditApplicationForm({ application }: Props) {
 
                   <FormLabel className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                     Authenticator App (Microsoft, Google, etc)
+                  </FormLabel>
+
+                  <FormDescription></FormDescription>
+                  <FormMessage></FormMessage>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="hasMfaWebauthn"
+              render={({ field }) => (
+                <FormItem className="flex items-center space-x-2">
+                  <FormControl>
+                    <Checkbox
+                      checked={!!field.value}
+                      onCheckedChange={field.onChange}
+                      aria-labelledby="terms-label"
+                    />
+                  </FormControl>
+
+                  <FormLabel className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Passkey (WebAuthn)
                   </FormLabel>
 
                   <FormDescription></FormDescription>

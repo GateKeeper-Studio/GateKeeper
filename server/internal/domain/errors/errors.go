@@ -93,6 +93,14 @@ var (
 	ErrUserCredentialsNotFound = CustomError{Name: "ErrUserCredentialsNotFound", Code: http.StatusNotFound, Message: "User credentials not found", Title: "User credentials not found"}
 
 	ErrInvalidCodeChallenge = CustomError{Name: "ErrInvalidCodeChallenge", Code: http.StatusBadRequest, Message: "Invalid code challenge", Title: "Invalid code challenge"}
+
+	ErrWebAuthnNotEnabled           = CustomError{Name: "ErrWebAuthnNotEnabled", Code: http.StatusBadRequest, Message: "WebAuthn is not enabled for this user", Title: "WebAuthn not enabled"}
+	ErrWebAuthnSessionNotFound      = CustomError{Name: "ErrWebAuthnSessionNotFound", Code: http.StatusNotFound, Message: "WebAuthn session not found", Title: "WebAuthn session not found"}
+	ErrWebAuthnSessionExpired       = CustomError{Name: "ErrWebAuthnSessionExpired", Code: http.StatusBadRequest, Message: "WebAuthn session expired", Title: "WebAuthn session expired"}
+	ErrWebAuthnCredentialNotFound   = CustomError{Name: "ErrWebAuthnCredentialNotFound", Code: http.StatusNotFound, Message: "WebAuthn credential not found", Title: "WebAuthn credential not found"}
+	ErrWebAuthnRegistrationFailed   = CustomError{Name: "ErrWebAuthnRegistrationFailed", Code: http.StatusBadRequest, Message: "WebAuthn registration verification failed", Title: "WebAuthn registration failed"}
+	ErrWebAuthnAuthenticationFailed = CustomError{Name: "ErrWebAuthnAuthenticationFailed", Code: http.StatusBadRequest, Message: "WebAuthn authentication verification failed", Title: "WebAuthn authentication failed"}
+	ErrWebAuthnNoCredentials        = CustomError{Name: "ErrWebAuthnNoCredentials", Code: http.StatusBadRequest, Message: "User has no registered WebAuthn credentials", Title: "No WebAuthn credentials"}
 )
 
 var ErrorsList = map[string]CustomError{
@@ -155,4 +163,11 @@ var ErrorsList = map[string]CustomError{
 	"ErrOAuthProviderMismatch":               ErrOAuthProviderMismatch,
 	"ErrUserCredentialsNotFound":             ErrUserCredentialsNotFound,
 	"ErrInvalidCodeChallenge":                ErrInvalidCodeChallenge,
+	"ErrWebAuthnNotEnabled":                  ErrWebAuthnNotEnabled,
+	"ErrWebAuthnSessionNotFound":             ErrWebAuthnSessionNotFound,
+	"ErrWebAuthnSessionExpired":              ErrWebAuthnSessionExpired,
+	"ErrWebAuthnCredentialNotFound":          ErrWebAuthnCredentialNotFound,
+	"ErrWebAuthnRegistrationFailed":          ErrWebAuthnRegistrationFailed,
+	"ErrWebAuthnAuthenticationFailed":        ErrWebAuthnAuthenticationFailed,
+	"ErrWebAuthnNoCredentials":               ErrWebAuthnNoCredentials,
 }

@@ -1,0 +1,48 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "🚀 Run Server",
+            "type": "shell",
+            "command": "go",
+            "args": [
+                "run",
+                "./cmd/server"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+        },
+        {
+            "label": "🚀 Run Server (watch mode)",
+            "type": "shell",
+            "command": "air",
+            "isBackground": true,
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+        },
+        {
+            "label": "Generate SQLC commands",
+            "type": "shell",
+            "command": "sqlc",
+            "args": [
+                "generate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/internal/infra/database"
+            },
+        },
+        {
+            "label": "Generate Server Migrations",
+            "type": "shell",
+            "command": "tern",
+            "args": [
+                "migrate"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/internal/infra/database/migrations"
+            },
+        },
+    ]
+}

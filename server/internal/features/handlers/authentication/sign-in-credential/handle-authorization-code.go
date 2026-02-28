@@ -2,8 +2,6 @@ package signincredential
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"time"
 
 	"github.com/gate-keeper/internal/domain/entities"
@@ -35,21 +33,5 @@ func handleAuthorizationCode(ctx context.Context, handler *Handler, request Comm
 		return nil, &errors.ErrAuthorizationCodeInvalidClientID
 	}
 
-	if !validatePKCE(request.CodeVerifier, authorizationCode.CodeChallenge) {
-		return nil, &errors.ErrAuthorizationCodeInvalidPKCE
-	}
-
 	return authorizationCode, nil
-}
-
-func generateCodeChallenge(codeVerifier string) string {
-	hash := sha256.Sum256([]byte(codeVerifier))
-	codeChallenge := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(hash[:])
-	return codeChallenge
-}
-
-// ValidatePKCE validates the given code challenge against the code verifier
-func validatePKCE(codeVerifier, codeChallenge string) bool {
-	generatedChallenge := generateCodeChallenge(codeVerifier)
-	return generatedChallenge == codeChallenge
 }

@@ -1,4 +1,4 @@
-import { Breadcrumbs } from "@/components/bread-crumbs";
+import { Breadcrumbs } from "@/components/dashboard-header/bread-crumbs";
 import { Separator } from "@/components/ui/separator";
 
 import { OrganizationsTable } from "./organizations-table";

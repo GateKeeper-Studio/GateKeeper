@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   });
 
   // Endpoint do Identity Provider que realiza a autorização
-  const authorizationEndpoint = `http://192.168.0.242:3000/auth/${clientId}/sign-in?${params.toString()}`;
+  const authorizationEndpoint = `http://192.168.0.140:3000/auth/${clientId}/sign-in?${params.toString()}`;
   const response = NextResponse.json({ url: authorizationEndpoint });
 
   response.cookies.set("gk_code_verifier", codeVerifier, {

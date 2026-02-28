@@ -1,14 +1,21 @@
+name: gatekeeper
+
 services:
   gatekeeper-db:
     image: postgres:alpine
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_USER: gatekeeper
+      POSTGRES_PASSWORD: gatekeeper
+      POSTGRES_DB: gatekeeper
     volumes:
-      - postgres_data:/var/lib/postgresql/data # <--- Mudou aqui
+      - ./postgres_data:/var/lib/postgresql
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "1GB"
     command: >
       postgres -c log_statement=all -c log_destination=stderr -c log_min_messages=info
     logging:

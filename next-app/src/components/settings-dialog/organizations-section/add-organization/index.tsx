@@ -1,6 +1,6 @@
 import { ChevronLeft } from "lucide-react";
 
-import { Breadcrumbs } from "@/components/bread-crumbs";
+import { Breadcrumbs } from "@/components/dashboard-header/bread-crumbs";
 
 import { AddOrganizationForm } from "./add-organization-form";
 import { OrganizationsPages } from "..";

@@ -75,6 +75,10 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 
 	refreshToken, err := assignRefreshToken(ctx, s, *user)
 
+	if err != nil {
+		return nil, err
+	}
+
 	userProfile, err := s.repository.GetUserProfileByID(ctx, user.ID)
 
 	if err != nil {

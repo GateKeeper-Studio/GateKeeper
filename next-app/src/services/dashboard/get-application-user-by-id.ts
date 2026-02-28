@@ -22,7 +22,8 @@ export type UserByIdResponse = {
   photoUrl: string | null;
   isMfaEmailConfigured: boolean;
   isMfaAuthAppConfigured: boolean;
-  preferred2FAMethod: "email" | "sms" | "totp" | null;
+  isMfaWebauthnConfigured: boolean;
+  preferred2FAMethod: "email" | "sms" | "totp" | "webauthn" | null;
   isEmailVerified: boolean;
   badges: {
     id: string;
@@ -32,7 +33,7 @@ export type UserByIdResponse = {
 
 export async function getApplicationUserByIdService(
   { applicationId, userId, organizationId }: Request,
-  { accessToken }: IServiceOptions
+  { accessToken }: IServiceOptions,
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.get<Response>(
@@ -41,7 +42,7 @@ export async function getApplicationUserByIdService(
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-      }
+      },
     );
 
     return [data, null];

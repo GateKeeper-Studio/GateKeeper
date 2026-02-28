@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS "application" (
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     has_mfa_auth_app BOOLEAN NOT NULL DEFAULT FALSE,
     has_mfa_email BOOLEAN NOT NULL DEFAULT FALSE,
+    has_mfa_webauthn BOOLEAN NOT NULL DEFAULT FALSE,
     password_hash_secret VARCHAR(255) NOT NULL,
     badges TEXT NULL,
     created_at TIMESTAMP NOT NULL,

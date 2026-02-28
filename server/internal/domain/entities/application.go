@@ -17,13 +17,14 @@ type Application struct {
 	IsActive           bool
 	HasMfaAuthApp      bool
 	HasMfaEmail        bool
+	HasMfaWebauthn     bool
 	PasswordHashSecret string
 	Badges             []string
 	CreatedAt          time.Time
 	UpdatedAt          *time.Time
 }
 
-func NewApplication(ID uuid.UUID, name string, description *string, organizationID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, isActive bool, updatedAt *time.Time, createdAt time.Time, canSelfSignUp, canSelfForgotPass bool) *Application {
+func NewApplication(ID uuid.UUID, name string, description *string, organizationID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, createdAt time.Time, canSelfSignUp, canSelfForgotPass bool) *Application {
 	return &Application{
 		ID:                 ID,
 		OrganizationID:     organizationID,
@@ -35,13 +36,14 @@ func NewApplication(ID uuid.UUID, name string, description *string, organization
 		IsActive:           isActive,
 		HasMfaAuthApp:      hasMfaAuthApp,
 		HasMfaEmail:        hasMfaEmail,
+		HasMfaWebauthn:     hasMfaWebauthn,
 		Badges:             badges,
 		CanSelfSignUp:      canSelfSignUp,
 		CanSelfForgotPass:  canSelfForgotPass,
 	}
 }
 
-func AddApplication(name string, description *string, organizationID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, isActive bool, updatedAt *time.Time, canSelfSignUp, canSelfForgotPass bool) *Application {
+func AddApplication(name string, description *string, organizationID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, canSelfSignUp, canSelfForgotPass bool) *Application {
 	newID := uuid.New()
 
 	return &Application{
@@ -55,6 +57,7 @@ func AddApplication(name string, description *string, organizationID uuid.UUID, 
 		IsActive:           isActive,
 		HasMfaAuthApp:      hasMfaAuthApp,
 		HasMfaEmail:        hasMfaEmail,
+		HasMfaWebauthn:     hasMfaWebauthn,
 		Badges:             badges,
 		CanSelfSignUp:      canSelfSignUp,
 		CanSelfForgotPass:  canSelfForgotPass,

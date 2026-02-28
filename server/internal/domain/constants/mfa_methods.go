@@ -1,7 +1,8 @@
 package constants
 
 const (
-	MfaMethodTotp  = "totp"
-	MfaMethodEmail = "email"
-	MfaMethodSms   = "sms"
+	MfaMethodTotp     = "totp"
+	MfaMethodEmail    = "email"
+	MfaMethodSms      = "sms"
+	MfaMethodWebauthn = "webauthn"
 )
