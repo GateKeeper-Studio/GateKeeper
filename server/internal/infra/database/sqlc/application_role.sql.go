@@ -100,6 +100,70 @@ func (q *Queries) ListRolesFromApplication(ctx context.Context, applicationID uu
 	return items, nil
 }
 
+const listRolesFromApplicationPaged = `-- name: ListRolesFromApplicationPaged :many
+SELECT
+    id,
+    application_id,
+    name,
+    description,
+    created_at,
+    updated_at,
+    COUNT(*) OVER () AS total_count
+FROM
+    application_role
+WHERE
+    application_id = $1
+ORDER BY
+    created_at
+LIMIT
+    $3 OFFSET $2
+`
+
+type ListRolesFromApplicationPagedParams struct {
+	ApplicationID uuid.UUID `db:"application_id"`
+	Offset        int32     `db:"offset"`
+	Limit         int32     `db:"limit"`
+}
+
+type ListRolesFromApplicationPagedRow struct {
+	ID            uuid.UUID        `db:"id"`
+	ApplicationID uuid.UUID        `db:"application_id"`
+	Name          string           `db:"name"`
+	Description   *string          `db:"description"`
+	CreatedAt     pgtype.Timestamp `db:"created_at"`
+	UpdatedAt     *time.Time       `db:"updated_at"`
+	TotalCount    int64            `db:"total_count"`
+}
+
+// List Roles from Application paged
+func (q *Queries) ListRolesFromApplicationPaged(ctx context.Context, arg ListRolesFromApplicationPagedParams) ([]ListRolesFromApplicationPagedRow, error) {
+	rows, err := q.db.Query(ctx, listRolesFromApplicationPaged, arg.ApplicationID, arg.Offset, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRolesFromApplicationPagedRow
+	for rows.Next() {
+		var i ListRolesFromApplicationPagedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ApplicationID,
+			&i.Name,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TotalCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeRole = `-- name: RemoveRole :exec
 DELETE FROM
     application_role

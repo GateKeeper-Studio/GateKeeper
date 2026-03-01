@@ -43,8 +43,6 @@ export default async function EditApplicationPage({ params }: Props) {
     return <div>Failed to fetch application</div>;
   }
 
-  console.log({ mfaWebAuthn: application?.mfaWebauthnEnabled });
-
   return (
     <>
       <DashboardHeader

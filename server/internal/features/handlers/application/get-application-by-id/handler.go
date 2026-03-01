@@ -30,25 +30,7 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 	}
 
 	secrets := make([]ApplicationSecrets, 0)
-	roles := make([]ApplicationRoles, 0)
 	applicationOauthProviders := make([]ApplicationProviders, 0)
-
-	applicationRolesDb, err := s.repository.ListRolesFromApplication(ctx, application.ID)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if applicationRolesDb != nil {
-		for _, role := range *applicationRolesDb {
-			roles = append(roles, ApplicationRoles{
-				ID:          role.ID,
-				Name:        role.Name,
-				Description: role.Description,
-			})
-		}
-
-	}
 
 	applicationSecretsDb, err := s.repository.ListSecretsFromApplication(ctx, application.ID)
 
@@ -88,12 +70,6 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 		}
 	}
 
-	applicationUsersDb, err := s.repository.GetUsersByApplicationID(ctx, application.ID, 50, 0)
-
-	if err != nil {
-		return nil, err
-	}
-
 	if len(application.Badges) == 1 && application.Badges[0] == "" {
 		application.Badges = make([]string, 0)
 	}
@@ -113,11 +89,6 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 		MfaWebauthnEnabled:    application.HasMfaWebauthn,
 		PasswordHashingSecret: application.PasswordHashSecret,
 		Secrets:               secrets,
-		Users:                 *applicationUsersDb,
-		Roles: ApplicationRolesData{
-			TotalCount: len(roles),
-			Data:       roles,
-		},
-		OAuthProviders: applicationOauthProviders,
+		OAuthProviders:        applicationOauthProviders,
 	}, nil
 }

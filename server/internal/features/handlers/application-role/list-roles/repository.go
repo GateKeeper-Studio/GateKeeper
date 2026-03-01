@@ -3,14 +3,13 @@ package listroles
 import (
 	"context"
 
-	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
 )
 
 type IRepository interface {
-	ListRolesFromApplication(ctx context.Context, applicationID uuid.UUID) (*[]entities.ApplicationRole, error)
+	ListRolesFromApplicationPaged(ctx context.Context, applicationID uuid.UUID, limit, offset int) (*Response, error)
 	CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error)
 }
 
@@ -18,27 +17,37 @@ type Repository struct {
 	Store *pgstore.Queries
 }
 
-func (r Repository) ListRolesFromApplication(ctx context.Context, applicationID uuid.UUID) (*[]entities.ApplicationRole, error) {
-	roles, err := r.Store.ListRolesFromApplication(ctx, applicationID)
+func (r Repository) ListRolesFromApplicationPaged(ctx context.Context, applicationID uuid.UUID, limit, offset int) (*Response, error) {
+	roles, err := r.Store.ListRolesFromApplicationPaged(ctx, pgstore.ListRolesFromApplicationPagedParams{
+		ApplicationID: applicationID,
+		Limit:         int32(limit),
+		Offset:        int32(offset),
+	})
 
 	if err != nil && err != repositories.ErrNoRows {
 		return nil, err
 	}
 
-	var applicationRoles []entities.ApplicationRole
+	totalCount := 0
+
+	if len(roles) > 0 {
+		totalCount = int(roles[0].TotalCount)
+	}
+
+	result := Response{
+		TotalCount: totalCount,
+		Data:       []RoleResponse{},
+	}
 
 	for _, role := range roles {
-		applicationRoles = append(applicationRoles, entities.ApplicationRole{
-			ID:            role.ID,
-			ApplicationID: role.ApplicationID,
-			Name:          role.Name,
-			Description:   role.Description,
-			CreatedAt:     role.CreatedAt.Time,
-			UpdatedAt:     role.UpdatedAt,
+		result.Data = append(result.Data, RoleResponse{
+			ID:          role.ID,
+			Name:        role.Name,
+			Description: role.Description,
 		})
 	}
 
-	return &applicationRoles, nil
+	return &result, nil
 }
 
 func (r Repository) CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error) {

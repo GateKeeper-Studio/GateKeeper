@@ -41,3 +41,22 @@ FROM
     application_role
 WHERE
     application_id = sqlc.arg('application_id');
+
+-- List Roles from Application paged
+-- name: ListRolesFromApplicationPaged :many
+SELECT
+    id,
+    application_id,
+    name,
+    description,
+    created_at,
+    updated_at,
+    COUNT(*) OVER () AS total_count
+FROM
+    application_role
+WHERE
+    application_id = sqlc.arg('application_id')
+ORDER BY
+    created_at
+LIMIT
+    sqlc.arg('limit') OFFSET sqlc.arg('offset');

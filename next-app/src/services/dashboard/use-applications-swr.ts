@@ -33,6 +33,9 @@ export function useApplicationsSWR(request: Request, options: IServiceOptions) {
       ? `/v1/organizations/${request?.organizationId}/applications`
       : null,
     (url) => fetcher(url, options),
-    { revalidateOnFocus: false }
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 60000 * 10, // 10 minutes
+    },
   );
 }

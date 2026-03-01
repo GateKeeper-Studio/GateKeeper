@@ -1,7 +1,7 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { ChevronsUpDown, GalleryVerticalEnd, Plus } from "lucide-react";
 
 import {
@@ -25,28 +25,27 @@ export function OrganizationList() {
   const { isMobile } = useSidebar();
   const router = useRouter();
 
-  const selectedOrganizationId = useParams()?.organizationId; 
-  
+  const selectedOrganizationId = useParams()?.organizationId;
+
   const { data, isLoading } = useOrganizationsSWR({
     accessToken: "",
   });
 
   useEffect(() => {
     if (data && data.length > 0) {
-
       if (selectedOrganizationId) {
         const org = data.find(
-          (organization) => organization.id === selectedOrganizationId
+          (organization) => organization.id === selectedOrganizationId,
         );
 
         if (org) {
           setSelectedOrganization(org);
           cookieStore.set("organization", org.name);
         }
-        
+
         return;
       }
-      
+
       setSelectedOrganization(data[0]);
       cookieStore.set("organization", data[0].name);
     }
@@ -59,7 +58,7 @@ export function OrganizationList() {
     setSelectedOrganization(organization);
 
     cookieStore.set("organization", organization.name);
-    router.push(`/dashboard/${organization.id}/application`);
+    router.push(`/dashboard/${organization.id}`);
   }
 
   return (
@@ -120,7 +119,9 @@ export function OrganizationList() {
 
         <DropdownMenuItem
           className="gap-2 p-2"
-          onClick={() => router.push("/settings/organizations")}
+          onClick={() =>
+            router.push("/dashboard/organizations/create-organization")
+          }
         >
           <div className="flex size-6 items-center justify-center rounded-md border bg-background">
             <Plus className="size-4" />

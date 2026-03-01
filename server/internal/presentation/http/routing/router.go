@@ -18,6 +18,7 @@ import (
 	deleteapplicationuser "github.com/gate-keeper/internal/features/handlers/application-user/delete-application-user"
 	editapplicationuser "github.com/gate-keeper/internal/features/handlers/application-user/edit-application-user"
 	getapplicationuserbyid "github.com/gate-keeper/internal/features/handlers/application-user/get-application-user-by-id"
+	listapplicationusers "github.com/gate-keeper/internal/features/handlers/application-user/list-application-users"
 	createapplication "github.com/gate-keeper/internal/features/handlers/application/create-application"
 	getapplicationauthdata "github.com/gate-keeper/internal/features/handlers/application/get-application-auth-data"
 	getapplicationbyid "github.com/gate-keeper/internal/features/handlers/application/get-application-by-id"
@@ -25,6 +26,7 @@ import (
 	removeapplication "github.com/gate-keeper/internal/features/handlers/application/remove-application"
 	updateapplication "github.com/gate-keeper/internal/features/handlers/application/update-application"
 	"github.com/gate-keeper/internal/features/handlers/authentication/authorize"
+	beginwebauthnregistration "github.com/gate-keeper/internal/features/handlers/authentication/begin-webauthn-registration"
 	changepassword "github.com/gate-keeper/internal/features/handlers/authentication/change-password"
 	confirmmfaauthappsecret "github.com/gate-keeper/internal/features/handlers/authentication/confirm-mfa-auth-app-secret"
 	confirmuseremail "github.com/gate-keeper/internal/features/handlers/authentication/confirm-user-email"
@@ -37,10 +39,9 @@ import (
 	signincredential "github.com/gate-keeper/internal/features/handlers/authentication/sign-in-credential"
 	signupcredential "github.com/gate-keeper/internal/features/handlers/authentication/sign-up-credential"
 	verifyappmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-app-mfa"
-	beginwebauthnregistration "github.com/gate-keeper/internal/features/handlers/authentication/begin-webauthn-registration"
-	verifywebauthnregistration "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-registration"
-	verifywebauthnauth "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-authentication"
 	verifyemailmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-email-mfa"
+	verifywebauthnauth "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-authentication"
+	verifywebauthnregistration "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-registration"
 	createorganization "github.com/gate-keeper/internal/features/handlers/organization/create-organization"
 	editorganization "github.com/gate-keeper/internal/features/handlers/organization/edit-organization"
 	getorganizationbyid "github.com/gate-keeper/internal/features/handlers/organization/get-organization-by-id"
@@ -83,6 +84,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	updateApplicationUserEndpoint := editapplicationuser.Endpoint{DbPool: pool}
 	deleteApplicationUserEndpoint := deleteapplicationuser.Endpoint{DbPool: pool}
 	getApplicationUserByIdEndpoint := getapplicationuserbyid.Endpoint{DbPool: pool}
+	listApplicationUsersEndpoint := listapplicationusers.Endpoint{DbPool: pool}
 
 	authorizeEndpoint := authorize.Endpoint{DbPool: pool}
 	changePasswordEndpoint := changepassword.Endpoint{DbPool: pool}
@@ -194,6 +196,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 					r.Delete("/{applicationID}", removeApplicationEndpoint.Http)
 
 					r.Route("/{applicationID}/users", func(r chi.Router) {
+						r.Get("/", listApplicationUsersEndpoint.Http)
 						r.Post("/", createApplicationUserEndpoint.Http)
 						r.Put("/{userID}", updateApplicationUserEndpoint.Http)
 						r.Get("/{userID}", getApplicationUserByIdEndpoint.Http)

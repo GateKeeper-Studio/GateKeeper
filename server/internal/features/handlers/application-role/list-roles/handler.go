@@ -12,13 +12,13 @@ type Handler struct {
 	repository IRepository
 }
 
-func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Query, *[]Response] {
+func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Query, *Response] {
 	return &Handler{
 		repository: Repository{Store: q},
 	}
 }
 
-func (s *Handler) Handler(ctx context.Context, request Query) (*[]Response, error) {
+func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error) {
 	isApplicationExists, err := s.repository.CheckIfApplicationExists(ctx, request.ApplicationID)
 
 	if err != nil {
@@ -29,21 +29,16 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*[]Response, erro
 		return nil, &errors.ErrApplicationNotFound
 	}
 
-	roles, err := s.repository.ListRolesFromApplication(ctx, request.ApplicationID)
+	offset := (request.Page - 1) * request.PageSize
+
+	response, err := s.repository.ListRolesFromApplicationPaged(ctx, request.ApplicationID, request.PageSize, offset)
 
 	if err != nil {
 		return nil, err
 	}
 
-	var response []Response
+	response.Page = request.Page
+	response.PageSize = request.PageSize
 
-	for _, role := range *roles {
-		response = append(response, Response{
-			ID:          role.ID,
-			Name:        role.Name,
-			Description: role.Description,
-		})
-	}
-
-	return &response, nil
+	return response, nil
 }

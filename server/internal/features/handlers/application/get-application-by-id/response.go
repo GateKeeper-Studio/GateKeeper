@@ -21,8 +21,6 @@ type Response struct {
 	CanSelfForgotPass     bool                   `json:"canSelfForgotPass"`
 	PasswordHashingSecret string                 `json:"passwordHashingSecret"`
 	Secrets               []ApplicationSecrets   `json:"secrets"`
-	Users                 ApplicationUsersData   `json:"users"`
-	Roles                 ApplicationRolesData   `json:"roles"`
 	OAuthProviders        []ApplicationProviders `json:"oauthProviders"`
 }
 

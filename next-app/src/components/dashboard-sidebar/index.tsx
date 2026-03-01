@@ -8,7 +8,7 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { LayoutPanelLeft, LogOut, Plus, Settings } from "lucide-react";
+import { Home, LayoutPanelLeft, LogOut, Plus, Settings } from "lucide-react";
 
 import {
   Sidebar,
@@ -41,14 +41,14 @@ export function DashboardSidebar() {
   const searchParams = useSearchParams();
 
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(
-    searchParams.get("isSettingsOpened") === "true" ? true : false
+    searchParams.get("isSettingsOpened") === "true" ? true : false,
   );
 
   const items = [
     {
-      title: "Applications",
-      url: `/dashboard/${organizationId}/application`,
-      icon: LayoutPanelLeft,
+      title: "Home",
+      url: `/dashboard/${organizationId}`,
+      icon: Home,
     },
   ];
 
@@ -88,7 +88,7 @@ export function DashboardSidebar() {
               title="Add Application"
               onClick={() =>
                 router.push(
-                  `/dashboard/${organizationId}/application/create-application`
+                  `/dashboard/${organizationId}/application/create-application`,
                 )
               }
             >
@@ -133,6 +133,7 @@ export function DashboardSidebar() {
                       <Link
                         href={`/dashboard/${organizationId}/application/${application.id}`}
                       >
+                        <LayoutPanelLeft />
                         {application.name}
                       </Link>
                     </SidebarMenuButton>

@@ -25,5 +25,6 @@ const fetcher = (url: string, options: IServiceOptions) =>
 export function useOrganizationsSWR(options: IServiceOptions) {
   return useSWR("/v1/organizations", (url) => fetcher(url, options), {
     revalidateOnFocus: false,
+    dedupingInterval: 60000 * 10, // 10 minutes
   });
 }

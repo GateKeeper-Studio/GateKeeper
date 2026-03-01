@@ -37,7 +37,7 @@ export function MultiSelectInput({ items, onChange, placeholder }: Props) {
             </TooltipTrigger>
 
             <TooltipContent>
-              <p>Clito to delete</p>
+              <p>Click to delete</p>
             </TooltipContent>
           </Tooltip>
         ))}

@@ -35,8 +35,8 @@ export function ApplicationRolesSection({ form }: Props) {
   };
 
   const { data, error, isLoading } = useApplicationRolesSWR(
-    { applicationId, organizationId },
-    { accessToken: "" }
+    { applicationId, organizationId, pageSize: 100 },
+    { accessToken: "" },
   );
 
   const errorData = error as APIError;
@@ -66,7 +66,7 @@ export function ApplicationRolesSection({ form }: Props) {
         </Alert>
       )}
 
-      {data?.map((role) => (
+      {data?.data?.map((role) => (
         <FormField
           key={role.id}
           control={form.control}

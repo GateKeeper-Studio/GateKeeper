@@ -7,13 +7,22 @@ import type { IServiceOptions } from "@/types/service-options";
 type Request = {
   organizationId?: string;
   applicationId: string;
+  page?: number;
+  pageSize?: number;
 };
 
-type Response = {
+export type ApplicationRoleItem = {
   id: string;
   name: string;
   description: string;
-}[];
+};
+
+type Response = {
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  data: ApplicationRoleItem[];
+};
 
 const fetcher = (url: string, options: IServiceOptions) =>
   api
@@ -26,13 +35,20 @@ const fetcher = (url: string, options: IServiceOptions) =>
 
 export function useApplicationRolesSWR(
   request: Request,
-  options: IServiceOptions
+  options: IServiceOptions,
 ) {
+  const page = request?.page ?? 1;
+  const pageSize = request?.pageSize ?? 10;
+
   return useSWR(
     request?.organizationId
-      ? `/v1/organizations/${request?.organizationId}/applications/${request?.applicationId}/roles`
+      ? `/v1/organizations/${request?.organizationId}/applications/${request?.applicationId}/roles?page=${page}&pageSize=${pageSize}`
       : null,
     (url) => fetcher(url, options),
-    { revalidateOnFocus: false }
+    {
+      revalidateOnFocus: false,
+      keepPreviousData: true,
+      dedupingInterval: 60000 * 10, // 10 minutes
+    },
   );
 }

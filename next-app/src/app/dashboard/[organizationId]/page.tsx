@@ -4,6 +4,7 @@ import { ErrorAlert } from "@/components/error-alert";
 import { DashboardHeader } from "@/components/dashboard-header";
 
 import { getOrganizationByIdService } from "@/services/dashboard/get-organization-by-id";
+import { OrganizationTabs } from "./(components)/organization-tabs";
 
 type Props = {
   params: Promise<{
@@ -47,10 +48,6 @@ export default async function OrganizationPage({ params }: Props) {
               name: organizationData?.name || "Organization Details",
               path: `/dashboard/${organizationId}`,
             },
-            {
-              name: "Applications",
-              path: `/dashboard/${organizationId}/application`,
-            },
           ],
         }}
       />
@@ -64,10 +61,7 @@ export default async function OrganizationPage({ params }: Props) {
           {organizationData?.description || "No description provided."}
         </span>
 
-        <span className="mt-3 text-sm tracking-tight text-gray-600 dark:text-gray-300">
-          Applications are the projects you have created. You can add, edit, and
-          delete them here.
-        </span>
+        <OrganizationTabs />
       </main>
     </>
   );
