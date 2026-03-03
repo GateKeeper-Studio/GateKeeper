@@ -7,4 +7,5 @@ type Response struct {
 	CodeChallenge       string `json:"codeChallenge"`
 	CodeChallengeMethod string `json:"codeChallengeMethod"`
 	ResponseType        string `json:"responseType"`
+	Scope               string `json:"scope"`
 }

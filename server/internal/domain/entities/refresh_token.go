@@ -7,14 +7,13 @@ import (
 )
 
 type RefreshToken struct {
-	ID                 uuid.UUID
-	UserID             uuid.UUID
-	AvailableRefreshes uint8
-	ExpiresAt          time.Time
-	CreatedAt          time.Time
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	ExpiresAt time.Time
+	CreatedAt time.Time
 }
 
-func CreateRefreshToken(userID uuid.UUID, availableRefreshes uint8, expiresAt time.Time) (*RefreshToken, error) {
+func CreateRefreshToken(userID uuid.UUID, expiresAt time.Time) (*RefreshToken, error) {
 	id, err := uuid.NewV7()
 
 	if err != nil {
@@ -22,20 +21,18 @@ func CreateRefreshToken(userID uuid.UUID, availableRefreshes uint8, expiresAt ti
 	}
 
 	return &RefreshToken{
-		ID:                 id,
-		UserID:             userID,
-		AvailableRefreshes: availableRefreshes,
-		ExpiresAt:          expiresAt,
-		CreatedAt:          time.Now().UTC(),
+		ID:        id,
+		UserID:    userID,
+		ExpiresAt: expiresAt,
+		CreatedAt: time.Now().UTC(),
 	}, nil
 }
 
-func NewRefreshToken(ID uuid.UUID, userID uuid.UUID, availableRefreshes uint8, expiresAt time.Time) *RefreshToken {
+func NewRefreshToken(ID uuid.UUID, userID uuid.UUID, expiresAt time.Time) *RefreshToken {
 	return &RefreshToken{
-		ID:                 ID,
-		UserID:             userID,
-		AvailableRefreshes: availableRefreshes,
-		ExpiresAt:          expiresAt,
-		CreatedAt:          time.Now().UTC(),
+		ID:        ID,
+		UserID:    userID,
+		ExpiresAt: expiresAt,
+		CreatedAt: time.Now().UTC(),
 	}
 }

@@ -7,12 +7,12 @@ import (
 	"github.com/gate-keeper/internal/domain/entities"
 )
 
-func assignRefreshToken(ctx context.Context, handler *Handler, user entities.ApplicationUser) (*entities.RefreshToken, error) {
+func assignRefreshToken(ctx context.Context, handler *Handler, user entities.ApplicationUser, ttlDays int) (*entities.RefreshToken, error) {
 	currentDate := time.Now().UTC()
-	futureDate := currentDate.Add(time.Hour * 24 * 7).UTC() // 7 days from now
+	futureDate := currentDate.Add(time.Hour * 24 * time.Duration(ttlDays)).UTC()
 
 	handler.repository.RevokeRefreshTokenFromUser(ctx, user.ID)
-	refreshToken, err := entities.CreateRefreshToken(user.ID, 5, futureDate)
+	refreshToken, err := entities.CreateRefreshToken(user.ID, futureDate)
 
 	if err != nil {
 		return nil, err

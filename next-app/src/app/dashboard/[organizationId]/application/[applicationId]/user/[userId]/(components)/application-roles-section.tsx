@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-import { FormType } from "./user-detail-form";
+import { FormType } from "../schema";
 
 import {
   FormControl,

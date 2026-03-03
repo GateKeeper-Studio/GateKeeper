@@ -14,7 +14,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Query, *[]Response] {
 	return &Handler{
-		Repository: Repository{Store: q},
+		Repository: NewRepository(q),
 	}
 }
 

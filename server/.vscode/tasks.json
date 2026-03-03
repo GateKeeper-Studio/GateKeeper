@@ -44,5 +44,17 @@
                 "cwd": "${workspaceFolder}/internal/infra/database/migrations"
             },
         },
+        {
+            "label": "Run Server Tests",
+            "type": "shell",
+            "command": "go",
+            "args": [
+                "test",
+                "./..."
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+        }
     ]
 }

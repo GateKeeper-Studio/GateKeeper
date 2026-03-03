@@ -50,6 +50,7 @@ export function EditApplicationForm({ application }: Props) {
       hasMfaWebauthn: application?.mfaWebauthnEnabled ?? false,
       canSelfForgotPass: application?.canSelfForgotPass ?? false,
       canSelfSignUp: application?.canSelfSignUp ?? false,
+      refreshTokenTtlDays: application?.refreshTokenTtlDays ?? 7,
     },
   });
 
@@ -73,6 +74,7 @@ export function EditApplicationForm({ application }: Props) {
         organizationId,
         id: application.id,
         isActive: true,
+        refreshTokenTtlDays: form.getValues().refreshTokenTtlDays,
       },
       { accessToken: "" },
     );
@@ -117,10 +119,7 @@ export function EditApplicationForm({ application }: Props) {
 
   return (
     <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit(onSubmit)}
-        className="mt-4 max-w-[700px]"
-      >
+      <form onSubmit={form.handleSubmit(onSubmit)} className="mt-4 max-w-175">
         <div className="grid gap-2">
           <FormField
             control={form.control}
@@ -356,6 +355,45 @@ export function EditApplicationForm({ application }: Props) {
                   <FormDescription>
                     If this option is enabled, the user will be able to reset
                     his password by himself.
+                  </FormDescription>
+                  <FormMessage></FormMessage>
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <Separator className="my-2" />
+
+          <div className="flex flex-col gap-3">
+            <span className="text-sm font-medium">Token Settings</span>
+
+            <span className="text-muted-foreground text-sm">
+              Configure the refresh token lifetime for this application.
+            </span>
+
+            <FormField
+              control={form.control}
+              name="refreshTokenTtlDays"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex gap-1">
+                    Refresh Token TTL (days)
+                  </FormLabel>
+
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={365}
+                      placeholder="7"
+                      {...field}
+                      onChange={(e) => field.onChange(Number(e.target.value))}
+                    />
+                  </FormControl>
+
+                  <FormDescription>
+                    How many days a refresh token remains valid before the user
+                    must log in again. Minimum 1, maximum 365.
                   </FormDescription>
                   <FormMessage></FormMessage>
                 </FormItem>

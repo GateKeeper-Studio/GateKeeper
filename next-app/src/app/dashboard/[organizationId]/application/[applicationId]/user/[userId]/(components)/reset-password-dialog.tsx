@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { cn } from "@/lib/utils";
-import { FormType } from "./user-detail-form";
+import { FormType } from "../schema";
 
 type Props = {
   form: FormType;

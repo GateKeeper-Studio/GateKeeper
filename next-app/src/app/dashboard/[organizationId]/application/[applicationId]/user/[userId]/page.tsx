@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ChevronLeft } from "lucide-react";
 
-import { UserDetailForm } from "./(components)/user-detail-form";
+import { UserDetailContent } from "./(components)/user-detail-content";
 
 import { DashboardHeader } from "@/components/dashboard-header";
 import { getApplicationUserByIdService } from "@/services/dashboard/get-application-user-by-id";
@@ -87,7 +87,7 @@ export default async function UserDetailAndEditPage({ params }: Props) {
           Go back to application detail
         </Link>
 
-        <UserDetailForm user={data} />
+        <UserDetailContent user={data} />
       </main>
     </>
   );

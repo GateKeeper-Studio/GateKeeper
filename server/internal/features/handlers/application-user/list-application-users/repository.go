@@ -3,7 +3,6 @@ package listapplicationusers
 import (
 	"context"
 	"encoding/json"
-
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
@@ -15,11 +14,17 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.ApplicationRepository
+}
+
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+	}
 }
 
 func (r Repository) GetUsersByApplicationID(ctx context.Context, applicationID uuid.UUID, limit, offset int) (*Response, error) {
-	users, err := r.Store.GetUsersByApplicationID(ctx, pgstore.GetUsersByApplicationIDParams{
+	users, err := r.ApplicationRepository.Store.GetUsersByApplicationID(ctx, pgstore.GetUsersByApplicationIDParams{
 		ApplicationID: applicationID,
 		Limit:         int32(limit),
 		Offset:        int32(offset),
@@ -30,7 +35,6 @@ func (r Repository) GetUsersByApplicationID(ctx context.Context, applicationID u
 	}
 
 	totalCount := 0
-
 	if len(users) > 0 {
 		totalCount = int(users[0].TotalUsers)
 	}
@@ -61,14 +65,4 @@ func (r Repository) GetUsersByApplicationID(ctx context.Context, applicationID u
 	}
 
 	return &result, nil
-}
-
-func (r Repository) CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error) {
-	isApplicationExists, err := r.Store.CheckIfApplicationExists(ctx, applicationID)
-
-	if err != nil {
-		return false, err
-	}
-
-	return isApplicationExists, nil
 }

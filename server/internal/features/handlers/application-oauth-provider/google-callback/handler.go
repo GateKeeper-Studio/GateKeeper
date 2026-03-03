@@ -19,7 +19,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *ServiceResponse] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -157,6 +157,8 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		externalOauthState.ClientRedirectUri,
 		externalOauthState.ClientCodeChallenge,
 		externalOauthState.ClientCodeChallengeMethod,
+		externalOauthState.ClientNonce,
+		&externalOauthState.ClientScope,
 	)
 
 	if err != nil {

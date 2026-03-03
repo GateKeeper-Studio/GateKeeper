@@ -48,7 +48,8 @@ SET
     has_mfa_email = sqlc.arg('has_mfa_email'),
     updated_at = sqlc.arg('updated_at'),
     can_self_sign_up = sqlc.arg('can_self_sign_up'),
-    can_self_forgot_pass = sqlc.arg('can_self_forgot_pass')
+    can_self_forgot_pass = sqlc.arg('can_self_forgot_pass'),
+    refresh_token_ttl_days = sqlc.arg('refresh_token_ttl_days')
 WHERE
     id = sqlc.arg('id');
 
@@ -85,7 +86,8 @@ SELECT
     created_at,
     updated_at,
     can_self_sign_up,
-    can_self_forgot_pass
+    can_self_forgot_pass,
+    refresh_token_ttl_days
 FROM
     "application"
 WHERE

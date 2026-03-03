@@ -12,20 +12,21 @@ import (
 )
 
 type Application struct {
-	ID                 uuid.UUID        `db:"id"`
-	OrganizationID     uuid.UUID        `db:"organization_id"`
-	Name               string           `db:"name"`
-	Description        *string          `db:"description"`
-	IsActive           bool             `db:"is_active"`
-	HasMfaAuthApp      bool             `db:"has_mfa_auth_app"`
-	HasMfaEmail        bool             `db:"has_mfa_email"`
-	HasMfaWebauthn     bool             `db:"has_mfa_webauthn"`
-	PasswordHashSecret string           `db:"password_hash_secret"`
-	Badges             *string          `db:"badges"`
-	CreatedAt          pgtype.Timestamp `db:"created_at"`
-	UpdatedAt          *time.Time       `db:"updated_at"`
-	CanSelfSignUp      bool             `db:"can_self_sign_up"`
-	CanSelfForgotPass  bool             `db:"can_self_forgot_pass"`
+	ID                  uuid.UUID        `db:"id"`
+	OrganizationID      uuid.UUID        `db:"organization_id"`
+	Name                string           `db:"name"`
+	Description         *string          `db:"description"`
+	IsActive            bool             `db:"is_active"`
+	HasMfaAuthApp       bool             `db:"has_mfa_auth_app"`
+	HasMfaEmail         bool             `db:"has_mfa_email"`
+	HasMfaWebauthn      bool             `db:"has_mfa_webauthn"`
+	PasswordHashSecret  string           `db:"password_hash_secret"`
+	Badges              *string          `db:"badges"`
+	CreatedAt           pgtype.Timestamp `db:"created_at"`
+	UpdatedAt           *time.Time       `db:"updated_at"`
+	CanSelfSignUp       bool             `db:"can_self_sign_up"`
+	CanSelfForgotPass   bool             `db:"can_self_forgot_pass"`
+	RefreshTokenTtlDays int32            `db:"refresh_token_ttl_days"`
 }
 
 type ApplicationAuthorizationCode struct {
@@ -37,6 +38,8 @@ type ApplicationAuthorizationCode struct {
 	RedirectUri         string           `db:"redirect_uri"`
 	CodeChallenge       string           `db:"code_challenge"`
 	CodeChallengeMethod string           `db:"code_challenge_method"`
+	Nonce               *string          `db:"nonce"`
+	Scope               *string          `db:"scope"`
 }
 
 type ApplicationMailConfig struct {
@@ -145,6 +148,7 @@ type ExternalOauthState struct {
 	CodeVerifier               string           `db:"code_verifier"`
 	ClientRedirectUri          *string          `db:"client_redirect_uri"`
 	CreatedAt                  pgtype.Timestamp `db:"created_at"`
+	ClientNonce                *string          `db:"client_nonce"`
 }
 
 type MfaEmailCode struct {
@@ -215,11 +219,10 @@ type PasswordResetToken struct {
 }
 
 type RefreshToken struct {
-	ID                 uuid.UUID        `db:"id"`
-	UserID             uuid.UUID        `db:"user_id"`
-	AvailableRefreshes int32            `db:"available_refreshes"`
-	ExpiresAt          pgtype.Timestamp `db:"expires_at"`
-	CreatedAt          pgtype.Timestamp `db:"created_at"`
+	ID        uuid.UUID        `db:"id"`
+	UserID    uuid.UUID        `db:"user_id"`
+	ExpiresAt pgtype.Timestamp `db:"expires_at"`
+	CreatedAt pgtype.Timestamp `db:"created_at"`
 }
 
 type UserCredential struct {

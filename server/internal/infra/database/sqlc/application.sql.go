@@ -135,7 +135,8 @@ SELECT
     created_at,
     updated_at,
     can_self_sign_up,
-    can_self_forgot_pass
+    can_self_forgot_pass,
+    refresh_token_ttl_days
 FROM
     "application"
 WHERE
@@ -143,20 +144,21 @@ WHERE
 `
 
 type GetApplicationByIDRow struct {
-	ID                 uuid.UUID        `db:"id"`
-	OrganizationID     uuid.UUID        `db:"organization_id"`
-	Name               string           `db:"name"`
-	Description        *string          `db:"description"`
-	Badges             *string          `db:"badges"`
-	IsActive           bool             `db:"is_active"`
-	HasMfaAuthApp      bool             `db:"has_mfa_auth_app"`
-	HasMfaEmail        bool             `db:"has_mfa_email"`
-	HasMfaWebauthn     bool             `db:"has_mfa_webauthn"`
-	PasswordHashSecret string           `db:"password_hash_secret"`
-	CreatedAt          pgtype.Timestamp `db:"created_at"`
-	UpdatedAt          *time.Time       `db:"updated_at"`
-	CanSelfSignUp      bool             `db:"can_self_sign_up"`
-	CanSelfForgotPass  bool             `db:"can_self_forgot_pass"`
+	ID                  uuid.UUID        `db:"id"`
+	OrganizationID      uuid.UUID        `db:"organization_id"`
+	Name                string           `db:"name"`
+	Description         *string          `db:"description"`
+	Badges              *string          `db:"badges"`
+	IsActive            bool             `db:"is_active"`
+	HasMfaAuthApp       bool             `db:"has_mfa_auth_app"`
+	HasMfaEmail         bool             `db:"has_mfa_email"`
+	HasMfaWebauthn      bool             `db:"has_mfa_webauthn"`
+	PasswordHashSecret  string           `db:"password_hash_secret"`
+	CreatedAt           pgtype.Timestamp `db:"created_at"`
+	UpdatedAt           *time.Time       `db:"updated_at"`
+	CanSelfSignUp       bool             `db:"can_self_sign_up"`
+	CanSelfForgotPass   bool             `db:"can_self_forgot_pass"`
+	RefreshTokenTtlDays int32            `db:"refresh_token_ttl_days"`
 }
 
 func (q *Queries) GetApplicationByID(ctx context.Context, id uuid.UUID) (GetApplicationByIDRow, error) {
@@ -177,6 +179,7 @@ func (q *Queries) GetApplicationByID(ctx context.Context, id uuid.UUID) (GetAppl
 		&i.UpdatedAt,
 		&i.CanSelfSignUp,
 		&i.CanSelfForgotPass,
+		&i.RefreshTokenTtlDays,
 	)
 	return i, err
 }
@@ -250,23 +253,25 @@ SET
     has_mfa_email = $7,
     updated_at = $8,
     can_self_sign_up = $9,
-    can_self_forgot_pass = $10
+    can_self_forgot_pass = $10,
+    refresh_token_ttl_days = $11
 WHERE
-    id = $11
+    id = $12
 `
 
 type UpdateApplicationParams struct {
-	Name              string     `db:"name"`
-	Description       *string    `db:"description"`
-	HasMfaAuthApp     bool       `db:"has_mfa_auth_app"`
-	HasMfaWebauthn    bool       `db:"has_mfa_webauthn"`
-	Badges            *string    `db:"badges"`
-	IsActive          bool       `db:"is_active"`
-	HasMfaEmail       bool       `db:"has_mfa_email"`
-	UpdatedAt         *time.Time `db:"updated_at"`
-	CanSelfSignUp     bool       `db:"can_self_sign_up"`
-	CanSelfForgotPass bool       `db:"can_self_forgot_pass"`
-	ID                uuid.UUID  `db:"id"`
+	Name                string     `db:"name"`
+	Description         *string    `db:"description"`
+	HasMfaAuthApp       bool       `db:"has_mfa_auth_app"`
+	HasMfaWebauthn      bool       `db:"has_mfa_webauthn"`
+	Badges              *string    `db:"badges"`
+	IsActive            bool       `db:"is_active"`
+	HasMfaEmail         bool       `db:"has_mfa_email"`
+	UpdatedAt           *time.Time `db:"updated_at"`
+	CanSelfSignUp       bool       `db:"can_self_sign_up"`
+	CanSelfForgotPass   bool       `db:"can_self_forgot_pass"`
+	RefreshTokenTtlDays int32      `db:"refresh_token_ttl_days"`
+	ID                  uuid.UUID  `db:"id"`
 }
 
 func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationParams) error {
@@ -281,6 +286,7 @@ func (q *Queries) UpdateApplication(ctx context.Context, arg UpdateApplicationPa
 		arg.UpdatedAt,
 		arg.CanSelfSignUp,
 		arg.CanSelfForgotPass,
+		arg.RefreshTokenTtlDays,
 		arg.ID,
 	)
 	return err

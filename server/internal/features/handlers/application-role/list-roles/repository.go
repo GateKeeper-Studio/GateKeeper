@@ -2,7 +2,6 @@ package listroles
 
 import (
 	"context"
-
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
@@ -14,11 +13,17 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.ApplicationRepository
+}
+
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+	}
 }
 
 func (r Repository) ListRolesFromApplicationPaged(ctx context.Context, applicationID uuid.UUID, limit, offset int) (*Response, error) {
-	roles, err := r.Store.ListRolesFromApplicationPaged(ctx, pgstore.ListRolesFromApplicationPagedParams{
+	roles, err := r.ApplicationRepository.Store.ListRolesFromApplicationPaged(ctx, pgstore.ListRolesFromApplicationPagedParams{
 		ApplicationID: applicationID,
 		Limit:         int32(limit),
 		Offset:        int32(offset),
@@ -29,7 +34,6 @@ func (r Repository) ListRolesFromApplicationPaged(ctx context.Context, applicati
 	}
 
 	totalCount := 0
-
 	if len(roles) > 0 {
 		totalCount = int(roles[0].TotalCount)
 	}
@@ -48,14 +52,4 @@ func (r Repository) ListRolesFromApplicationPaged(ctx context.Context, applicati
 	}
 
 	return &result, nil
-}
-
-func (r Repository) CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error) {
-	isApplicationExists, err := r.Store.CheckIfApplicationExists(ctx, applicationID)
-
-	if err != nil {
-		return false, err
-	}
-
-	return isApplicationExists, nil
 }

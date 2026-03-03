@@ -3,6 +3,7 @@ package signincredential
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/gate-keeper/internal/domain/errors"
 	application_utils "github.com/gate-keeper/internal/features/utils"
@@ -16,7 +17,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *Response] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -27,8 +28,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
-	// Verify CodeChallenge from authorization code
-
+	// Verify CodeChallenge from authorization code (PKCE RFC 7636)
 	isCodeChallengeValid, err := application_utils.VerifyCodeChallenge(
 		command.CodeVerifier,
 		authorizationCode.CodeChallenge,
@@ -63,6 +63,11 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
+	application, err := s.repository.GetApplicationByID(ctx, authorizationCode.ApplicationID)
+	if err != nil || application == nil {
+		return nil, &errors.ErrApplicationNotFound
+	}
+
 	user, err := s.repository.GetUserByID(ctx, authorizationCode.ApplicationUserId)
 
 	if err != nil {
@@ -73,7 +78,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrUserNotFound
 	}
 
-	refreshToken, err := assignRefreshToken(ctx, s, *user)
+	refreshToken, err := assignRefreshToken(ctx, s, *user, application.RefreshTokenTTLDays)
 
 	if err != nil {
 		return nil, err
@@ -85,10 +90,34 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
-	jwtToken, err := assignTokenParams(*userProfile, *user)
+	jwtClaims := application_utils.JWTClaims{
+		UserID:        user.ID,
+		Email:         user.Email,
+		FirstName:     userProfile.FirstName,
+		LastName:      userProfile.LastName,
+		DisplayName:   userProfile.DisplayName,
+		ApplicationID: user.ApplicationID,
+	}
+
+	jwtToken, err := application_utils.CreateToken(jwtClaims)
 
 	if err != nil {
 		return nil, err
+	}
+
+	// Determine scope and issue OIDC ID Token when openid scope was requested
+	scope := "openid profile email"
+	if authorizationCode.Scope != nil && *authorizationCode.Scope != "" {
+		scope = *authorizationCode.Scope
+	}
+
+	var idToken string
+	if strings.Contains(scope, "openid") {
+		audience := command.ClientID.String()
+		idToken, err = application_utils.CreateIDToken(jwtClaims, authorizationCode.Nonce, audience)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	slog.InfoContext(ctx, "User signed in successfully")
@@ -105,6 +134,10 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 			ApplicationID: user.ApplicationID,
 		},
 		AccessToken:  jwtToken,
+		IDToken:      idToken,
 		RefreshToken: refreshToken.ID,
+		TokenType:    "Bearer",
+		ExpiresIn:    900, // 15 minutes in seconds
+		Scope:        scope,
 	}, nil
 }

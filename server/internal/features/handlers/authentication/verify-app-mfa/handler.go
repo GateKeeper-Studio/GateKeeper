@@ -19,7 +19,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *Response] {
 	return &Handler{
-		repository:  Repository{Store: q},
+		repository:  NewRepository(q),
 		mailService: &mailservice.MailService{},
 	}
 }
@@ -43,7 +43,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrEmailNotConfirmed
 	}
 
-	mfaMethod, err := s.repository.GetMfaMethodByUserIDAndMethod(ctx, user.ID, constants.MfaMethodTotp)
+	mfaMethod, err := s.repository.GetMfaMethodByUserID(ctx, user.ID, constants.MfaMethodTotp)
 
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
-	if err := s.repository.AddAuthorizationSession(ctx, authorizationSession); err != nil {
+	if err := s.repository.AddSessionCode(ctx, authorizationSession); err != nil {
 		return nil, err
 	}
 

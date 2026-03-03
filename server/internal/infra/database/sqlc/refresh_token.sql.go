@@ -13,28 +13,30 @@ import (
 )
 
 const addRefreshToken = `-- name: AddRefreshToken :exec
-
-INSERT INTO refresh_token (
-    id,
-    user_id,
-    available_refreshes,
-    expires_at,
-    created_at
-) VALUES (
-    $1, -- id
-    $2, -- user_id
-    $3, -- available_refreshes
-    $4, -- expires_at
-    $5 -- created_at
-)
+INSERT INTO
+    refresh_token (
+        id,
+        user_id,
+        expires_at,
+        created_at
+    )
+VALUES
+    (
+        $1,
+        -- id
+        $2,
+        -- user_id
+        $3,
+        -- expires_at
+        $4 -- created_at
+    )
 `
 
 type AddRefreshTokenParams struct {
-	ID                 uuid.UUID        `db:"id"`
-	UserID             uuid.UUID        `db:"user_id"`
-	AvailableRefreshes int32            `db:"available_refreshes"`
-	ExpiresAt          pgtype.Timestamp `db:"expires_at"`
-	CreatedAt          pgtype.Timestamp `db:"created_at"`
+	ID        uuid.UUID        `db:"id"`
+	UserID    uuid.UUID        `db:"user_id"`
+	ExpiresAt pgtype.Timestamp `db:"expires_at"`
+	CreatedAt pgtype.Timestamp `db:"created_at"`
 }
 
 // ----------------------------------COMMANDS--------------------------------------
@@ -42,23 +44,68 @@ func (q *Queries) AddRefreshToken(ctx context.Context, arg AddRefreshTokenParams
 	_, err := q.db.Exec(ctx, addRefreshToken,
 		arg.ID,
 		arg.UserID,
-		arg.AvailableRefreshes,
 		arg.ExpiresAt,
 		arg.CreatedAt,
 	)
 	return err
 }
 
-const getRefreshTokensFromUser = `-- name: GetRefreshTokensFromUser :many
+const getRefreshTokensByApplicationUser = `-- name: GetRefreshTokensByApplicationUser :many
+SELECT
+    rt.id,
+    rt.user_id,
+    rt.expires_at,
+    rt.created_at
+FROM
+    refresh_token rt
+    INNER JOIN application_user au ON au.id = rt.user_id
+WHERE
+    au.id = $1
+    AND au.application_id = $2
+ORDER BY
+    rt.created_at DESC
+`
 
+type GetRefreshTokensByApplicationUserParams struct {
+	UserID        uuid.UUID `db:"user_id"`
+	ApplicationID uuid.UUID `db:"application_id"`
+}
+
+func (q *Queries) GetRefreshTokensByApplicationUser(ctx context.Context, arg GetRefreshTokensByApplicationUserParams) ([]RefreshToken, error) {
+	rows, err := q.db.Query(ctx, getRefreshTokensByApplicationUser, arg.UserID, arg.ApplicationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RefreshToken
+	for rows.Next() {
+		var i RefreshToken
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getRefreshTokensFromUser = `-- name: GetRefreshTokensFromUser :many
 SELECT
     id,
     user_id,
-    available_refreshes,
     expires_at,
     created_at
-FROM refresh_token
-WHERE user_id = $1
+FROM
+    refresh_token
+WHERE
+    user_id = $1
 `
 
 // ----------------------------------QUERIES--------------------------------------
@@ -74,7 +121,6 @@ func (q *Queries) GetRefreshTokensFromUser(ctx context.Context, userID uuid.UUID
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.AvailableRefreshes,
 			&i.ExpiresAt,
 			&i.CreatedAt,
 		); err != nil {
@@ -88,8 +134,23 @@ func (q *Queries) GetRefreshTokensFromUser(ctx context.Context, userID uuid.UUID
 	return items, nil
 }
 
+const revokeRefreshTokenByID = `-- name: RevokeRefreshTokenByID :exec
+DELETE FROM
+    refresh_token
+WHERE
+    id = $1
+`
+
+func (q *Queries) RevokeRefreshTokenByID(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, revokeRefreshTokenByID, id)
+	return err
+}
+
 const revokeRefreshTokenFromUser = `-- name: RevokeRefreshTokenFromUser :exec
-DELETE FROM refresh_token WHERE user_id = $1
+DELETE FROM
+    refresh_token
+WHERE
+    user_id = $1
 `
 
 func (q *Queries) RevokeRefreshTokenFromUser(ctx context.Context, userID uuid.UUID) error {

@@ -2,7 +2,6 @@ package getorganizationbyid
 
 import (
 	"context"
-
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
@@ -14,21 +13,11 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.OrganizationRepository
 }
 
-func (r Repository) GetOrganizationByID(ctx context.Context, id uuid.UUID) (*entities.Organization, error) {
-	organization, err := r.Store.GetOrganizationByID(ctx, id)
-
-	if err != nil && err != repositories.ErrNoRows {
-		return nil, err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		OrganizationRepository: repositories.OrganizationRepository{Store: q},
 	}
-
-	return &entities.Organization{
-		ID:          organization.ID,
-		Name:        organization.Name,
-		CreatedAt:   organization.CreatedAt.Time,
-		UpdatedAt:   organization.UpdatedAt,
-		Description: organization.Description,
-	}, nil
 }

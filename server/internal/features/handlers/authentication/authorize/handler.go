@@ -2,6 +2,7 @@ package authorize
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/gate-keeper/internal/domain/constants"
@@ -17,11 +18,21 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *Response] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
 func (s *Handler) Handler(ctx context.Context, command Command) (*Response, error) {
+	// Validate response_type (OAuth2 / OIDC)
+	if command.ResponseType != "code" {
+		return nil, &errors.ErrInvalidResponseType
+	}
+
+	// Validate code_challenge_method
+	if command.CodeChallengeMethod != "S256" && command.CodeChallengeMethod != "plain" {
+		return nil, &errors.ErrInvalidCodeChallengeMethod
+	}
+
 	user, err := s.repository.GetUserByEmail(ctx, command.Email, command.ApplicationID)
 
 	if err != nil {
@@ -80,7 +91,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		}
 
 		// Delete the MFA app code after successful authorization
-		if err := s.repository.DeleteMfaTotpCodeByID(ctx, user.ID); err != nil {
+		if err := s.repository.DeleteMfaTotpCode(ctx, user.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -89,12 +100,27 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
+	// Normalise and store scope
+	scope := command.Scope
+	if scope == "" {
+		scope = "openid"
+	}
+
+	// Nonce is required when openid scope is requested (OIDC Core 1.0 §3.1.2.1)
+	var nonce *string
+	if strings.Contains(scope, "openid") && command.Nonce != "" {
+		n := command.Nonce
+		nonce = &n
+	}
+
 	authorizationCode, err := entities.CreateApplicationAuthorizationCode(
 		command.ApplicationID,
 		user.ID,
 		command.RedirectUri,
 		command.CodeChallenge,
 		command.CodeChallengeMethod,
+		nonce,
+		&scope,
 	)
 
 	if err != nil {
@@ -116,5 +142,6 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		CodeChallenge:       command.CodeChallenge,
 		CodeChallengeMethod: command.CodeChallengeMethod,
 		ResponseType:        command.ResponseType,
+		Scope:               scope,
 	}, nil
 }

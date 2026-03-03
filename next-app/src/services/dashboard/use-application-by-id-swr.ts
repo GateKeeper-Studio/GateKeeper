@@ -17,6 +17,7 @@ export interface IApplication {
   mfaAuthAppEnabled: boolean;
   mfaWebauthnEnabled: boolean;
   passwordHashingSecret: string;
+  refreshTokenTtlDays: number;
   secrets: {
     id: string;
     name: string;

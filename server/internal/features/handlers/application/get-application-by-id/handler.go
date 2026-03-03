@@ -14,7 +14,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Query, *Response] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -30,7 +30,6 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 	}
 
 	secrets := make([]ApplicationSecrets, 0)
-	applicationOauthProviders := make([]ApplicationProviders, 0)
 
 	applicationSecretsDb, err := s.repository.ListSecretsFromApplication(ctx, application.ID)
 
@@ -45,27 +44,6 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 				Name:           secret.Name,
 				Value:          secret.Value[:len(secret.Value)/2] + "****************",
 				ExpirationDate: secret.ExpiresAt,
-			})
-		}
-	}
-
-	applicationOauthProvidersDb, err := s.repository.GetApplicationOAuthProvidersByApplicationID(ctx, application.ID)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if applicationOauthProvidersDb != nil {
-		for _, provider := range *applicationOauthProvidersDb {
-			applicationOauthProviders = append(applicationOauthProviders, ApplicationProviders{
-				ID:           provider.ID,
-				Name:         provider.Name,
-				ClientID:     provider.ClientID,
-				ClientSecret: provider.ClientSecret,
-				RedirectURI:  provider.RedirectURI,
-				UpdatedAt:    provider.UpdatedAt,
-				CreatedAt:    provider.CreatedAt,
-				IsEnabled:    provider.IsEnabled,
 			})
 		}
 	}
@@ -88,7 +66,7 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 		MfaEmailEnabled:       application.HasMfaEmail,
 		MfaWebauthnEnabled:    application.HasMfaWebauthn,
 		PasswordHashingSecret: application.PasswordHashSecret,
+		RefreshTokenTtlDays:   application.RefreshTokenTTLDays,
 		Secrets:               secrets,
-		OAuthProviders:        applicationOauthProviders,
 	}, nil
 }

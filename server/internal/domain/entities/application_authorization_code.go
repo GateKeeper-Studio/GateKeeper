@@ -15,9 +15,11 @@ type ApplicationAuthorizationCode struct {
 	RedirectUri         string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	Nonce               *string
+	Scope               *string
 }
 
-func CreateApplicationAuthorizationCode(applicationID, applicationUserID uuid.UUID, redirectUri, codeChallenge, codeChallegeMethod string) (*ApplicationAuthorizationCode, error) {
+func CreateApplicationAuthorizationCode(applicationID, applicationUserID uuid.UUID, redirectUri, codeChallenge, codeChallegeMethod string, nonce *string, scope *string) (*ApplicationAuthorizationCode, error) {
 	userId, err := uuid.NewV7()
 
 	if err != nil {
@@ -33,5 +35,7 @@ func CreateApplicationAuthorizationCode(applicationID, applicationUserID uuid.UU
 		RedirectUri:         redirectUri,
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallegeMethod,
+		Nonce:               nonce,
+		Scope:               scope,
 	}, nil
 }

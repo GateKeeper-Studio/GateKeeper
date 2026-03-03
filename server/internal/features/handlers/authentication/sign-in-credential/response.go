@@ -7,9 +7,14 @@ import (
 )
 
 type Response struct {
-	User         UserResponse `json:"user"`
-	AccessToken  string       `json:"accessToken"`
-	RefreshToken uuid.UUID    `json:"refreshToken"`
+	User        UserResponse `json:"user"`
+	AccessToken string       `json:"accessToken"`
+	// OIDC: ID Token containing identity claims (only present when openid scope requested)
+	IDToken      string    `json:"idToken,omitempty"`
+	RefreshToken uuid.UUID `json:"refreshToken"`
+	TokenType    string    `json:"tokenType"`
+	ExpiresIn    int       `json:"expiresIn"`
+	Scope        string    `json:"scope"`
 }
 
 type UserResponse struct {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { UseFormReturn } from "react-hook-form";
 
 export const formSchema = z.object({
   displayName: z.string().min(2).max(50),
@@ -15,3 +16,5 @@ export const formSchema = z.object({
   IsMfaAuthAppConfigured: z.boolean(),
   isMfaWebauthnConfigured: z.boolean(),
 });
+
+export type FormType = UseFormReturn<z.infer<typeof formSchema>>;

@@ -2,7 +2,7 @@ package removeorganization
 
 import (
 	"context"
-
+	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
 )
@@ -12,15 +12,11 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.OrganizationRepository
 }
 
-func (r Repository) RemoveOrganization(ctx context.Context, organizationID uuid.UUID) error {
-	err := r.Store.RemoveOrganization(ctx, organizationID)
-
-	if err != nil {
-		return err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		OrganizationRepository: repositories.OrganizationRepository{Store: q},
 	}
-
-	return nil
 }

@@ -2,7 +2,7 @@ package deleterole
 
 import (
 	"context"
-
+	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
 )
@@ -13,21 +13,13 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.ApplicationRepository
+	repositories.RoleRepository
 }
 
-func (r Repository) CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error) {
-	isApplicationExists, err := r.Store.CheckIfApplicationExists(ctx, applicationID)
-
-	if err != nil {
-		return false, err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+		RoleRepository: repositories.RoleRepository{Store: q},
 	}
-
-	return isApplicationExists, nil
-}
-
-func (r Repository) RemoveRole(ctx context.Context, roleID uuid.UUID) error {
-	err := r.Store.RemoveRole(ctx, roleID)
-
-	return err
 }

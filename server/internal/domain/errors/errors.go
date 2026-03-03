@@ -92,7 +92,9 @@ var (
 
 	ErrUserCredentialsNotFound = CustomError{Name: "ErrUserCredentialsNotFound", Code: http.StatusNotFound, Message: "User credentials not found", Title: "User credentials not found"}
 
-	ErrInvalidCodeChallenge = CustomError{Name: "ErrInvalidCodeChallenge", Code: http.StatusBadRequest, Message: "Invalid code challenge", Title: "Invalid code challenge"}
+	ErrInvalidCodeChallenge       = CustomError{Name: "ErrInvalidCodeChallenge", Code: http.StatusBadRequest, Message: "Invalid code challenge", Title: "Invalid code challenge"}
+	ErrInvalidResponseType        = CustomError{Name: "ErrInvalidResponseType", Code: http.StatusBadRequest, Message: "Invalid response_type, only 'code' is supported", Title: "Invalid response type"}
+	ErrInvalidCodeChallengeMethod = CustomError{Name: "ErrInvalidCodeChallengeMethod", Code: http.StatusBadRequest, Message: "Invalid code_challenge_method, only 'S256' and 'plain' are supported", Title: "Invalid code challenge method"}
 
 	ErrWebAuthnNotEnabled           = CustomError{Name: "ErrWebAuthnNotEnabled", Code: http.StatusBadRequest, Message: "WebAuthn is not enabled for this user", Title: "WebAuthn not enabled"}
 	ErrWebAuthnSessionNotFound      = CustomError{Name: "ErrWebAuthnSessionNotFound", Code: http.StatusNotFound, Message: "WebAuthn session not found", Title: "WebAuthn session not found"}
@@ -163,6 +165,8 @@ var ErrorsList = map[string]CustomError{
 	"ErrOAuthProviderMismatch":               ErrOAuthProviderMismatch,
 	"ErrUserCredentialsNotFound":             ErrUserCredentialsNotFound,
 	"ErrInvalidCodeChallenge":                ErrInvalidCodeChallenge,
+	"ErrInvalidResponseType":                 ErrInvalidResponseType,
+	"ErrInvalidCodeChallengeMethod":          ErrInvalidCodeChallengeMethod,
 	"ErrWebAuthnNotEnabled":                  ErrWebAuthnNotEnabled,
 	"ErrWebAuthnSessionNotFound":             ErrWebAuthnSessionNotFound,
 	"ErrWebAuthnSessionExpired":              ErrWebAuthnSessionExpired,

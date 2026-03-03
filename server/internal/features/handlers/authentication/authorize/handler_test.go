@@ -55,7 +55,7 @@ func (m *mockAuthorizeRepo) GetMfaTotpCodeByID(ctx context.Context, id uuid.UUID
 	return args.Get(0).(*entities.MfaTotpCode), args.Error(1)
 }
 
-func (m *mockAuthorizeRepo) DeleteMfaTotpCodeByID(ctx context.Context, id uuid.UUID) error {
+func (m *mockAuthorizeRepo) DeleteMfaTotpCode(ctx context.Context, id uuid.UUID) error {
 	return m.Called(ctx, id).Error(0)
 }
 
@@ -293,7 +293,7 @@ func TestHandler_Authorize_Success_WithTOTP(t *testing.T) {
 	repo.On("GetUserCredentialsByUserID", mock.Anything, user.ID).Return(creds, nil)
 	repo.On("GetAuthorizationSession", mock.Anything, user.ID, "valid-session-token").Return(session, nil)
 	repo.On("GetMfaTotpCodeByID", mock.Anything, mfaCodeID).Return(mfaCode, nil)
-	repo.On("DeleteMfaTotpCodeByID", mock.Anything, user.ID).Return(nil)
+	repo.On("DeleteMfaTotpCode", mock.Anything, user.ID).Return(nil)
 	repo.On("DeleteSessionCodeByID", mock.Anything, session.ID).Return(nil)
 	repo.On("RemoveAuthorizationCode", mock.Anything, user.ID, appID).Return(nil)
 	repo.On("AddAuthorizationCode", mock.Anything, mock.AnythingOfType("*entities.ApplicationAuthorizationCode")).Return(nil)

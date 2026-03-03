@@ -25,6 +25,7 @@ export function AuthForm() {
   const email = searchParams.get("email") || "";
   const codeChallenge = searchParams.get("code_challenge") || "";
   const mfaId = searchParams.get("mfa_id") || "";
+  const nonce = searchParams.get("nonce") || "";
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +104,7 @@ export function AuthForm() {
       codeChallengeMethod,
       codeChallenge,
       state,
+      nonce: nonce || undefined,
     });
 
     if (authorizeErr) {
@@ -127,6 +129,7 @@ export function AuthForm() {
     codeChallengeMethod,
     email,
     mfaId,
+    nonce,
     redirectUri,
     responseType,
     scope,
@@ -148,6 +151,7 @@ export function AuthForm() {
       code_challenge_method: codeChallengeMethod,
       code_challenge: codeChallenge,
       state,
+      ...(nonce ? { nonce } : {}),
     });
     router.push(`/auth/${applicationId}/sign-in?${urlParams.toString()}`);
   }

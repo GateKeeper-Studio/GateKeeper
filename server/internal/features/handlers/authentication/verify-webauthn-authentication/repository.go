@@ -7,7 +7,6 @@ import (
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type IRepository interface {
@@ -18,130 +17,21 @@ type IRepository interface {
 	GetMfaMethodByUserID(ctx context.Context, userID uuid.UUID, method string) (*entities.MfaMethod, error)
 	GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error)
 	UpdateWebAuthnCredentialSignCount(ctx context.Context, credID uuid.UUID, signCount uint32) error
-	AddAuthorizationSession(ctx context.Context, sessionCode *entities.SessionCode) error
+	AddSessionCode(ctx context.Context, sessionCode *entities.SessionCode) error
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.MfaRepository
+	repositories.UserRepository
+	repositories.UserProfileRepository
+	repositories.SessionRepository
 }
 
-func (r Repository) GetMfaWebauthnSessionByID(ctx context.Context, id uuid.UUID) (*entities.MfaWebauthnSession, error) {
-	session, err := r.Store.GetMfaWebauthnSessionByID(ctx, id)
-	if err == repositories.ErrNoRows {
-		return nil, nil
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		MfaRepository:         repositories.MfaRepository{Store: q},
+		UserRepository:        repositories.UserRepository{Store: q},
+		UserProfileRepository: repositories.UserProfileRepository{Store: q},
+		SessionRepository:     repositories.SessionRepository{Store: q},
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &entities.MfaWebauthnSession{
-		ID:          session.ID,
-		UserID:      session.UserID,
-		SessionData: session.SessionData,
-		CreatedAt:   session.CreatedAt.Time,
-		ExpiresAt:   session.ExpiresAt.Time,
-	}, nil
-}
-
-func (r Repository) DeleteMfaWebauthnSession(ctx context.Context, id uuid.UUID) error {
-	return r.Store.DeleteMfaWebauthnSession(ctx, id)
-}
-
-func (r Repository) GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.ApplicationUser, error) {
-	user, err := r.Store.GetUserByEmail(ctx, pgstore.GetUserByEmailParams{
-		Email:         email,
-		ApplicationID: applicationID,
-	})
-	if err == repositories.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &entities.ApplicationUser{
-		ID:                 user.ID,
-		Email:              user.Email,
-		CreatedAt:          user.CreatedAt.Time,
-		UpdatedAt:          user.UpdatedAt,
-		IsActive:           user.IsActive,
-		IsEmailConfirmed:   user.IsEmailConfirmed,
-		ApplicationID:      user.ApplicationID,
-		Preferred2FAMethod: user.Preferred2faMethod,
-	}, nil
-}
-
-func (r Repository) GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error) {
-	userProfile, err := r.Store.GetUserProfileByUserId(ctx, userID)
-	if err == repositories.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &entities.UserProfile{
-		UserID:      userProfile.UserID,
-		DisplayName: userProfile.DisplayName,
-		FirstName:   userProfile.FirstName,
-		LastName:    userProfile.LastName,
-		Address:     userProfile.Address,
-		PhoneNumber: userProfile.PhoneNumber,
-		PhotoURL:    userProfile.PhotoUrl,
-	}, nil
-}
-
-func (r Repository) GetMfaMethodByUserID(ctx context.Context, userID uuid.UUID, method string) (*entities.MfaMethod, error) {
-	mfaMethod, err := r.Store.GetMfaMethodByUserIDAndMethod(ctx, pgstore.GetMfaMethodByUserIDAndMethodParams{
-		UserID: userID,
-		Type:   method,
-	})
-	if err == repositories.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &entities.MfaMethod{
-		ID:         mfaMethod.ID,
-		UserID:     mfaMethod.UserID,
-		Type:       mfaMethod.Type,
-		Enabled:    mfaMethod.Enabled,
-		CreatedAt:  mfaMethod.CreatedAt.Time,
-		LastUsedAt: mfaMethod.LastUsedAt,
-	}, nil
-}
-
-func (r Repository) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error) {
-	rows, err := r.Store.GetMfaWebauthnCredentialsByMfaMethodID(ctx, mfaMethodID)
-	if err != nil {
-		return nil, err
-	}
-	creds := make([]entities.MfaWebauthnCredentials, 0, len(rows))
-	for _, row := range rows {
-		creds = append(creds, entities.MfaWebauthnCredentials{
-			ID:           row.ID,
-			MfaMethodID:  row.MfaMethodID,
-			CredentialID: row.CredentialID,
-			PublicKey:    row.PublicKey,
-			SignCount:    uint32(row.SignCount),
-			CreatedAt:    row.CreatedAt.Time,
-		})
-	}
-	return creds, nil
-}
-
-func (r Repository) UpdateWebAuthnCredentialSignCount(ctx context.Context, credID uuid.UUID, signCount uint32) error {
-	return r.Store.UpdateMfaWebauthnCredentialSignCount(ctx, pgstore.UpdateMfaWebauthnCredentialSignCountParams{
-		ID:        credID,
-		SignCount: int32(signCount),
-	})
-}
-
-func (r Repository) AddAuthorizationSession(ctx context.Context, sessionCode *entities.SessionCode) error {
-	return r.Store.AddAuthorizationSession(ctx, pgstore.AddAuthorizationSessionParams{
-		ID:        sessionCode.ID,
-		UserID:    sessionCode.UserID,
-		Token:     sessionCode.Token,
-		CreatedAt: pgtype.Timestamp{Time: sessionCode.CreatedAt, Valid: true},
-		ExpiresAt: pgtype.Timestamp{Time: sessionCode.ExpiresAt, Valid: true},
-		IsUsed:    sessionCode.IsUsed,
-	})
 }

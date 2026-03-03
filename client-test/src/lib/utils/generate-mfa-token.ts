@@ -7,7 +7,7 @@ export async function generateMfaToken(): Promise<Response> {
   const sessionData = (await sessionResponse.json()) as GateKeeperSession;
 
   const response = await fetch(
-    "http://192.168.0.140:8080/v1/auth/generate-auth-secret",
+    "http://localhost:8080/v1/auth/generate-auth-secret",
     {
       method: "POST",
       body: JSON.stringify({
@@ -17,7 +17,7 @@ export async function generateMfaToken(): Promise<Response> {
       headers: {
         "Content-Type": "application/json",
       },
-    }
+    },
   );
 
   const data = (await response.json()) as Response;

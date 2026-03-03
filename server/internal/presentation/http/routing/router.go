@@ -5,6 +5,7 @@ import (
 
 	configureoauthprovider "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/configure-oauth-provider"
 	getproviderdatabyid "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/get-provider-data-by-id"
+	getprovidersdatabyapplicationid "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/get-providers-data-by-application-id"
 	githubcallback "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/github-callback"
 	githublogin "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/github-login"
 	googlecallback "github.com/gate-keeper/internal/features/handlers/application-oauth-provider/google-callback"
@@ -19,6 +20,8 @@ import (
 	editapplicationuser "github.com/gate-keeper/internal/features/handlers/application-user/edit-application-user"
 	getapplicationuserbyid "github.com/gate-keeper/internal/features/handlers/application-user/get-application-user-by-id"
 	listapplicationusers "github.com/gate-keeper/internal/features/handlers/application-user/list-application-users"
+	listusersessions "github.com/gate-keeper/internal/features/handlers/application-user/list-user-sessions"
+	revokeusersession "github.com/gate-keeper/internal/features/handlers/application-user/revoke-user-session"
 	createapplication "github.com/gate-keeper/internal/features/handlers/application/create-application"
 	getapplicationauthdata "github.com/gate-keeper/internal/features/handlers/application/get-application-auth-data"
 	getapplicationbyid "github.com/gate-keeper/internal/features/handlers/application/get-application-by-id"
@@ -33,11 +36,13 @@ import (
 	forgotpassword "github.com/gate-keeper/internal/features/handlers/authentication/forgot-password"
 	generateauthappsecret "github.com/gate-keeper/internal/features/handlers/authentication/generate-auth-app-secret"
 	login "github.com/gate-keeper/internal/features/handlers/authentication/login"
+	oidcdiscovery "github.com/gate-keeper/internal/features/handlers/authentication/oidc-discovery"
 	resendemailconfirmation "github.com/gate-keeper/internal/features/handlers/authentication/resend-email-confirmation"
 	resetpassword "github.com/gate-keeper/internal/features/handlers/authentication/reset-password"
 	"github.com/gate-keeper/internal/features/handlers/authentication/session"
 	signincredential "github.com/gate-keeper/internal/features/handlers/authentication/sign-in-credential"
 	signupcredential "github.com/gate-keeper/internal/features/handlers/authentication/sign-up-credential"
+	userinfo "github.com/gate-keeper/internal/features/handlers/authentication/userinfo"
 	verifyappmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-app-mfa"
 	verifyemailmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-email-mfa"
 	verifywebauthnauth "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-authentication"
@@ -66,6 +71,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 
 	configureOauthProviderEndPoint := configureoauthprovider.Endpoint{DbPool: pool}
 	getProviderDataByIDEndpoint := getproviderdatabyid.Endpoint{DbPool: pool}
+	getProvidersDataByApplicationIDEndpoint := getprovidersdatabyapplicationid.Endpoint{DbPool: pool}
 
 	listRolesEndpoint := listroles.Endpoint{DbPool: pool}
 	createRoleEndpoint := createrole.Endpoint{DbPool: pool}
@@ -85,6 +91,8 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	deleteApplicationUserEndpoint := deleteapplicationuser.Endpoint{DbPool: pool}
 	getApplicationUserByIdEndpoint := getapplicationuserbyid.Endpoint{DbPool: pool}
 	listApplicationUsersEndpoint := listapplicationusers.Endpoint{DbPool: pool}
+	listUserSessionsEndpoint := listusersessions.Endpoint{DbPool: pool}
+	revokeUserSessionEndpoint := revokeusersession.Endpoint{DbPool: pool}
 
 	authorizeEndpoint := authorize.Endpoint{DbPool: pool}
 	changePasswordEndpoint := changepassword.Endpoint{DbPool: pool}
@@ -109,6 +117,9 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 
 	googleLoginEndpoint := googlelogin.Endpoint{DbPool: pool}
 	googleCallbackEndpoint := googlecallback.Endpoint{DbPool: pool}
+
+	oidcDiscoveryEndpoint := oidcdiscovery.Endpoint{}
+	userinfoEndpoint := userinfo.Endpoint{DbPool: pool}
 
 	r := chi.NewRouter()
 
@@ -136,6 +147,9 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 		writter.Write([]byte("Healthy"))
 	})
 
+	// OIDC Discovery document
+	r.Get("/.well-known/openid-configuration", oidcDiscoveryEndpoint.Http)
+
 	// Routes v1
 	r.Route("/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
@@ -146,6 +160,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 
 			r.Post("/authorize", authorizeEndpoint.Http)
 			r.Post("/sign-in", signInCredentialEndpoint.Http)
+			r.Get("/userinfo", userinfoEndpoint.Http)
 			r.Post("/login", loginEndpoint.Http)
 			r.Post("/generate-auth-secret", generateAuthAppSecretEndpoint.Http)
 			r.Post("/verify-mfa/email", verfifyEmailMfaEndpoint.Http)
@@ -201,6 +216,9 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 						r.Put("/{userID}", updateApplicationUserEndpoint.Http)
 						r.Get("/{userID}", getApplicationUserByIdEndpoint.Http)
 						r.Delete("/{userID}", deleteApplicationUserEndpoint.Http)
+
+						r.Get("/{userID}/sessions", listUserSessionsEndpoint.Http)
+						r.Delete("/{userID}/sessions/{sessionID}", revokeUserSessionEndpoint.Http)
 					})
 
 					r.Route("/{applicationID}/roles", func(r chi.Router) {
@@ -215,6 +233,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 					})
 
 					r.Route("/{applicationID}/oauth-provider", func(r chi.Router) {
+						r.Get("/", getProvidersDataByApplicationIDEndpoint.Http)
 						r.Put("/", configureOauthProviderEndPoint.Http)
 					})
 				})

@@ -67,6 +67,14 @@ func (m *mockSignInRepo) AddRefreshToken(ctx context.Context, rt *entities.Refre
 	return args.Get(0).(*entities.RefreshToken), args.Error(1)
 }
 
+func (m *mockSignInRepo) GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error) {
+	args := m.Called(ctx, applicationID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.Application), args.Error(1)
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -129,11 +137,10 @@ func newTestProfile(userID uuid.UUID) *entities.UserProfile {
 func newTestRefreshToken(userID uuid.UUID) *entities.RefreshToken {
 	id, _ := uuid.NewV7()
 	return &entities.RefreshToken{
-		ID:                 id,
-		UserID:             userID,
-		AvailableRefreshes: 5,
-		ExpiresAt:          time.Now().UTC().Add(7 * 24 * time.Hour),
-		CreatedAt:          time.Now().UTC(),
+		ID:        id,
+		UserID:    userID,
+		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
+		CreatedAt: time.Now().UTC(),
 	}
 }
 
@@ -297,9 +304,17 @@ func TestHandler_SignIn_Success(t *testing.T) {
 	profile := newTestProfile(user.ID)
 	rt := newTestRefreshToken(user.ID)
 
+	app := &entities.Application{
+		ID:                  appID,
+		Name:                "Test App",
+		IsActive:            true,
+		RefreshTokenTTLDays: 7,
+	}
+
 	repo.On("GetAuthorizationCodeById", mock.Anything, authCode.ID).Return(authCode, nil)
 	repo.On("ListSecretsFromApplication", mock.Anything, appID).Return(secrets, nil)
 	repo.On("RemoveAuthorizationCode", mock.Anything, user.ID, appID).Return(nil)
+	repo.On("GetApplicationByID", mock.Anything, appID).Return(app, nil)
 	repo.On("GetUserByID", mock.Anything, user.ID).Return(user, nil)
 	repo.On("RevokeRefreshTokenFromUser", mock.Anything, user.ID).Return(nil)
 	repo.On("AddRefreshToken", mock.Anything, mock.AnythingOfType("*entities.RefreshToken")).Return(rt, nil)

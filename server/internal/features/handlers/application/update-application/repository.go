@@ -2,9 +2,8 @@ package updateapplication
 
 import (
 	"context"
-	"strings"
-
 	"github.com/gate-keeper/internal/domain/entities"
+	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 )
 
@@ -13,28 +12,11 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.ApplicationRepository
 }
 
-func (r Repository) UpdateApplication(ctx context.Context, newApplication *entities.Application) error {
-	badges := strings.Join(newApplication.Badges, ",")
-
-	err := r.Store.UpdateApplication(ctx, pgstore.UpdateApplicationParams{
-		ID:                newApplication.ID,
-		Name:              newApplication.Name,
-		Description:       newApplication.Description,
-		HasMfaAuthApp:     newApplication.HasMfaAuthApp,
-		Badges:            &badges,
-		IsActive:          newApplication.IsActive,
-		HasMfaEmail:       newApplication.HasMfaEmail,
-		UpdatedAt:         newApplication.UpdatedAt,
-		CanSelfSignUp:     newApplication.CanSelfSignUp,
-		CanSelfForgotPass: newApplication.CanSelfForgotPass,
-	})
-
-	if err != nil {
-		return err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		ApplicationRepository: repositories.ApplicationRepository{Store: q},
 	}
-
-	return nil
 }

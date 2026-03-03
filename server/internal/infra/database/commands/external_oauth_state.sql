@@ -12,6 +12,7 @@ INSERT INTO
     code_verifier,
     client_response_type,
     client_redirect_uri,
+    client_nonce,
     created_at
   )
 VALUES
@@ -36,6 +37,8 @@ VALUES
     -- client_response_type
     sqlc.arg('client_redirect_uri'),
     -- client_redirect_uri
+    sqlc.arg('client_nonce'),
+    -- client_nonce
     sqlc.arg('created_at') -- created_at
   );
 
@@ -52,6 +55,7 @@ SELECT
   code_verifier,
   client_response_type,
   client_redirect_uri,
+  client_nonce,
   created_at
 FROM
   external_oauth_state

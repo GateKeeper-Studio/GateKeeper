@@ -4,7 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { startRegistration } from "@simplewebauthn/browser";
 
-import { FormType } from "./user-detail-form";
+import { FormType } from "../schema";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {

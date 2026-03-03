@@ -7,6 +7,7 @@ export async function POST(request: NextRequest) {
   const clientId = process.env.GATEKEEPER_CLIENT_ID || "";
 
   const state = randomBytes(16).toString("hex");
+  const nonce = randomBytes(16).toString("hex");
 
   // Se estiver utilizando PKCE, gere o code_verifier e o code_challenge aqui
   const codeVerifier = randomBytes(32).toString("hex");
@@ -19,10 +20,11 @@ export async function POST(request: NextRequest) {
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
     state,
+    nonce,
   });
 
   // Endpoint do Identity Provider que realiza a autorização
-  const authorizationEndpoint = `http://192.168.0.140:3000/auth/${clientId}/sign-in?${params.toString()}`;
+  const authorizationEndpoint = `http://localhost:3000/auth/${clientId}/sign-in?${params.toString()}`;
   const response = NextResponse.json({ url: authorizationEndpoint });
 
   response.cookies.set("gk_code_verifier", codeVerifier, {
@@ -33,6 +35,13 @@ export async function POST(request: NextRequest) {
   });
 
   response.cookies.set("gk_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    sameSite: "lax",
+  });
+
+  response.cookies.set("gk_nonce", nonce, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     path: "/",

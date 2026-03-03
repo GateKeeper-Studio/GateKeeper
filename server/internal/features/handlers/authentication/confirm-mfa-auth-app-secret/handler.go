@@ -16,7 +16,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandler[Command] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -41,7 +41,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		return &errors.ErrMfaAuthAppNotEnabled
 	}
 
-	mfaTotpSecretValidation, err := s.repository.GetMfaTotpSecretValidationByUserId(ctx, command.UserID)
+	mfaTotpSecretValidation, err := s.repository.GetMfaTotpSecretValidationByUserID(ctx, command.UserID)
 
 	if err != nil {
 		return err

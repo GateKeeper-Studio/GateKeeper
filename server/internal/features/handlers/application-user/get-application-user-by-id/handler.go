@@ -15,7 +15,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Query, *Response] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -75,7 +75,7 @@ func (s *Handler) Handler(ctx context.Context, query Query) (*Response, error) {
 		}
 	}
 
-	application, err := s.repository.GetApplicationByUserID(ctx, user.ApplicationID)
+	application, err := s.repository.GetApplicationByID(ctx, user.ApplicationID)
 
 	if err != nil {
 		return nil, err

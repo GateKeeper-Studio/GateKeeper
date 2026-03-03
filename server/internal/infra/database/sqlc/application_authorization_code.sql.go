@@ -22,7 +22,9 @@ INSERT INTO
         code,
         redirect_uri,
         code_challenge,
-        code_challenge_method
+        code_challenge_method,
+        nonce,
+        scope
     )
 VALUES
     (
@@ -33,7 +35,9 @@ VALUES
         $5,
         $6,
         $7,
-        $8
+        $8,
+        $9,
+        $10
     )
 `
 
@@ -46,6 +50,8 @@ type AddAuthorizationCodeParams struct {
 	RedirectUri         string           `db:"redirect_uri"`
 	CodeChallenge       string           `db:"code_challenge"`
 	CodeChallengeMethod string           `db:"code_challenge_method"`
+	Nonce               *string          `db:"nonce"`
+	Scope               *string          `db:"scope"`
 }
 
 // ----------------------------------COMMANDS--------------------------------------
@@ -60,6 +66,8 @@ func (q *Queries) AddAuthorizationCode(ctx context.Context, arg AddAuthorization
 		arg.RedirectUri,
 		arg.CodeChallenge,
 		arg.CodeChallengeMethod,
+		arg.Nonce,
+		arg.Scope,
 	)
 	return err
 }
@@ -73,7 +81,9 @@ SELECT
     code,
     redirect_uri,
     code_challenge,
-    code_challenge_method
+    code_challenge_method,
+    nonce,
+    scope
 FROM
     application_authorization_code
 WHERE
@@ -94,6 +104,8 @@ func (q *Queries) GetAuthorizationCodeById(ctx context.Context, id uuid.UUID) (A
 		&i.RedirectUri,
 		&i.CodeChallenge,
 		&i.CodeChallengeMethod,
+		&i.Nonce,
+		&i.Scope,
 	)
 	return i, err
 }

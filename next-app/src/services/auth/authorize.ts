@@ -11,6 +11,7 @@ type Request = {
   scope: string;
   state: string;
   codeChallenge: string;
+  nonce?: string;
   mfaId?: string;
 };
 
@@ -33,6 +34,7 @@ export async function authorizeApi({
   scope,
   state,
   codeChallenge,
+  nonce,
 }: Request): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.post<Response>(`/v1/auth/authorize`, {
@@ -45,6 +47,7 @@ export async function authorizeApi({
       scope,
       codeChallenge,
       state,
+      nonce,
     });
     return [data, null];
   } catch (error: unknown) {

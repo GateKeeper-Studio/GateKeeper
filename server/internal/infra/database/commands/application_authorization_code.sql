@@ -10,7 +10,9 @@ INSERT INTO
         code,
         redirect_uri,
         code_challenge,
-        code_challenge_method
+        code_challenge_method,
+        nonce,
+        scope
     )
 VALUES
     (
@@ -21,7 +23,9 @@ VALUES
         sqlc.arg('code'),
         sqlc.arg('redirect_uri'),
         sqlc.arg('code_challenge'),
-        sqlc.arg('code_challenge_method')
+        sqlc.arg('code_challenge_method'),
+        sqlc.arg('nonce'),
+        sqlc.arg('scope')
     );
 
 -- name: RemoveAuthorizationCode :exec
@@ -43,7 +47,9 @@ SELECT
     code,
     redirect_uri,
     code_challenge,
-    code_challenge_method
+    code_challenge_method,
+    nonce,
+    scope
 FROM
     application_authorization_code
 WHERE

@@ -25,6 +25,7 @@ INSERT INTO
     code_verifier,
     client_response_type,
     client_redirect_uri,
+    client_nonce,
     created_at
   )
 VALUES
@@ -49,7 +50,9 @@ VALUES
     -- client_response_type
     $10,
     -- client_redirect_uri
-    $11 -- created_at
+    $11,
+    -- client_nonce
+    $12 -- created_at
   )
 `
 
@@ -64,6 +67,7 @@ type AddExternalOAuthStateParams struct {
 	CodeVerifier               string           `db:"code_verifier"`
 	ClientResponseType         *string          `db:"client_response_type"`
 	ClientRedirectUri          *string          `db:"client_redirect_uri"`
+	ClientNonce                *string          `db:"client_nonce"`
 	CreatedAt                  pgtype.Timestamp `db:"created_at"`
 }
 
@@ -80,6 +84,7 @@ func (q *Queries) AddExternalOAuthState(ctx context.Context, arg AddExternalOAut
 		arg.CodeVerifier,
 		arg.ClientResponseType,
 		arg.ClientRedirectUri,
+		arg.ClientNonce,
 		arg.CreatedAt,
 	)
 	return err
@@ -97,6 +102,7 @@ SELECT
   code_verifier,
   client_response_type,
   client_redirect_uri,
+  client_nonce,
   created_at
 FROM
   external_oauth_state
@@ -115,6 +121,7 @@ type GetExternalOAuthStateByStateRow struct {
 	CodeVerifier               string           `db:"code_verifier"`
 	ClientResponseType         *string          `db:"client_response_type"`
 	ClientRedirectUri          *string          `db:"client_redirect_uri"`
+	ClientNonce                *string          `db:"client_nonce"`
 	CreatedAt                  pgtype.Timestamp `db:"created_at"`
 }
 
@@ -133,6 +140,7 @@ func (q *Queries) GetExternalOAuthStateByState(ctx context.Context, providerStat
 		&i.CodeVerifier,
 		&i.ClientResponseType,
 		&i.ClientRedirectUri,
+		&i.ClientNonce,
 		&i.CreatedAt,
 	)
 	return i, err

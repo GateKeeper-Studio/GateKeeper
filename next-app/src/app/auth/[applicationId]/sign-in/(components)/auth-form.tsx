@@ -20,6 +20,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { GithubLogo } from "@/app/dashboard/[organizationId]/application/[applicationId]/(components)/application-details-content/providers/github-logo";
+import { GoogleLogo } from "@/app/dashboard/[organizationId]/application/[applicationId]/(components)/application-details-content/providers/google-logo";
 
 import { formSchema } from "./auth-schema";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,8 +32,6 @@ import { ApplicationAuthData } from "@/services/auth/get-application-auth-data";
 import { ErrorAlert } from "@/components/error-alert";
 import { EMfaType, loginApi } from "@/services/auth/login";
 
-import { GithubLogo } from "@/app/dashboard/[organizationId]/application/[applicationId]/(components)/providers/github-logo";
-import { GoogleLogo } from "@/app/dashboard/[organizationId]/application/[applicationId]/(components)/providers/google-logo";
 import { api } from "@/services/base/gatekeeper-api";
 
 type Props = {
@@ -49,6 +49,7 @@ export function AuthForm({ application }: Props) {
   const scope = searchParams.get("scope") || "";
   const state = searchParams.get("state") || "";
   const codeChallenge = searchParams.get("code_challenge") || "";
+  const nonce = searchParams.get("nonce") || "";
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -68,6 +69,7 @@ export function AuthForm({ application }: Props) {
     code_challenge_method: codeChallengeMethod,
     code_challenge: codeChallenge,
     state,
+    ...(nonce ? { nonce } : {}),
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -172,6 +174,7 @@ export function AuthForm({ application }: Props) {
       codeChallengeMethod,
       codeChallenge,
       state,
+      nonce: nonce || undefined,
       mfaId: loginData.mfaId,
     });
 
@@ -211,9 +214,9 @@ export function AuthForm({ application }: Props) {
         clientCodeChallengeMethod: codeChallengeMethod,
         clientRedirectUri: redirectUri,
         clientState: state,
-
         clientResponseType: responseType,
         clientScope: scope,
+        clientNonce: nonce || undefined,
       },
     );
 

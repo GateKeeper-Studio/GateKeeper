@@ -15,12 +15,12 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandler[Command] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
 func (s *Handler) Handler(ctx context.Context, command Command) error {
-	organization, err := s.repository.GetOrganizationById(ctx, command.ID)
+	organization, err := s.repository.GetOrganizationByID(ctx, command.ID)
 
 	if err != nil {
 		return err

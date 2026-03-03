@@ -2,7 +2,7 @@ package deleteapplicationuser
 
 import (
 	"context"
-
+	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
 )
@@ -13,24 +13,13 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.ApplicationRepository
+	repositories.UserRepository
 }
 
-func (r Repository) CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error) {
-	isApplicationExists, err := r.Store.CheckIfApplicationExists(ctx, applicationID)
-
-	if err != nil {
-		return false, err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+		UserRepository: repositories.UserRepository{Store: q},
 	}
-
-	return isApplicationExists, nil
-}
-
-func (r Repository) DeleteApplicationUser(ctx context.Context, applicationID, userID uuid.UUID) error {
-	err := r.Store.DeleteApplicationUser(ctx, pgstore.DeleteApplicationUserParams{
-		ID:            userID,
-		ApplicationID: applicationID,
-	})
-
-	return err
 }

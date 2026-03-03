@@ -16,7 +16,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *Response] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -37,6 +37,8 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		command.RedirectUri,
 		command.CodeChallenge,
 		command.CodeChallengeMethod,
+		nil,
+		nil,
 	)
 
 	if err != nil {

@@ -4,9 +4,9 @@ import { generateCodeChallenge } from "../../sign-in/route";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  
-  const clientId = process.env.GATEKEEPER_CLIENT_ID || ""; 
-  
+
+  const clientId = process.env.GATEKEEPER_CLIENT_ID || "";
+
   const code = searchParams.get("code") ?? "";
   const state = searchParams.get("state");
   const redirectUri = searchParams.get("redirect_uri");
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     codeChallengeMethod,
     responseType,
     scope,
-  })
+  });
 
   // Recupera os cookies armazenados na rota de login
   const stateCookie = request.cookies.get("gk_state");
@@ -62,11 +62,11 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Invalid Code", { status: 400 });
   }
 
-  const response = NextResponse.redirect("http://192.168.0.140:3001/auth/callback");
+  const response = NextResponse.redirect("http://localhost:3001/auth/callback");
 
   const [encryptedSession, err] = await hashSessionObjectWithPassword(
     data,
-    process.env.SESSION_SECRET || ""
+    process.env.SESSION_SECRET || "",
   );
 
   if (err) {

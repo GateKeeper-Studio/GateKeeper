@@ -2,7 +2,6 @@ package listorganizations
 
 import (
 	"context"
-
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
@@ -13,27 +12,11 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.OrganizationRepository
 }
 
-func (r Repository) ListOrganizations(ctx context.Context) (*[]entities.Organization, error) {
-	organizations, err := r.Store.ListOrganizations(ctx)
-
-	if err != nil && err != repositories.ErrNoRows {
-		return nil, err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		OrganizationRepository: repositories.OrganizationRepository{Store: q},
 	}
-
-	var organizationList []entities.Organization
-
-	for _, organization := range organizations {
-		organizationList = append(organizationList, entities.Organization{
-			ID:          organization.ID,
-			Name:        organization.Name,
-			CreatedAt:   organization.CreatedAt.Time,
-			UpdatedAt:   organization.UpdatedAt,
-			Description: organization.Description,
-		})
-	}
-
-	return &organizationList, nil
 }

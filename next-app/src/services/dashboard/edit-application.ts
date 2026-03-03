@@ -12,6 +12,7 @@ type Request = {
   isActive: boolean;
   canSelfSignUp: boolean;
   canSelfForgotPass: boolean;
+  refreshTokenTtlDays: number;
 };
 
 type Response = {
@@ -24,6 +25,7 @@ type Response = {
   isActive: boolean;
   canSelfSignUp: boolean;
   canSelfForgotPass: boolean;
+  refreshTokenTtlDays: number;
 };
 
 export async function editApplicationApi(
@@ -38,8 +40,9 @@ export async function editApplicationApi(
     isActive,
     canSelfForgotPass,
     canSelfSignUp,
+    refreshTokenTtlDays,
   }: Request,
-  { accessToken }: IServiceOptions
+  { accessToken }: IServiceOptions,
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.put<Response>(
@@ -55,12 +58,13 @@ export async function editApplicationApi(
         isActive,
         canSelfForgotPass,
         canSelfSignUp,
+        refreshTokenTtlDays,
       },
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-      }
+      },
     );
     return [data, null];
   } catch (error: unknown) {

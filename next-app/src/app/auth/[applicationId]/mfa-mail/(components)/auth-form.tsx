@@ -49,6 +49,7 @@ export function AuthForm() {
   const mfaAuthAppRequired = searchParams.get("mfa_auth_app_required") || "";
   const userId = searchParams.get("user_id") || "";
   const mfaId = searchParams.get("mfa_id") || "";
+  const nonce = searchParams.get("nonce") || "";
 
   const urlParams = new URLSearchParams({
     redirect_uri: redirectUri,
@@ -60,6 +61,7 @@ export function AuthForm() {
     mfa_auth_app_required: mfaAuthAppRequired,
     email,
     mfa_id: mfaId,
+    ...(nonce ? { nonce } : {}),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -102,7 +104,7 @@ export function AuthForm() {
       urlParams.append("user_id", userId);
 
       router.push(
-        `/auth/${applicationId}/update-password?${urlParams.toString()}`
+        `/auth/${applicationId}/update-password?${urlParams.toString()}`,
       );
       return;
     }
@@ -117,6 +119,7 @@ export function AuthForm() {
       codeChallengeMethod,
       codeChallenge,
       state,
+      nonce: nonce || undefined,
     });
 
     if (authorizeErr) {

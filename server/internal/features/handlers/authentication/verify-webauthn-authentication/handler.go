@@ -22,7 +22,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *Response] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -119,7 +119,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
-	if err := s.repository.AddAuthorizationSession(ctx, authorizationSession); err != nil {
+	if err := s.repository.AddSessionCode(ctx, authorizationSession); err != nil {
 		return nil, err
 	}
 

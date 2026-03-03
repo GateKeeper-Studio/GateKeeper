@@ -2,7 +2,7 @@ package removeapplication
 
 import (
 	"context"
-
+	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
 )
@@ -12,15 +12,11 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.ApplicationRepository
 }
 
-func (r Repository) RemoveApplication(ctx context.Context, applicationID uuid.UUID) error {
-	err := r.Store.DeleteApplication(ctx, applicationID)
-
-	if err != nil {
-		return err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		ApplicationRepository: repositories.ApplicationRepository{Store: q},
 	}
-
-	return nil
 }

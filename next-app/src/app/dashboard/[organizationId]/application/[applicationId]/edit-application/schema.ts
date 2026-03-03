@@ -14,4 +14,5 @@ export const formSchema = z.object({
   hasMfaWebauthn: z.boolean(),
   canSelfSignUp: z.boolean(),
   canSelfForgotPass: z.boolean(),
+  refreshTokenTtlDays: z.number().min(1).max(365),
 });

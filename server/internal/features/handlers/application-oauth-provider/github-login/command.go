@@ -12,4 +12,6 @@ type Command struct {
 	ClientScope               string    `json:"clientScope"`
 	ClientResponseType        string    `json:"clientResponseType"`
 	ClientRedirectUri         string    `json:"clientRedirectUri"`
+	// OIDC nonce for ID Token binding
+	ClientNonce string `json:"clientNonce"`
 }

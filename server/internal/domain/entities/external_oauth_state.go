@@ -18,6 +18,7 @@ type ExternalOAuthState struct {
 	ClientScope               string
 	ClientResponseType        string
 	ClientRedirectUri         string
+	ClientNonce               *string
 
 	CreatedAt time.Time
 }
@@ -32,6 +33,7 @@ func AddExternalOAuthState(
 	clientScope string,
 	clientResponseType string,
 	clientRedirectUri string,
+	clientNonce *string,
 ) *ExternalOAuthState {
 	newId, err := uuid.NewV7()
 
@@ -50,6 +52,7 @@ func AddExternalOAuthState(
 		ClientScope:                clientScope,
 		ClientResponseType:         clientResponseType,
 		ClientRedirectUri:          clientRedirectUri,
+		ClientNonce:                clientNonce,
 		CreatedAt:                  time.Now(),
 	}
 }

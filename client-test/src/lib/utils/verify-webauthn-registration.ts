@@ -11,7 +11,7 @@ export async function verifyWebAuthnRegistration({
   const sessionData = (await sessionResponse.json()) as GateKeeperSession;
 
   const response = await fetch(
-    "http://192.168.0.140:8080/v1/auth/webauthn/verify-registration",
+    "http://localhost:8080/v1/auth/webauthn/verify-registration",
     {
       method: "POST",
       body: JSON.stringify({
@@ -23,14 +23,14 @@ export async function verifyWebAuthnRegistration({
       headers: {
         "Content-Type": "application/json",
       },
-    }
+    },
   );
 
   if (!response.ok) {
     const errorData = (await response.json()) as { message?: string };
 
     throw new Error(
-      errorData.message || "Failed to verify WebAuthn registration"
+      errorData.message || "Failed to verify WebAuthn registration",
     );
   }
 }

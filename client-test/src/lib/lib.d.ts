@@ -8,6 +8,8 @@ type GateKeeperSession = {
     applicationId: string;
   };
   accessToken: string;
+  idToken?: string;
+  refreshToken?: string;
 };
 
 type GateKeeperSessionError = {

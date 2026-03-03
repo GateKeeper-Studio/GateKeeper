@@ -17,30 +17,83 @@ type JWTClaims struct {
 	ApplicationID uuid.UUID
 }
 
-// CreateToken creates a JWT token with the given claims and key
+// CreateToken creates an OAuth2 access token (JWT) with OIDC-compatible claims
 func CreateToken(claims JWTClaims) (string, error) {
+	return createTokenWithOptions(claims, nil, nil)
+}
+
+// CreateIDToken creates an OIDC ID Token with optional nonce claim
+func CreateIDToken(claims JWTClaims, nonce *string, audience string) (string, error) {
+	return createIDTokenWithOptions(claims, nonce, audience)
+}
+
+func createTokenWithOptions(claims JWTClaims, nonce *string, audience interface{}) (string, error) {
 	key := []byte(os.Getenv("JWT_SECRET"))
+	issuer := os.Getenv("ISSUER_URL")
+	if issuer == "" {
+		issuer = "https://proxymity.tech/guard"
+	}
+
+	now := time.Now()
 
 	mappedClaims := jwt.MapClaims{
-		"oid":         claims.UserID.String(),
+		// OIDC standard claims
+		"sub":         claims.UserID.String(),
+		"oid":         claims.UserID.String(), // legacy alias
 		"given_name":  claims.FirstName,
 		"family_name": claims.LastName,
 		"name":        claims.DisplayName,
 		"email":       claims.Email,
 		"app_id":      claims.ApplicationID.String(),
-		"aud":         "https://proxymity.tech/guard",
-		"exp":         time.Now().Add(time.Minute * 45).Unix(),
-		"iss":         "https://proxymity.tech/guard",
+		// JWT registered claims
+		"aud": "https://proxymity.tech/guard",
+		"exp": now.Add(time.Minute * 15).Unix(),
+		"iat": now.Unix(),
+		"nbf": now.Unix(),
+		"iss": issuer,
+		"jti": uuid.New().String(),
+	}
+
+	if nonce != nil && *nonce != "" {
+		mappedClaims["nonce"] = *nonce
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, mappedClaims)
-	tokenString, err := token.SignedString(key)
+	return token.SignedString(key)
+}
 
-	if err != nil {
-		return "", err
+func createIDTokenWithOptions(claims JWTClaims, nonce *string, audience string) (string, error) {
+	key := []byte(os.Getenv("JWT_SECRET"))
+	issuer := os.Getenv("ISSUER_URL")
+	if issuer == "" {
+		issuer = "https://proxymity.tech/guard"
 	}
 
-	return tokenString, nil
+	now := time.Now()
+
+	mappedClaims := jwt.MapClaims{
+		// OIDC required claims for ID Token (RFC 7519 + OIDC Core 1.0)
+		"iss":       issuer,
+		"sub":       claims.UserID.String(),
+		"aud":       audience,
+		"exp":       now.Add(time.Minute * 15).Unix(),
+		"iat":       now.Unix(),
+		"auth_time": now.Unix(),
+		"jti":       uuid.New().String(),
+		// OIDC standard profile claims
+		"given_name":  claims.FirstName,
+		"family_name": claims.LastName,
+		"name":        claims.DisplayName,
+		"email":       claims.Email,
+		"app_id":      claims.ApplicationID.String(),
+	}
+
+	if nonce != nil && *nonce != "" {
+		mappedClaims["nonce"] = *nonce
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, mappedClaims)
+	return token.SignedString(key)
 }
 
 func ValidateToken(jwtToken string) (bool, string, error) {
@@ -60,7 +113,7 @@ func ValidateToken(jwtToken string) (bool, string, error) {
 		return false, "", err
 	}
 
-	return token.Valid, claims["oid"].(string), nil
+	return token.Valid, claims["sub"].(string), nil
 }
 
 func DecodeToken(jwtToken string) (*JWTClaims, error) {
@@ -81,7 +134,7 @@ func DecodeToken(jwtToken string) (*JWTClaims, error) {
 	}
 
 	return &JWTClaims{
-		UserID:        uuid.MustParse(claims["oid"].(string)),
+		UserID:        uuid.MustParse(claims["sub"].(string)),
 		FirstName:     claims["given_name"].(string),
 		LastName:      claims["family_name"].(string),
 		DisplayName:   claims["name"].(string),

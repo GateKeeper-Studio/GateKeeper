@@ -13,7 +13,7 @@ export async function confirmMfaUserSecret({
   const sessionData = (await sessionResponse.json()) as GateKeeperSession;
 
   const response = await fetch(
-    "http://192.168.0.140:8080/v1/auth/confirm-mfa-auth-app-secret",
+    "http://localhost:8080/v1/auth/confirm-mfa-auth-app-secret",
     {
       method: "POST",
       body: JSON.stringify({
@@ -23,7 +23,7 @@ export async function confirmMfaUserSecret({
       headers: {
         "Content-Type": "application/json",
       },
-    }
+    },
   );
 
   const data = (await response.json()) as Response;
@@ -33,7 +33,7 @@ export async function confirmMfaUserSecret({
 
     throw new Error(
       (data as unknown as { message: string }).message ||
-        "Failed to confirm MFA secret"
+        "Failed to confirm MFA secret",
     );
   }
 

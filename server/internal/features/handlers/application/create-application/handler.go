@@ -14,7 +14,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *Response] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -47,8 +47,8 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	adminRole := entities.NewApplicationRole(newApplication.ID, "Admin", &adminRoleDescription)
 
 	// Add default roles
-	s.repository.AddApplicationRole(ctx, userRole)
-	s.repository.AddApplicationRole(ctx, adminRole)
+	s.repository.AddRole(ctx, userRole)
+	s.repository.AddRole(ctx, adminRole)
 
 	return &Response{
 		ID: newApplication.ID,

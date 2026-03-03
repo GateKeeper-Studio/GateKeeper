@@ -2,10 +2,9 @@ package createorganization
 
 import (
 	"context"
-
 	"github.com/gate-keeper/internal/domain/entities"
+	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type IRepository interface {
@@ -13,20 +12,11 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.OrganizationRepository
 }
 
-func (r Repository) AddOrganization(ctx context.Context, organization *entities.Organization) error {
-	err := r.Store.AddOrganization(ctx, pgstore.AddOrganizationParams{
-		UserID:      organization.ID,
-		Name:        organization.Name,
-		Description: organization.Description,
-		CreatedAt:   pgtype.Timestamp{Time: organization.CreatedAt, Valid: true},
-	})
-
-	if err != nil {
-		return err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		OrganizationRepository: repositories.OrganizationRepository{Store: q},
 	}
-
-	return nil
 }

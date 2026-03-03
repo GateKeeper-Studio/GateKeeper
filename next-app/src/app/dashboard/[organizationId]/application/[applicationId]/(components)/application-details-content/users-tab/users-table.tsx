@@ -347,7 +347,7 @@ export function UsersTable({
             )}
 
             <Link
-              href={`/dashboard/${selectedOrganization?.id}/application/create-application`}
+              href={`/dashboard/${selectedOrganization?.id}/application/${applicationId}/user/create-user`}
               className={cn(buttonVariants({ variant: "default" }), "ml-auto")}
             >
               <Plus /> Add User

@@ -15,7 +15,7 @@ type Handler struct {
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *ServiceResponse] {
 	return &Handler{
-		repository: Repository{Store: q},
+		repository: NewRepository(q),
 	}
 }
 
@@ -39,10 +39,17 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		request.ClientState,
 		request.ClientCodeChallengeMethod,
 		request.ClientCodeChallenge,
-		nil, // This is the CodeVerifier. GitHub does not use PKCE by default
+		nil, // GitHub does not use PKCE by default
 		request.ClientScope,
 		request.ClientResponseType,
 		request.ClientRedirectUri,
+		func() *string {
+			if request.ClientNonce != "" {
+				n := request.ClientNonce
+				return &n
+			}
+			return nil
+		}(),
 	)
 
 	if err := s.repository.AddExternalOAuthState(ctx, externalOauthState); err != nil {

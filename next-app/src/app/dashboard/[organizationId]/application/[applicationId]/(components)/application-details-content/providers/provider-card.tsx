@@ -45,7 +45,7 @@ export function ProviderCard({
   const organizationId = useParams().organizationId as string;
 
   const [drafts, setDrafts] = useState<OAuthProvider["inputs"]>(
-    provider.inputs
+    provider.inputs,
   );
 
   const [draftIsEnabled, setDraftIsEnabled] = useState(provider.isEnabled);
@@ -97,7 +97,7 @@ export function ProviderCard({
         name: provider.id,
         organizationId,
       },
-      { accessToken: "fake-token" }
+      { accessToken: "fake-token" },
     );
 
     if (err) {
@@ -119,12 +119,12 @@ export function ProviderCard({
   return (
     <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
       <SheetTrigger>
-        <Card className="transition-all hover:scale-[1.01] hover:cursor-pointer hover:shadow-lg flex overflow-hidden">
+        <Card className="flex-row py-0 transition-all hover:scale-[1.01] hover:cursor-pointer hover:shadow-lg flex overflow-hidden">
           <div className="flex items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
             <provider.logo />
           </div>
 
-          <div className="flex flex-col">
+          <div className="flex flex-col py-4">
             <CardHeader>
               <CardTitle className="flex flex-wrap justify-between gap-4">
                 {provider.name}

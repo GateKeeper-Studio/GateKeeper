@@ -2,11 +2,10 @@ package createsecret
 
 import (
 	"context"
-
 	"github.com/gate-keeper/internal/domain/entities"
+	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type IRepository interface {
@@ -15,29 +14,13 @@ type IRepository interface {
 }
 
 type Repository struct {
-	Store *pgstore.Queries
+	repositories.ApplicationRepository
+	repositories.SecretRepository
 }
 
-func (r Repository) CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error) {
-	isApplicationExists, err := r.Store.CheckIfApplicationExists(ctx, applicationID)
-
-	if err != nil {
-		return false, err
+func NewRepository(q *pgstore.Queries) Repository {
+	return Repository{
+		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+		SecretRepository: repositories.SecretRepository{Store: q},
 	}
-
-	return isApplicationExists, nil
-}
-
-func (r Repository) AddSecret(ctx context.Context, newSecret *entities.ApplicationSecret) error {
-	err := r.Store.AddSecret(ctx, pgstore.AddSecretParams{
-		ID:            newSecret.ID,
-		ApplicationID: newSecret.ApplicationID,
-		Name:          newSecret.Name,
-		Value:         newSecret.Value,
-		CreatedAt:     pgtype.Timestamp{Time: newSecret.CreatedAt, Valid: true},
-		UpdatedAt:     newSecret.UpdatedAt,
-		ExpiresAt:     newSecret.ExpiresAt,
-	})
-
-	return err
 }
