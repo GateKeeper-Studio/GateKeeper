@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gate-keeper/internal/domain/constants"
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
@@ -57,7 +56,8 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
-	if userCredentials.ShouldChangePass {
+	// If user has credentials and is required to change password, return error to prompt user to change password before authorizing
+	if userCredentials != nil && userCredentials.ShouldChangePass {
 		return nil, &errors.ErrUserShouldChangePassword
 	}
 
@@ -73,27 +73,6 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 
 	if sessionCode.ExpiresAt.Before(time.Now().UTC()) {
 		return nil, &errors.ErrSessionCodeExpired
-	}
-
-	if user.Preferred2FAMethod != nil && *user.Preferred2FAMethod == constants.MfaMethodTotp {
-		if command.MfaID == nil {
-			return nil, &errors.ErrMfaCodeRequired
-		}
-
-		mfaTotpCode, err := s.repository.GetMfaTotpCodeByID(ctx, *command.MfaID)
-
-		if err != nil {
-			return nil, err
-		}
-
-		if mfaTotpCode == nil {
-			return nil, &errors.ErrMfaCodeNotFound
-		}
-
-		// Delete the MFA app code after successful authorization
-		if err := s.repository.DeleteMfaTotpCode(ctx, user.ID); err != nil {
-			return nil, err
-		}
 	}
 
 	if err := s.repository.DeleteSessionCodeByID(ctx, sessionCode.ID); err != nil {

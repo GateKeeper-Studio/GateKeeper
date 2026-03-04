@@ -37,6 +37,14 @@ SET
 WHERE
     id = sqlc.arg('id');
 
+-- name: DisableMfaMethod :exec
+UPDATE
+    mfa_method
+SET
+    enabled = false
+WHERE
+    id = sqlc.arg('id');
+
 ------------------------------------QUERIES--------------------------------------
 -- name: GetMfaMethodByUserIDAndMethod :one
 SELECT

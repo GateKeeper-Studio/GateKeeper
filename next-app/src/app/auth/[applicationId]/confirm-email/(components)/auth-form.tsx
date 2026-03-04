@@ -43,6 +43,7 @@ export function AuthForm() {
   const responseType = searchParams.get("response_type") || "";
   const codeChallenge = searchParams.get("code_challenge") || "";
   const codeChallengeMethod = searchParams.get("code_challenge_method") || "";
+  const nonce = searchParams.get("nonce") || "";
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -64,6 +65,7 @@ export function AuthForm() {
       state,
       codeChallenge,
       redirectUri,
+      nonce,
     });
 
     if (err) {

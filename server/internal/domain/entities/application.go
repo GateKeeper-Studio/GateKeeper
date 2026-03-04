@@ -8,40 +8,42 @@ import (
 
 // Application represents an application within the system. Each application is tied to an organization
 type Application struct {
-	ID                  uuid.UUID
-	OrganizationID      uuid.UUID
-	Name                string
-	Description         *string
-	CanSelfSignUp       bool
-	CanSelfForgotPass   bool
-	IsActive            bool
-	HasMfaAuthApp       bool
-	HasMfaEmail         bool
-	HasMfaWebauthn      bool
-	PasswordHashSecret  string
-	Badges              []string
-	RefreshTokenTTLDays int
-	CreatedAt           time.Time
-	UpdatedAt           *time.Time
+	ID                   uuid.UUID
+	OrganizationID       uuid.UUID
+	Name                 string
+	Description          *string
+	CanSelfSignUp        bool
+	CanSelfForgotPass    bool
+	IsActive             bool
+	HasMfaAuthApp        bool
+	HasMfaEmail          bool
+	HasMfaWebauthn       bool
+	RequiresHighSecurity bool
+	PasswordHashSecret   string
+	Badges               []string
+	RefreshTokenTTLDays  int
+	CreatedAt            time.Time
+	UpdatedAt            *time.Time
 }
 
-func NewApplication(ID uuid.UUID, name string, description *string, organizationID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, createdAt time.Time, canSelfSignUp, canSelfForgotPass bool, refreshTokenTTLDays int) *Application {
+func NewApplication(ID uuid.UUID, name string, description *string, organizationID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, createdAt time.Time, canSelfSignUp, canSelfForgotPass bool, refreshTokenTTLDays int, requiresHighSecurity bool) *Application {
 	return &Application{
-		ID:                  ID,
-		OrganizationID:      organizationID,
-		Name:                name,
-		Description:         description,
-		CreatedAt:           createdAt,
-		UpdatedAt:           updatedAt,
-		PasswordHashSecret:  passwordHashSecret,
-		IsActive:            isActive,
-		HasMfaAuthApp:       hasMfaAuthApp,
-		HasMfaEmail:         hasMfaEmail,
-		HasMfaWebauthn:      hasMfaWebauthn,
-		Badges:              badges,
-		RefreshTokenTTLDays: refreshTokenTTLDays,
-		CanSelfSignUp:       canSelfSignUp,
-		CanSelfForgotPass:   canSelfForgotPass,
+		ID:                   ID,
+		OrganizationID:       organizationID,
+		Name:                 name,
+		Description:          description,
+		CreatedAt:            createdAt,
+		UpdatedAt:            updatedAt,
+		PasswordHashSecret:   passwordHashSecret,
+		IsActive:             isActive,
+		HasMfaAuthApp:        hasMfaAuthApp,
+		HasMfaEmail:          hasMfaEmail,
+		HasMfaWebauthn:       hasMfaWebauthn,
+		RequiresHighSecurity: requiresHighSecurity,
+		Badges:               badges,
+		RefreshTokenTTLDays:  refreshTokenTTLDays,
+		CanSelfSignUp:        canSelfSignUp,
+		CanSelfForgotPass:    canSelfForgotPass,
 	}
 }
 

@@ -55,6 +55,54 @@ func (q *Queries) AddMfaTotpSecretValidation(ctx context.Context, arg AddMfaTotp
 	return err
 }
 
+const deleteExpiredMfaTotpSecretValidationByUserID = `-- name: DeleteExpiredMfaTotpSecretValidationByUserID :exec
+DELETE FROM
+    mfa_totp_secret_validation
+WHERE
+    user_id = $1
+    AND expires_at < NOW()
+    AND is_validated = false
+`
+
+func (q *Queries) DeleteExpiredMfaTotpSecretValidationByUserID(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteExpiredMfaTotpSecretValidationByUserID, userID)
+	return err
+}
+
+const getLastValidMfaTotpSecretByUserID = `-- name: GetLastValidMfaTotpSecretByUserID :one
+SELECT
+    id,
+    user_id,
+    secret,
+    is_validated,
+    created_at,
+    expires_at
+FROM
+    mfa_totp_secret_validation
+WHERE
+    user_id = $1
+    AND is_validated = false
+    AND expires_at > NOW()
+ORDER BY
+    created_at DESC
+LIMIT
+    1
+`
+
+func (q *Queries) GetLastValidMfaTotpSecretByUserID(ctx context.Context, userID uuid.UUID) (MfaTotpSecretValidation, error) {
+	row := q.db.QueryRow(ctx, getLastValidMfaTotpSecretByUserID, userID)
+	var i MfaTotpSecretValidation
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Secret,
+		&i.IsValidated,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const getMfaTotpSecretValidationByUserId = `-- name: GetMfaTotpSecretValidationByUserId :one
 SELECT
     id,

@@ -116,6 +116,31 @@ func ValidateToken(jwtToken string) (bool, string, error) {
 	return token.Valid, claims["sub"].(string), nil
 }
 
+// ValidateTokenWithLeeway validates a JWT allowing recently-expired tokens (up to `leeway` past expiry).
+// This is used by the token refresh endpoint so clients can obtain a new token even if the current one
+// just expired.
+func ValidateTokenWithLeeway(jwtToken string, leeway time.Duration) (bool, string, error) {
+	key := []byte(os.Getenv("JWT_SECRET"))
+
+	parser := jwt.NewParser(jwt.WithLeeway(leeway))
+
+	token, err := parser.Parse(jwtToken, func(token *jwt.Token) (interface{}, error) {
+		return key, nil
+	})
+
+	if err != nil {
+		return false, "", err
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+
+	if !ok {
+		return false, "", err
+	}
+
+	return token.Valid, claims["sub"].(string), nil
+}
+
 func DecodeToken(jwtToken string) (*JWTClaims, error) {
 	key := []byte(os.Getenv("JWT_SECRET"))
 

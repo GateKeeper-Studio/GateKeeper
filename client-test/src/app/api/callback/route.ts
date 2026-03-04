@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const response = NextResponse.redirect("http://localhost:3001/auth/callback");
+  const response = NextResponse.redirect("http://localhost:3001");
 
   const [encryptedSession, err] = await hashSessionObjectWithPassword(
     data,

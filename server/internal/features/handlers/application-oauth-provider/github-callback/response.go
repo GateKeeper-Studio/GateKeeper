@@ -1,6 +1,9 @@
 package githubcallback
 
-import "github.com/google/uuid"
+import (
+	application_utils "github.com/gate-keeper/internal/features/utils"
+	"github.com/google/uuid"
+)
 
 type ServiceResponse struct {
 	RedirectURL               string
@@ -13,6 +16,9 @@ type ServiceResponse struct {
 	ClientScope               string
 	ClientResponseType        string
 	ClientRedirectUri         string
+	ClientNonce               *string
+	MfaRequired               bool
+	MfaChallenge              *application_utils.MfaChallengeResult
 }
 
 type GitHubUserData struct {

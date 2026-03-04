@@ -40,6 +40,7 @@ export function AuthForm({}: Props) {
   const scope = searchParams.get("scope") || "";
   const state = searchParams.get("state") || "";
   const codeChallenge = searchParams.get("code_challenge") || "";
+  const nonce = searchParams.get("nonce") || "";
 
   const urlParams = new URLSearchParams({
     redirect_uri: redirectUri,
@@ -48,6 +49,7 @@ export function AuthForm({}: Props) {
     code_challenge_method: codeChallengeMethod,
     code_challenge: codeChallenge,
     state,
+    ...(nonce ? { nonce } : {}),
   });
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -85,7 +87,7 @@ export function AuthForm({}: Props) {
     toast.success("Account created successfully");
 
     router.push(
-      `/auth/${applicationId}/confirm-email?${urlParams.toString()}&email=${values.email.trim()}`
+      `/auth/${applicationId}/confirm-email?${urlParams.toString()}&email=${values.email.trim()}`,
     );
   }
 

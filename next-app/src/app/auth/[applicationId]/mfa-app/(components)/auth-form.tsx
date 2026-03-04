@@ -121,6 +121,7 @@ export function AuthForm() {
       codeChallengeMethod,
       codeChallenge,
       state,
+      mfaId,
       nonce: nonce || undefined,
     });
 

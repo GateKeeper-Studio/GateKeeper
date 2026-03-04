@@ -20,6 +20,8 @@ INSERT INTO
         credential_id,
         public_key,
         sign_count,
+        backup_eligible,
+        backup_state,
         created_at
     )
 VALUES
@@ -29,17 +31,21 @@ VALUES
         $3,
         $4,
         $5,
-        $6
+        $6,
+        $7,
+        $8
     )
 `
 
 type AddMfaWebauthnCredentialParams struct {
-	ID           uuid.UUID        `db:"id"`
-	MfaMethodID  uuid.UUID        `db:"mfa_method_id"`
-	CredentialID string           `db:"credential_id"`
-	PublicKey    string           `db:"public_key"`
-	SignCount    int32            `db:"sign_count"`
-	CreatedAt    pgtype.Timestamp `db:"created_at"`
+	ID             uuid.UUID        `db:"id"`
+	MfaMethodID    uuid.UUID        `db:"mfa_method_id"`
+	CredentialID   string           `db:"credential_id"`
+	PublicKey      string           `db:"public_key"`
+	SignCount      int32            `db:"sign_count"`
+	BackupEligible bool             `db:"backup_eligible"`
+	BackupState    bool             `db:"backup_state"`
+	CreatedAt      pgtype.Timestamp `db:"created_at"`
 }
 
 // ----------------------------------COMMANDS--------------------------------------
@@ -50,6 +56,8 @@ func (q *Queries) AddMfaWebauthnCredential(ctx context.Context, arg AddMfaWebaut
 		arg.CredentialID,
 		arg.PublicKey,
 		arg.SignCount,
+		arg.BackupEligible,
+		arg.BackupState,
 		arg.CreatedAt,
 	)
 	return err
@@ -74,6 +82,8 @@ SELECT
     credential_id,
     public_key,
     sign_count,
+    backup_eligible,
+    backup_state,
     created_at
 FROM
     mfa_webauthn_credentials
@@ -87,15 +97,28 @@ type GetMfaWebauthnCredentialByCredentialIDParams struct {
 	MfaMethodID  uuid.UUID `db:"mfa_method_id"`
 }
 
-func (q *Queries) GetMfaWebauthnCredentialByCredentialID(ctx context.Context, arg GetMfaWebauthnCredentialByCredentialIDParams) (MfaWebauthnCredential, error) {
+type GetMfaWebauthnCredentialByCredentialIDRow struct {
+	ID             uuid.UUID        `db:"id"`
+	MfaMethodID    uuid.UUID        `db:"mfa_method_id"`
+	CredentialID   string           `db:"credential_id"`
+	PublicKey      string           `db:"public_key"`
+	SignCount      int32            `db:"sign_count"`
+	BackupEligible bool             `db:"backup_eligible"`
+	BackupState    bool             `db:"backup_state"`
+	CreatedAt      pgtype.Timestamp `db:"created_at"`
+}
+
+func (q *Queries) GetMfaWebauthnCredentialByCredentialID(ctx context.Context, arg GetMfaWebauthnCredentialByCredentialIDParams) (GetMfaWebauthnCredentialByCredentialIDRow, error) {
 	row := q.db.QueryRow(ctx, getMfaWebauthnCredentialByCredentialID, arg.CredentialID, arg.MfaMethodID)
-	var i MfaWebauthnCredential
+	var i GetMfaWebauthnCredentialByCredentialIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.MfaMethodID,
 		&i.CredentialID,
 		&i.PublicKey,
 		&i.SignCount,
+		&i.BackupEligible,
+		&i.BackupState,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -108,6 +131,8 @@ SELECT
     credential_id,
     public_key,
     sign_count,
+    backup_eligible,
+    backup_state,
     created_at
 FROM
     mfa_webauthn_credentials
@@ -115,22 +140,35 @@ WHERE
     mfa_method_id = $1
 `
 
+type GetMfaWebauthnCredentialsByMfaMethodIDRow struct {
+	ID             uuid.UUID        `db:"id"`
+	MfaMethodID    uuid.UUID        `db:"mfa_method_id"`
+	CredentialID   string           `db:"credential_id"`
+	PublicKey      string           `db:"public_key"`
+	SignCount      int32            `db:"sign_count"`
+	BackupEligible bool             `db:"backup_eligible"`
+	BackupState    bool             `db:"backup_state"`
+	CreatedAt      pgtype.Timestamp `db:"created_at"`
+}
+
 // ----------------------------------QUERIES--------------------------------------
-func (q *Queries) GetMfaWebauthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]MfaWebauthnCredential, error) {
+func (q *Queries) GetMfaWebauthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]GetMfaWebauthnCredentialsByMfaMethodIDRow, error) {
 	rows, err := q.db.Query(ctx, getMfaWebauthnCredentialsByMfaMethodID, mfaMethodID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []MfaWebauthnCredential
+	var items []GetMfaWebauthnCredentialsByMfaMethodIDRow
 	for rows.Next() {
-		var i MfaWebauthnCredential
+		var i GetMfaWebauthnCredentialsByMfaMethodIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.MfaMethodID,
 			&i.CredentialID,
 			&i.PublicKey,
 			&i.SignCount,
+			&i.BackupEligible,
+			&i.BackupState,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

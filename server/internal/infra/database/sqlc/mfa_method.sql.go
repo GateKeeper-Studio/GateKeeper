@@ -68,6 +68,20 @@ func (q *Queries) AddMfaMethod(ctx context.Context, arg AddMfaMethodParams) erro
 	return err
 }
 
+const disableMfaMethod = `-- name: DisableMfaMethod :exec
+UPDATE
+    mfa_method
+SET
+    enabled = false
+WHERE
+    id = $1
+`
+
+func (q *Queries) DisableMfaMethod(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, disableMfaMethod, id)
+	return err
+}
+
 const enableMfaMethod = `-- name: EnableMfaMethod :exec
 UPDATE
     mfa_method

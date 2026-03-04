@@ -17,6 +17,7 @@ func (e *CustomError) Error() string {
 
 var (
 	ErrUserNotFound           = CustomError{Name: "ErrUserNotFound", Code: http.StatusNotFound, Message: "User was not found in the system", Title: "User not found"}
+	ErrUserProfileNotFound    = CustomError{Name: "ErrUserProfileNotFound", Code: http.StatusInternalServerError, Message: "User profile not found", Title: "User profile not found"}
 	ErrEmailOrPasswordInvalid = CustomError{Name: "ErrEmailOrPasswordInvalid", Code: http.StatusBadRequest, Message: "E-mail/password is incorrect or invalid", Title: "Invalid e-mail or password"}
 	ErrInvalidEmail           = CustomError{Name: "ErrInvalidEmail", Code: http.StatusBadRequest, Message: "Invalid e-mail address, please provide a valid e-mail address", Title: "Invalid e-mail"}
 	ErrEmailNotConfirmed      = CustomError{Name: "ErrEmailNotConfirmed", Code: http.StatusBadRequest, Message: "E-mail not confirmed, please confirm your e-mail address to continue", Title: "E-mail not confirmed"}
@@ -103,10 +104,31 @@ var (
 	ErrWebAuthnRegistrationFailed   = CustomError{Name: "ErrWebAuthnRegistrationFailed", Code: http.StatusBadRequest, Message: "WebAuthn registration verification failed", Title: "WebAuthn registration failed"}
 	ErrWebAuthnAuthenticationFailed = CustomError{Name: "ErrWebAuthnAuthenticationFailed", Code: http.StatusBadRequest, Message: "WebAuthn authentication verification failed", Title: "WebAuthn authentication failed"}
 	ErrWebAuthnNoCredentials        = CustomError{Name: "ErrWebAuthnNoCredentials", Code: http.StatusBadRequest, Message: "User has no registered WebAuthn credentials", Title: "No WebAuthn credentials"}
+
+	// Account / Self-Service Portal errors
+	ErrStepUpRequired           = CustomError{Name: "ErrStepUpRequired", Code: http.StatusForbidden, Message: "Step-up authentication is required for this action", Title: "Reauthentication required"}
+	ErrStepUpTokenNotFound      = CustomError{Name: "ErrStepUpTokenNotFound", Code: http.StatusNotFound, Message: "Step-up token not found or invalid", Title: "Step-up token not found"}
+	ErrStepUpTokenExpired       = CustomError{Name: "ErrStepUpTokenExpired", Code: http.StatusBadRequest, Message: "Step-up token has expired, please reauthenticate", Title: "Step-up token expired"}
+	ErrStepUpTokenAlreadyUsed   = CustomError{Name: "ErrStepUpTokenAlreadyUsed", Code: http.StatusBadRequest, Message: "Step-up token has already been used", Title: "Step-up token already used"}
+	ErrCurrentPasswordRequired  = CustomError{Name: "ErrCurrentPasswordRequired", Code: http.StatusBadRequest, Message: "Current password is required", Title: "Current password required"}
+	ErrCurrentPasswordIncorrect = CustomError{Name: "ErrCurrentPasswordIncorrect", Code: http.StatusBadRequest, Message: "Current password is incorrect", Title: "Incorrect current password"}
+	ErrPasswordTooWeak          = CustomError{Name: "ErrPasswordTooWeak", Code: http.StatusBadRequest, Message: "Password does not meet strength requirements: minimum 8 characters, at least one uppercase, one lowercase, one digit, and one special character", Title: "Password too weak"}
+	ErrPasswordSameAsCurrent    = CustomError{Name: "ErrPasswordSameAsCurrent", Code: http.StatusBadRequest, Message: "New password must be different from current password", Title: "Same password"}
+	ErrMfaAlreadyEnabled        = CustomError{Name: "ErrMfaAlreadyEnabled", Code: http.StatusBadRequest, Message: "MFA is already enabled for this user", Title: "MFA already enabled"}
+	ErrMfaNotEnabled            = CustomError{Name: "ErrMfaNotEnabled", Code: http.StatusBadRequest, Message: "MFA is not enabled for this user", Title: "MFA not enabled"}
+	ErrBackupCodesNotFound      = CustomError{Name: "ErrBackupCodesNotFound", Code: http.StatusNotFound, Message: "No backup codes found for this user", Title: "Backup codes not found"}
+	ErrBackupCodeInvalid        = CustomError{Name: "ErrBackupCodeInvalid", Code: http.StatusBadRequest, Message: "Invalid backup code", Title: "Invalid backup code"}
+	ErrEmailChangeNotFound      = CustomError{Name: "ErrEmailChangeNotFound", Code: http.StatusNotFound, Message: "Email change request not found", Title: "Email change not found"}
+	ErrEmailChangeExpired       = CustomError{Name: "ErrEmailChangeExpired", Code: http.StatusBadRequest, Message: "Email change request has expired", Title: "Email change expired"}
+	ErrEmailAlreadyInUse        = CustomError{Name: "ErrEmailAlreadyInUse", Code: http.StatusConflict, Message: "Email address is already in use", Title: "Email already in use"}
+	ErrSessionNotFound          = CustomError{Name: "ErrSessionNotFound", Code: http.StatusNotFound, Message: "Session not found", Title: "Session not found"}
+	ErrCannotRevokeCurrentSess  = CustomError{Name: "ErrCannotRevokeCurrentSess", Code: http.StatusBadRequest, Message: "Cannot revoke the current session", Title: "Cannot revoke current session"}
+	ErrReauthFailed             = CustomError{Name: "ErrReauthFailed", Code: http.StatusUnauthorized, Message: "Reauthentication failed", Title: "Reauthentication failed"}
 )
 
 var ErrorsList = map[string]CustomError{
 	"ErrUserNotFound":                        ErrUserNotFound,
+	"ErrUserProfileNotFound":                 ErrUserProfileNotFound,
 	"ErrEmailOrPasswordInvalid":              ErrEmailOrPasswordInvalid,
 	"ErrInvalidEmail":                        ErrInvalidEmail,
 	"ErrEmailNotConfirmed":                   ErrEmailNotConfirmed,
@@ -174,4 +196,22 @@ var ErrorsList = map[string]CustomError{
 	"ErrWebAuthnRegistrationFailed":          ErrWebAuthnRegistrationFailed,
 	"ErrWebAuthnAuthenticationFailed":        ErrWebAuthnAuthenticationFailed,
 	"ErrWebAuthnNoCredentials":               ErrWebAuthnNoCredentials,
+	"ErrStepUpRequired":                      ErrStepUpRequired,
+	"ErrStepUpTokenNotFound":                 ErrStepUpTokenNotFound,
+	"ErrStepUpTokenExpired":                  ErrStepUpTokenExpired,
+	"ErrStepUpTokenAlreadyUsed":              ErrStepUpTokenAlreadyUsed,
+	"ErrCurrentPasswordRequired":             ErrCurrentPasswordRequired,
+	"ErrCurrentPasswordIncorrect":            ErrCurrentPasswordIncorrect,
+	"ErrPasswordTooWeak":                     ErrPasswordTooWeak,
+	"ErrPasswordSameAsCurrent":               ErrPasswordSameAsCurrent,
+	"ErrMfaAlreadyEnabled":                   ErrMfaAlreadyEnabled,
+	"ErrMfaNotEnabled":                       ErrMfaNotEnabled,
+	"ErrBackupCodesNotFound":                 ErrBackupCodesNotFound,
+	"ErrBackupCodeInvalid":                   ErrBackupCodeInvalid,
+	"ErrEmailChangeNotFound":                 ErrEmailChangeNotFound,
+	"ErrEmailChangeExpired":                  ErrEmailChangeExpired,
+	"ErrEmailAlreadyInUse":                   ErrEmailAlreadyInUse,
+	"ErrSessionNotFound":                     ErrSessionNotFound,
+	"ErrCannotRevokeCurrentSess":             ErrCannotRevokeCurrentSess,
+	"ErrReauthFailed":                        ErrReauthFailed,
 }

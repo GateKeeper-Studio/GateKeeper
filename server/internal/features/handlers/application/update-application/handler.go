@@ -23,19 +23,20 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 	now := time.Now().UTC()
 
 	application := entities.Application{
-		ID:                  command.ID,
-		OrganizationID:      command.OrganizationID,
-		Name:                command.Name,
-		Description:         command.Description,
-		IsActive:            command.IsActive,
-		HasMfaAuthApp:       command.HasMfaAuthApp,
-		HasMfaEmail:         command.HasMfaEmail,
-		Badges:              command.Badges,
-		CreatedAt:           now,
-		UpdatedAt:           &now,
-		CanSelfSignUp:       command.CanSelfSignUp,
-		CanSelfForgotPass:   command.CanSelfForgotPass,
-		RefreshTokenTTLDays: command.RefreshTokenTTLDays,
+		ID:                   command.ID,
+		OrganizationID:       command.OrganizationID,
+		Name:                 command.Name,
+		Description:          command.Description,
+		IsActive:             command.IsActive,
+		HasMfaAuthApp:        command.HasMfaAuthApp,
+		HasMfaEmail:          command.HasMfaEmail,
+		Badges:               command.Badges,
+		CreatedAt:            now,
+		UpdatedAt:            &now,
+		CanSelfSignUp:        command.CanSelfSignUp,
+		CanSelfForgotPass:    command.CanSelfForgotPass,
+		RefreshTokenTTLDays:  command.RefreshTokenTTLDays,
+		RequiresHighSecurity: command.RequiresHighSecurity,
 	}
 
 	err := s.Repository.UpdateApplication(ctx, &application)

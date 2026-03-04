@@ -90,6 +90,10 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
+	if userProfile == nil {
+		return nil, &errors.ErrUserProfileNotFound
+	}
+
 	jwtClaims := application_utils.JWTClaims{
 		UserID:        user.ID,
 		Email:         user.Email,

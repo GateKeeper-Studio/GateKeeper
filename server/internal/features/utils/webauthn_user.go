@@ -3,6 +3,7 @@ package application_utils
 import (
 	"encoding/base64"
 	"os"
+	"strings"
 
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/go-webauthn/webauthn/webauthn"
@@ -48,6 +49,10 @@ func (w *WebAuthnUser) WebAuthnCredentials() []webauthn.Credential {
 		creds = append(creds, webauthn.Credential{
 			ID:        credIDBytes,
 			PublicKey: pubKeyBytes,
+			Flags: webauthn.CredentialFlags{
+				BackupEligible: c.BackupEligible,
+				BackupState:    c.BackupState,
+			},
 			Authenticator: webauthn.Authenticator{
 				SignCount: c.SignCount,
 			},
@@ -58,10 +63,16 @@ func (w *WebAuthnUser) WebAuthnCredentials() []webauthn.Credential {
 
 // NewWebAuthn creates a WebAuthn instance from environment variables.
 // Required env vars: WEBAUTHN_RPID, WEBAUTHN_RPORIGIN, WEBAUTHN_RP_DISPLAY_NAME
+// WEBAUTHN_RPORIGIN accepts a comma-separated list of allowed origins.
 func NewWebAuthn() (*webauthn.WebAuthn, error) {
+	origins := strings.Split(os.Getenv("WEBAUTHN_RPORIGIN"), ",")
+	for i := range origins {
+		origins[i] = strings.TrimSpace(origins[i])
+	}
+
 	return webauthn.New(&webauthn.Config{
 		RPDisplayName: os.Getenv("WEBAUTHN_RP_DISPLAY_NAME"),
 		RPID:          os.Getenv("WEBAUTHN_RPID"),
-		RPOrigins:     []string{os.Getenv("WEBAUTHN_RPORIGIN")},
+		RPOrigins:     origins,
 	})
 }

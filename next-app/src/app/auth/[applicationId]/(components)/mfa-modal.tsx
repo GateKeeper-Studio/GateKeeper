@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Mail, Smartphone } from "lucide-react";
+import { Fingerprint, Mail, Smartphone } from "lucide-react";
 
 export function MfaModal() {
   return (
@@ -28,7 +28,7 @@ export function MfaModal() {
         </DialogTrigger>
       </div>
 
-      <DialogContent className="top-[40%] sm:max-w-[620px]">
+      <DialogContent className="top-[40%] sm:max-w-155 ">
         <DialogHeader>
           <DialogTitle>Two Factor Methods</DialogTitle>
 
@@ -38,12 +38,12 @@ export function MfaModal() {
           </DialogDescription>
         </DialogHeader>
 
-        <Card className="w-full transition-all hover:scale-[1.01] hover:cursor-not-allowed hover:shadow-lg flex overflow-hidden">
+        <Card className="w-full transition-all hover:scale-[1.01] hover:cursor-not-allowed hover:shadow-lg flex p-0 flex-row overflow-hidden">
           <div className="flex items-center justify-center p-4 bg-muted">
             <Mail className="w-6 h-6 text-muted-foreground" />
           </div>
 
-          <CardHeader className="p-4">
+          <CardHeader className="p-4 w-full">
             <CardTitle className="flex gap-2 justify-between">
               E-mail <Badge variant="secondary">Not Configured</Badge>
             </CardTitle>
@@ -55,12 +55,12 @@ export function MfaModal() {
           </CardHeader>
         </Card>
 
-        <Card className="w-full transition-all hover:scale-[1.01] hover:cursor-pointer hover:shadow-lg flex overflow-hidden">
+        <Card className="w-full transition-all hover:scale-[1.01] hover:cursor-pointer hover:shadow-lg flex p-0 flex-row overflow-hidden">
           <div className="flex items-center justify-center p-4 bg-muted">
             <Smartphone className="w-6 h-6 text-muted-foreground" />
           </div>
 
-          <CardHeader className="p-4">
+          <CardHeader className="p-4 w-full">
             <CardTitle className="flex gap-2 justify-between">
               Authenticator App <Badge>Configured</Badge>
             </CardTitle>
@@ -68,6 +68,23 @@ export function MfaModal() {
               Authenticator apps generate time-based one-time codes on your
               device, providing a secure and convenient way to verify your
               identity.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card className="w-full transition-all hover:scale-[1.01] hover:cursor-pointer hover:shadow-lg flex p-0 flex-row overflow-hidden">
+          <div className="flex items-center justify-center p-4 bg-muted">
+            <Fingerprint className="w-6 h-6 text-muted-foreground" />
+          </div>
+
+          <CardHeader className="p-4 w-full">
+            <CardTitle className="flex gap-2 justify-between">
+              Passkey <Badge>Configured</Badge>
+            </CardTitle>
+            <CardDescription className="line-clamp-4">
+              Passkeys are a secure and convenient way to authenticate without
+              passwords. They use your device's built-in security features to
+              verify your identity.
             </CardDescription>
           </CardHeader>
         </Card>

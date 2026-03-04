@@ -7,6 +7,8 @@ INSERT INTO
         credential_id,
         public_key,
         sign_count,
+        backup_eligible,
+        backup_state,
         created_at
     )
 VALUES
@@ -16,6 +18,8 @@ VALUES
         sqlc.arg('credential_id'),
         sqlc.arg('public_key'),
         sqlc.arg('sign_count'),
+        sqlc.arg('backup_eligible'),
+        sqlc.arg('backup_state'),
         sqlc.arg('created_at')
     );
 
@@ -41,6 +45,8 @@ SELECT
     credential_id,
     public_key,
     sign_count,
+    backup_eligible,
+    backup_state,
     created_at
 FROM
     mfa_webauthn_credentials
@@ -54,6 +60,8 @@ SELECT
     credential_id,
     public_key,
     sign_count,
+    backup_eligible,
+    backup_state,
     created_at
 FROM
     mfa_webauthn_credentials

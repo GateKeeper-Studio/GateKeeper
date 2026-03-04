@@ -35,6 +35,7 @@ export async function authorizeApi({
   state,
   codeChallenge,
   nonce,
+  mfaId,
 }: Request): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.post<Response>(`/v1/auth/authorize`, {
@@ -47,6 +48,7 @@ export async function authorizeApi({
       scope,
       codeChallenge,
       state,
+      mfaId,
       nonce,
     });
     return [data, null];

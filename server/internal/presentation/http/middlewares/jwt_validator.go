@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	application_utils "github.com/gate-keeper/internal/features/utils"
+	http_router "github.com/gate-keeper/internal/presentation/http"
 )
 
 func JwtHandler(next http.Handler) http.Handler {
@@ -29,21 +30,18 @@ func JwtHandler(next http.Handler) http.Handler {
 		jwtToken := jwtTokenParts[1]
 		isValid, userID, err := application_utils.ValidateToken(jwtToken)
 
+		if err != nil {
+			WriteJSONError(w, http.StatusUnauthorized, "Unauthorized", err.Error(), ctx)
+			return
+		}
+
 		if !isValid {
 			WriteJSONError(w, http.StatusUnauthorized, "Unauthorized", "Invalid token", ctx)
 			return
 		}
 
-		if err != nil {
-			WriteJSONError(w, http.StatusUnauthorized, "Token Validation Error", err.Error(), ctx)
-			return
-		}
-
-		type contextKey string
-		const userIDKey contextKey = "userId"
-
-		// inject UserId on the request context
-		ctx = context.WithValue(ctx, userIDKey, userID)
+		// inject UserId on the request context using the shared key
+		ctx = context.WithValue(ctx, http_router.UserIDKey, userID)
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)

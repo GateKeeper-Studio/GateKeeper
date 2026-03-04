@@ -21,6 +21,7 @@ type Response struct {
 	CanSelfForgotPass     bool                 `json:"canSelfForgotPass"`
 	PasswordHashingSecret string               `json:"passwordHashingSecret"`
 	RefreshTokenTtlDays   int                  `json:"refreshTokenTtlDays"`
+	RequiresHighSecurity  bool                 `json:"requiresHighSecurity"`
 	Secrets               []ApplicationSecrets `json:"secrets"`
 }
 

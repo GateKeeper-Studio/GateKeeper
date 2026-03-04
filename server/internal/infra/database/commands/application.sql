@@ -49,7 +49,8 @@ SET
     updated_at = sqlc.arg('updated_at'),
     can_self_sign_up = sqlc.arg('can_self_sign_up'),
     can_self_forgot_pass = sqlc.arg('can_self_forgot_pass'),
-    refresh_token_ttl_days = sqlc.arg('refresh_token_ttl_days')
+    refresh_token_ttl_days = sqlc.arg('refresh_token_ttl_days'),
+    requires_high_security = sqlc.arg('requires_high_security')
 WHERE
     id = sqlc.arg('id');
 
@@ -87,7 +88,8 @@ SELECT
     updated_at,
     can_self_sign_up,
     can_self_forgot_pass,
-    refresh_token_ttl_days
+    refresh_token_ttl_days,
+    requires_high_security
 FROM
     "application"
 WHERE

@@ -94,6 +94,8 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		credential.ID,
 		credential.PublicKey,
 		credential.Authenticator.SignCount,
+		credential.Flags.BackupEligible,
+		credential.Flags.BackupState,
 	)
 	if err != nil {
 		return err

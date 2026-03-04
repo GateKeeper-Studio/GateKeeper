@@ -47,6 +47,24 @@ import (
 	verifyemailmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-email-mfa"
 	verifywebauthnauth "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-authentication"
 	verifywebauthnregistration "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-registration"
+
+	accountchangepassword "github.com/gate-keeper/internal/features/handlers/account/change-password"
+	accountconfirmemailchange "github.com/gate-keeper/internal/features/handlers/account/confirm-email-change"
+	accountdisablemfamethod "github.com/gate-keeper/internal/features/handlers/account/disable-mfa-method"
+	accountenableemailmfa "github.com/gate-keeper/internal/features/handlers/account/enable-email-mfa"
+	accountgeneratebackupcodes "github.com/gate-keeper/internal/features/handlers/account/generate-backup-codes"
+	accountgetlastmfatotpsecret "github.com/gate-keeper/internal/features/handlers/account/get-last-mfa-totp-secret-validation-by-user"
+	accountlistmfamethods "github.com/gate-keeper/internal/features/handlers/account/list-mfa-methods"
+	accountlistsessions "github.com/gate-keeper/internal/features/handlers/account/list-sessions"
+	accountme "github.com/gate-keeper/internal/features/handlers/account/me"
+	"github.com/gate-keeper/internal/features/handlers/account/reauthenticate"
+	accountrefreshtoken "github.com/gate-keeper/internal/features/handlers/account/refresh-token"
+	accountrequestemailchange "github.com/gate-keeper/internal/features/handlers/account/request-email-change"
+	accountrevokeallsessions "github.com/gate-keeper/internal/features/handlers/account/revoke-all-sessions"
+	accountrevokesession "github.com/gate-keeper/internal/features/handlers/account/revoke-session"
+	accountupdatepreferredmfa "github.com/gate-keeper/internal/features/handlers/account/update-preferred-mfa"
+	accountupdateprofile "github.com/gate-keeper/internal/features/handlers/account/update-profile"
+
 	createorganization "github.com/gate-keeper/internal/features/handlers/organization/create-organization"
 	editorganization "github.com/gate-keeper/internal/features/handlers/organization/edit-organization"
 	getorganizationbyid "github.com/gate-keeper/internal/features/handlers/organization/get-organization-by-id"
@@ -121,6 +139,24 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	oidcDiscoveryEndpoint := oidcdiscovery.Endpoint{}
 	userinfoEndpoint := userinfo.Endpoint{DbPool: pool}
 
+	// Account (Self-Service Portal)
+	reauthenticateEndpoint := reauthenticate.Endpoint{DbPool: pool}
+	accountChangePasswordEndpoint := accountchangepassword.Endpoint{DbPool: pool}
+	accountListMfaMethodsEndpoint := accountlistmfamethods.Endpoint{DbPool: pool}
+	accountUpdatePreferredMfaEndpoint := accountupdatepreferredmfa.Endpoint{DbPool: pool}
+	accountDisableMfaMethodEndpoint := accountdisablemfamethod.Endpoint{DbPool: pool}
+	accountEnableEmailMfaEndpoint := accountenableemailmfa.Endpoint{DbPool: pool}
+	accountGetLastMfaTotpSecretEndpoint := accountgetlastmfatotpsecret.Endpoint{DbPool: pool}
+	accountListSessionsEndpoint := accountlistsessions.Endpoint{DbPool: pool}
+	accountRevokeSessionEndpoint := accountrevokesession.Endpoint{DbPool: pool}
+	accountRevokeAllSessionsEndpoint := accountrevokeallsessions.Endpoint{DbPool: pool}
+	accountGenerateBackupCodesEndpoint := accountgeneratebackupcodes.Endpoint{DbPool: pool}
+	accountRequestEmailChangeEndpoint := accountrequestemailchange.Endpoint{DbPool: pool}
+	accountConfirmEmailChangeEndpoint := accountconfirmemailchange.Endpoint{DbPool: pool}
+	accountMeEndpoint := accountme.Endpoint{DbPool: pool}
+	accountUpdateProfileEndpoint := accountupdateprofile.Endpoint{DbPool: pool}
+	accountRefreshTokenEndpoint := accountrefreshtoken.Endpoint{DbPool: pool}
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
@@ -132,7 +168,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Step-Up-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: false,
 		MaxAge:           300, // 5 minutes
@@ -191,6 +227,70 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 				r.Get("/google/callback", googleCallbackEndpoint.Http)
 			})
 		})
+
+		r.Route("/account", func(r chi.Router) {
+			r.Use(http_middlewares.JwtHandler)
+
+			// Get current user profile
+			r.Get("/me", accountMeEndpoint.Http)
+
+			// Update profile
+			r.Put("/profile", accountUpdateProfileEndpoint.Http)
+
+			// Reauthenticate — issues a step-up token
+			r.Post("/reauthenticate", reauthenticateEndpoint.Http)
+
+			// Change password — requires step-up
+			r.Route("/change-password", func(r chi.Router) {
+				r.Use(http_middlewares.StepUpAuthHandler(pool))
+				r.Post("/", accountChangePasswordEndpoint.Http)
+			})
+
+			// MFA management
+			r.Route("/mfa", func(r chi.Router) {
+				r.Get("/methods", accountListMfaMethodsEndpoint.Http)
+				r.Put("/preferred", accountUpdatePreferredMfaEndpoint.Http)
+				r.Post("/enable-email", accountEnableEmailMfaEndpoint.Http)
+				r.Get("/totp-secret", accountGetLastMfaTotpSecretEndpoint.Http)
+				r.Route("/methods/{method}", func(r chi.Router) {
+					r.Use(http_middlewares.StepUpAuthHandler(pool))
+					r.Delete("/", accountDisableMfaMethodEndpoint.Http)
+				})
+			})
+
+			// Session management
+			r.Route("/sessions", func(r chi.Router) {
+				r.Group(func(r chi.Router) {
+					r.Use(http_middlewares.StepUpAuthHandler(pool))
+					r.Get("/", accountListSessionsEndpoint.Http)
+					r.Delete("/", accountRevokeAllSessionsEndpoint.Http)
+				})
+				r.Delete("/{sessionID}", accountRevokeSessionEndpoint.Http)
+			})
+
+			// Backup codes — requires step-up
+			r.Route("/backup-codes", func(r chi.Router) {
+				r.Use(http_middlewares.StepUpAuthHandler(pool))
+				r.Post("/", accountGenerateBackupCodesEndpoint.Http)
+			})
+
+			// Email change
+			r.Route("/email", func(r chi.Router) {
+				r.Route("/change", func(r chi.Router) {
+					r.Use(http_middlewares.StepUpAuthHandler(pool))
+					r.Post("/", accountRequestEmailChangeEndpoint.Http)
+				})
+			})
+		})
+
+		// Refresh token — uses JwtRefreshHandler (30-min leeway for expired tokens)
+		r.Route("/account/refresh", func(r chi.Router) {
+			r.Use(http_middlewares.JwtRefreshHandler)
+			r.Post("/", accountRefreshTokenEndpoint.Http)
+		})
+
+		// Confirm email change — public (token-based, no JWT required)
+		r.Post("/account/email/confirm", accountConfirmEmailChangeEndpoint.Http)
 
 		r.Route("/organizations", func(r chi.Router) {
 			// r.Use(http_middlewares.JwtHandler)

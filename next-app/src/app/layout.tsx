@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { ThemeProvider } from "@/contexts/theme-provider";
 import { cookies } from "next/headers";
+import { Geist, Geist_Mono } from "next/font/google";
+
+import "./globals.css";
+
+import { ThemeProvider } from "@/contexts/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,7 +18,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  // title: "GateKeeper",
+  title: "GateKeeper",
   description:
     "The GateKeeper is a lightweight and secure microservice for user authentication and session management. It handles user registration, password management, token-based authentication, and session lifecycle. Designed for scalability and cloud-native systems, it offers flexibility, reliability, and easy integration with role-based access control (RBAC).",
 };
@@ -32,6 +35,7 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <Toaster richColors />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

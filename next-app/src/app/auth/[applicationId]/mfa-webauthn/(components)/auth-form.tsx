@@ -34,7 +34,17 @@ export function AuthForm() {
     setIsLoading(true);
     setError(null);
 
-    const storedOptions = sessionStorage.getItem(`webauthn_options_${mfaId}`);
+    // Check sessionStorage first, then fall back to URL search params
+    // (OAuth callback flow passes webauthn_options as a query param)
+    let storedOptions = sessionStorage.getItem(`webauthn_options_${mfaId}`);
+
+    if (!storedOptions) {
+      const urlOptions = searchParams.get("webauthn_options");
+      if (urlOptions) {
+        storedOptions = urlOptions;
+        sessionStorage.setItem(`webauthn_options_${mfaId}`, urlOptions);
+      }
+    }
 
     if (!storedOptions) {
       setError("WebAuthn options not found. Please sign in again.");
@@ -133,6 +143,7 @@ export function AuthForm() {
     redirectUri,
     responseType,
     scope,
+    searchParams,
     state,
   ]);
 

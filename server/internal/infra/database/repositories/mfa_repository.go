@@ -14,6 +14,7 @@ type IMfaRepository interface {
 	GetMfaMethodByUserID(ctx context.Context, userID uuid.UUID, method string) (*entities.MfaMethod, error)
 	AddMfaMethod(ctx context.Context, mfaMethod *entities.MfaMethod) error
 	EnableMfaMethod(ctx context.Context, methodID uuid.UUID) error
+	DisableMfaMethod(ctx context.Context, methodID uuid.UUID) error
 	GetUserMfaMethods(ctx context.Context, userID uuid.UUID) ([]*entities.MfaMethod, error)
 	GetMfaTotpSecretValidationByUserID(ctx context.Context, userID uuid.UUID) (*entities.MfaUserSecret, error)
 	AddMfaTotpSecretValidation(ctx context.Context, mfaUserSecret *entities.MfaUserSecret) error
@@ -77,6 +78,10 @@ func (r MfaRepository) AddMfaMethod(ctx context.Context, mfaMethod *entities.Mfa
 
 func (r MfaRepository) EnableMfaMethod(ctx context.Context, methodID uuid.UUID) error {
 	return r.Store.EnableMfaMethod(ctx, methodID)
+}
+
+func (r MfaRepository) DisableMfaMethod(ctx context.Context, methodID uuid.UUID) error {
+	return r.Store.DisableMfaMethod(ctx, methodID)
 }
 
 func (r MfaRepository) GetUserMfaMethods(ctx context.Context, userID uuid.UUID) ([]*entities.MfaMethod, error) {
@@ -146,6 +151,26 @@ func (r MfaRepository) UpdateMfaTotpSecretValidation(ctx context.Context, mfaUse
 
 func (r MfaRepository) RevokeTotpSecretsByUserID(ctx context.Context, userID uuid.UUID) error {
 	return r.Store.RevokeMfaTotpSecretValidationFromUser(ctx, userID)
+}
+
+func (r MfaRepository) DeleteExpiredMfaTotpSecretValidationByUserID(ctx context.Context, userID uuid.UUID) error {
+	return r.Store.DeleteExpiredMfaTotpSecretValidationByUserID(ctx, userID)
+}
+
+func (r MfaRepository) GetLastValidMfaTotpSecretByUserID(ctx context.Context, userID uuid.UUID) (*entities.MfaUserSecret, error) {
+	row, err := r.Store.GetLastValidMfaTotpSecretByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &entities.MfaUserSecret{
+		ID:          row.ID,
+		UserID:      row.UserID,
+		Secret:      row.Secret,
+		IsValidated: row.IsValidated,
+		CreatedAt:   row.CreatedAt.Time,
+		ExpiresAt:   row.ExpiresAt.Time,
+	}, nil
 }
 
 // --- TOTP Codes ---
@@ -234,12 +259,14 @@ func (r MfaRepository) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, 
 	creds := make([]entities.MfaWebauthnCredentials, 0, len(rows))
 	for _, row := range rows {
 		creds = append(creds, entities.MfaWebauthnCredentials{
-			ID:           row.ID,
-			MfaMethodID:  row.MfaMethodID,
-			CredentialID: row.CredentialID,
-			PublicKey:    row.PublicKey,
-			SignCount:    uint32(row.SignCount),
-			CreatedAt:    row.CreatedAt.Time,
+			ID:             row.ID,
+			MfaMethodID:    row.MfaMethodID,
+			CredentialID:   row.CredentialID,
+			PublicKey:      row.PublicKey,
+			SignCount:      uint32(row.SignCount),
+			BackupEligible: row.BackupEligible,
+			BackupState:    row.BackupState,
+			CreatedAt:      row.CreatedAt.Time,
 		})
 	}
 
@@ -248,12 +275,14 @@ func (r MfaRepository) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, 
 
 func (r MfaRepository) AddWebAuthnCredential(ctx context.Context, cred *entities.MfaWebauthnCredentials) error {
 	return r.Store.AddMfaWebauthnCredential(ctx, pgstore.AddMfaWebauthnCredentialParams{
-		ID:           cred.ID,
-		MfaMethodID:  cred.MfaMethodID,
-		CredentialID: cred.CredentialID,
-		PublicKey:    cred.PublicKey,
-		SignCount:    int32(cred.SignCount),
-		CreatedAt:    pgtype.Timestamp{Time: cred.CreatedAt, Valid: true},
+		ID:             cred.ID,
+		MfaMethodID:    cred.MfaMethodID,
+		CredentialID:   cred.CredentialID,
+		PublicKey:      cred.PublicKey,
+		SignCount:      int32(cred.SignCount),
+		BackupEligible: cred.BackupEligible,
+		BackupState:    cred.BackupState,
+		CreatedAt:      pgtype.Timestamp{Time: cred.CreatedAt, Valid: true},
 	})
 }
 

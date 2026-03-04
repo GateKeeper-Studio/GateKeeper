@@ -12,4 +12,5 @@ type Command struct {
 	State               string    `json:"state" validate:"required"`
 	CodeChallenge       string    `json:"codeChallenge" validate:"required"`
 	RedirectUri         string    `json:"redirectUri" validate:"required"`
+	Nonce               string    `json:"nonce"`
 }

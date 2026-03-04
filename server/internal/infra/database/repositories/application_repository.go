@@ -37,21 +37,22 @@ func (r ApplicationRepository) GetApplicationByID(ctx context.Context, applicati
 	}
 
 	return &entities.Application{
-		ID:                  application.ID,
-		Name:                application.Name,
-		Description:         application.Description,
-		OrganizationID:      application.OrganizationID,
-		CreatedAt:           application.CreatedAt.Time,
-		IsActive:            application.IsActive,
-		HasMfaAuthApp:       application.HasMfaAuthApp,
-		HasMfaEmail:         application.HasMfaEmail,
-		HasMfaWebauthn:      application.HasMfaWebauthn,
-		PasswordHashSecret:  application.PasswordHashSecret,
-		UpdatedAt:           application.UpdatedAt,
-		Badges:              strings.Split(*application.Badges, ","),
-		CanSelfSignUp:       application.CanSelfSignUp,
-		CanSelfForgotPass:   application.CanSelfForgotPass,
-		RefreshTokenTTLDays: int(application.RefreshTokenTtlDays),
+		ID:                   application.ID,
+		Name:                 application.Name,
+		Description:          application.Description,
+		OrganizationID:       application.OrganizationID,
+		CreatedAt:            application.CreatedAt.Time,
+		IsActive:             application.IsActive,
+		HasMfaAuthApp:        application.HasMfaAuthApp,
+		HasMfaEmail:          application.HasMfaEmail,
+		HasMfaWebauthn:       application.HasMfaWebauthn,
+		RequiresHighSecurity: application.RequiresHighSecurity,
+		PasswordHashSecret:   application.PasswordHashSecret,
+		UpdatedAt:            application.UpdatedAt,
+		Badges:               strings.Split(*application.Badges, ","),
+		CanSelfSignUp:        application.CanSelfSignUp,
+		CanSelfForgotPass:    application.CanSelfForgotPass,
+		RefreshTokenTTLDays:  int(application.RefreshTokenTtlDays),
 	}, nil
 }
 
@@ -80,17 +81,18 @@ func (r ApplicationRepository) UpdateApplication(ctx context.Context, newApplica
 	badges := strings.Join(newApplication.Badges, ",")
 
 	return r.Store.UpdateApplication(ctx, pgstore.UpdateApplicationParams{
-		ID:                  newApplication.ID,
-		Name:                newApplication.Name,
-		Description:         newApplication.Description,
-		HasMfaAuthApp:       newApplication.HasMfaAuthApp,
-		Badges:              &badges,
-		IsActive:            newApplication.IsActive,
-		HasMfaEmail:         newApplication.HasMfaEmail,
-		UpdatedAt:           newApplication.UpdatedAt,
-		CanSelfSignUp:       newApplication.CanSelfSignUp,
-		CanSelfForgotPass:   newApplication.CanSelfForgotPass,
-		RefreshTokenTtlDays: int32(newApplication.RefreshTokenTTLDays),
+		ID:                   newApplication.ID,
+		Name:                 newApplication.Name,
+		Description:          newApplication.Description,
+		HasMfaAuthApp:        newApplication.HasMfaAuthApp,
+		Badges:               &badges,
+		IsActive:             newApplication.IsActive,
+		HasMfaEmail:          newApplication.HasMfaEmail,
+		UpdatedAt:            newApplication.UpdatedAt,
+		CanSelfSignUp:        newApplication.CanSelfSignUp,
+		CanSelfForgotPass:    newApplication.CanSelfForgotPass,
+		RefreshTokenTtlDays:  int32(newApplication.RefreshTokenTTLDays),
+		RequiresHighSecurity: newApplication.RequiresHighSecurity,
 	})
 }
 

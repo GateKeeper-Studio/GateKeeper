@@ -11,6 +11,7 @@ type Request = {
   state: string;
   codeChallenge: string;
   redirectUri: string;
+  nonce: string;
 };
 
 type Response = {
@@ -32,6 +33,7 @@ export async function confirmEmailApi({
   state,
   codeChallenge,
   redirectUri,
+  nonce,
 }: Request): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.post<Response>(`/v1/auth/confirm-email`, {
@@ -44,6 +46,7 @@ export async function confirmEmailApi({
       state,
       codeChallenge,
       redirectUri,
+      ...(nonce ? { nonce } : {}),
     });
 
     return [data, null];

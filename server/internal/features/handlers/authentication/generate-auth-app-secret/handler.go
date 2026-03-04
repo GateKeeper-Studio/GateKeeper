@@ -91,6 +91,10 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
+	if err := s.repository.DeleteExpiredMfaTotpSecretValidationByUserID(ctx, command.UserID); err != nil {
+		return nil, err
+	}
+
 	// user.TwoFactorSecret = &secret
 	// s.repository.UpdateUser(ctx, user)
 

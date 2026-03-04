@@ -12,21 +12,22 @@ import (
 )
 
 type Application struct {
-	ID                  uuid.UUID        `db:"id"`
-	OrganizationID      uuid.UUID        `db:"organization_id"`
-	Name                string           `db:"name"`
-	Description         *string          `db:"description"`
-	IsActive            bool             `db:"is_active"`
-	HasMfaAuthApp       bool             `db:"has_mfa_auth_app"`
-	HasMfaEmail         bool             `db:"has_mfa_email"`
-	HasMfaWebauthn      bool             `db:"has_mfa_webauthn"`
-	PasswordHashSecret  string           `db:"password_hash_secret"`
-	Badges              *string          `db:"badges"`
-	CreatedAt           pgtype.Timestamp `db:"created_at"`
-	UpdatedAt           *time.Time       `db:"updated_at"`
-	CanSelfSignUp       bool             `db:"can_self_sign_up"`
-	CanSelfForgotPass   bool             `db:"can_self_forgot_pass"`
-	RefreshTokenTtlDays int32            `db:"refresh_token_ttl_days"`
+	ID                   uuid.UUID        `db:"id"`
+	OrganizationID       uuid.UUID        `db:"organization_id"`
+	Name                 string           `db:"name"`
+	Description          *string          `db:"description"`
+	IsActive             bool             `db:"is_active"`
+	HasMfaAuthApp        bool             `db:"has_mfa_auth_app"`
+	HasMfaEmail          bool             `db:"has_mfa_email"`
+	HasMfaWebauthn       bool             `db:"has_mfa_webauthn"`
+	PasswordHashSecret   string           `db:"password_hash_secret"`
+	Badges               *string          `db:"badges"`
+	CreatedAt            pgtype.Timestamp `db:"created_at"`
+	UpdatedAt            *time.Time       `db:"updated_at"`
+	CanSelfSignUp        bool             `db:"can_self_sign_up"`
+	CanSelfForgotPass    bool             `db:"can_self_forgot_pass"`
+	RefreshTokenTtlDays  int32            `db:"refresh_token_ttl_days"`
+	RequiresHighSecurity bool             `db:"requires_high_security"`
 }
 
 type ApplicationAuthorizationCode struct {
@@ -96,6 +97,18 @@ type ApplicationUser struct {
 	Preferred2faMethod *string          `db:"preferred_2fa_method"`
 }
 
+type AuditLog struct {
+	ID            uuid.UUID        `db:"id"`
+	UserID        uuid.UUID        `db:"user_id"`
+	ApplicationID uuid.UUID        `db:"application_id"`
+	EventType     string           `db:"event_type"`
+	IpAddress     string           `db:"ip_address"`
+	UserAgent     string           `db:"user_agent"`
+	Result        string           `db:"result"`
+	Details       *string          `db:"details"`
+	CreatedAt     pgtype.Timestamp `db:"created_at"`
+}
+
 type AuthorizationSession struct {
 	ID        uuid.UUID        `db:"id"`
 	UserID    uuid.UUID        `db:"user_id"`
@@ -105,6 +118,15 @@ type AuthorizationSession struct {
 	IsUsed    bool             `db:"is_used"`
 }
 
+type BackupCode struct {
+	ID        uuid.UUID        `db:"id"`
+	UserID    uuid.UUID        `db:"user_id"`
+	CodeHash  string           `db:"code_hash"`
+	IsUsed    bool             `db:"is_used"`
+	CreatedAt pgtype.Timestamp `db:"created_at"`
+	UsedAt    *time.Time       `db:"used_at"`
+}
+
 type ChangePasswordCode struct {
 	ID        uuid.UUID        `db:"id"`
 	UserID    uuid.UUID        `db:"user_id"`
@@ -112,6 +134,17 @@ type ChangePasswordCode struct {
 	Token     string           `db:"token"`
 	CreatedAt pgtype.Timestamp `db:"created_at"`
 	ExpiresAt pgtype.Timestamp `db:"expires_at"`
+}
+
+type EmailChangeRequest struct {
+	ID            uuid.UUID        `db:"id"`
+	UserID        uuid.UUID        `db:"user_id"`
+	ApplicationID uuid.UUID        `db:"application_id"`
+	NewEmail      string           `db:"new_email"`
+	Token         string           `db:"token"`
+	CreatedAt     pgtype.Timestamp `db:"created_at"`
+	ExpiresAt     pgtype.Timestamp `db:"expires_at"`
+	IsConfirmed   bool             `db:"is_confirmed"`
 }
 
 type EmailConfirmation struct {
@@ -186,12 +219,14 @@ type MfaTotpSecretValidation struct {
 }
 
 type MfaWebauthnCredential struct {
-	ID           uuid.UUID        `db:"id"`
-	MfaMethodID  uuid.UUID        `db:"mfa_method_id"`
-	CredentialID string           `db:"credential_id"`
-	PublicKey    string           `db:"public_key"`
-	SignCount    int32            `db:"sign_count"`
-	CreatedAt    pgtype.Timestamp `db:"created_at"`
+	ID             uuid.UUID        `db:"id"`
+	MfaMethodID    uuid.UUID        `db:"mfa_method_id"`
+	CredentialID   string           `db:"credential_id"`
+	PublicKey      string           `db:"public_key"`
+	SignCount      int32            `db:"sign_count"`
+	CreatedAt      pgtype.Timestamp `db:"created_at"`
+	BackupEligible bool             `db:"backup_eligible"`
+	BackupState    bool             `db:"backup_state"`
 }
 
 type MfaWebauthnSession struct {
@@ -225,6 +260,16 @@ type RefreshToken struct {
 	CreatedAt pgtype.Timestamp `db:"created_at"`
 }
 
+type StepUpToken struct {
+	ID            uuid.UUID        `db:"id"`
+	UserID        uuid.UUID        `db:"user_id"`
+	ApplicationID uuid.UUID        `db:"application_id"`
+	Token         string           `db:"token"`
+	CreatedAt     pgtype.Timestamp `db:"created_at"`
+	ExpiresAt     pgtype.Timestamp `db:"expires_at"`
+	IsUsed        bool             `db:"is_used"`
+}
+
 type UserCredential struct {
 	ID                uuid.UUID        `db:"id"`
 	UserID            uuid.UUID        `db:"user_id"`
@@ -249,4 +294,17 @@ type UserRole struct {
 	UserID    uuid.UUID        `db:"user_id"`
 	RoleID    uuid.UUID        `db:"role_id"`
 	CreatedAt pgtype.Timestamp `db:"created_at"`
+}
+
+type UserSession struct {
+	ID            uuid.UUID        `db:"id"`
+	UserID        uuid.UUID        `db:"user_id"`
+	ApplicationID uuid.UUID        `db:"application_id"`
+	IpAddress     string           `db:"ip_address"`
+	UserAgent     string           `db:"user_agent"`
+	Location      *string          `db:"location"`
+	CreatedAt     pgtype.Timestamp `db:"created_at"`
+	LastActiveAt  pgtype.Timestamp `db:"last_active_at"`
+	ExpiresAt     pgtype.Timestamp `db:"expires_at"`
+	IsRevoked     bool             `db:"is_revoked"`
 }

@@ -67,6 +67,7 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 		MfaWebauthnEnabled:    application.HasMfaWebauthn,
 		PasswordHashingSecret: application.PasswordHashSecret,
 		RefreshTokenTtlDays:   application.RefreshTokenTTLDays,
+		RequiresHighSecurity:  application.RequiresHighSecurity,
 		Secrets:               secrets,
 	}, nil
 }

@@ -8,18 +8,22 @@ import (
 
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/domain/errors"
+	mfa_policy "github.com/gate-keeper/internal/domain/services"
 	application_utils "github.com/gate-keeper/internal/features/utils"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
+	mailservice "github.com/gate-keeper/internal/infra/mail-service"
 )
 
 type Handler struct {
-	repository IRepository
+	repository  IRepository
+	mailService mailservice.IMailService
 }
 
 func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *ServiceResponse] {
 	return &Handler{
-		repository: NewRepository(q),
+		repository:  NewRepository(q),
+		mailService: &mailservice.MailService{},
 	}
 }
 
@@ -118,6 +122,9 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 			return nil, err
 		}
 
+		// Google has verified the user's email address.
+		newUser.IsEmailConfirmed = true
+
 		if err = s.repository.AddUser(ctx, newUser); err != nil {
 			return nil, err
 		}
@@ -151,6 +158,62 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		currentUser = newUser
 	}
 
+	// Confirm email for existing users authenticated via Google, since Google verifies email ownership.
+	if !currentUser.IsEmailConfirmed {
+		currentUser.IsEmailConfirmed = true
+		if _, err := s.repository.UpdateUser(ctx, currentUser); err != nil {
+			return nil, err
+		}
+	}
+
+	// --- Adaptive MFA Policy Evaluation ---
+	// Extract AMR claims from Google's ID token (if present).
+	amrClaims := application_utils.ExtractAmrFromIDToken(googleResponsePayloadObj.IdToken)
+
+	// Fetch the application to evaluate its MFA policy settings.
+	application, err := s.repository.GetApplicationByID(ctx, oauthProvider.ApplicationID)
+	if err != nil {
+		return nil, err
+	}
+
+	policyDecision := mfa_policy.EvaluateMfaRequirement(mfa_policy.MfaPolicyContext{
+		AuthProvider: "google",
+		AmrClaims:    amrClaims,
+		User:         currentUser,
+		Application:  application,
+	})
+
+	if policyDecision.RequiresMfa {
+		// MFA is required — create the appropriate challenge.
+		mfaChallenge, err := application_utils.CreateMfaChallenge(
+			ctx,
+			s.repository,
+			s.mailService,
+			currentUser,
+			oauthProvider.ApplicationID,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if mfaChallenge != nil {
+			return &ServiceResponse{
+				RedirectURL:               os.Getenv("CLIENT_APPLICATION_URL") + "/api/callback/google",
+				UserData:                  &googleUserData,
+				OauthProviderID:           externalOauthState.ApplicationOAuthProviderID,
+				ClientState:               externalOauthState.ClientState,
+				ClientCodeChallengeMethod: externalOauthState.ClientCodeChallengeMethod,
+				ClientCodeChallenge:       externalOauthState.ClientCodeChallenge,
+				ClientScope:               externalOauthState.ClientScope,
+				ClientResponseType:        externalOauthState.ClientResponseType,
+				ClientRedirectUri:         externalOauthState.ClientRedirectUri,
+				ClientNonce:               externalOauthState.ClientNonce,
+				MfaRequired:               true,
+				MfaChallenge:              mfaChallenge,
+			}, nil
+		}
+	}
+
+	// No MFA required — create authorization code directly.
 	authorizationCode, err := entities.CreateApplicationAuthorizationCode(
 		oauthProvider.ApplicationID,
 		currentUser.ID,
@@ -184,5 +247,6 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 		ClientScope:               externalOauthState.ClientScope,
 		ClientResponseType:        externalOauthState.ClientResponseType,
 		ClientRedirectUri:         externalOauthState.ClientRedirectUri,
+		ClientNonce:               externalOauthState.ClientNonce,
 	}, nil
 }

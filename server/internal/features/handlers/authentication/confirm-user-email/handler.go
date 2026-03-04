@@ -2,6 +2,7 @@ package confirmuseremail
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/gate-keeper/internal/domain/entities"
@@ -31,14 +32,27 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrUserNotFound
 	}
 
+	// Normalise and store scope
+	scope := command.Scope
+	if scope == "" {
+		scope = "openid"
+	}
+
+	// Nonce is required when openid scope is requested (OIDC Core 1.0 §3.1.2.1)
+	var nonce *string
+	if strings.Contains(scope, "openid") && command.Nonce != "" {
+		n := command.Nonce
+		nonce = &n
+	}
+
 	authorizationCode, err := entities.CreateApplicationAuthorizationCode(
 		command.ApplicationID,
 		user.ID,
 		command.RedirectUri,
 		command.CodeChallenge,
 		command.CodeChallengeMethod,
-		nil,
-		nil,
+		nonce,
+		&scope,
 	)
 
 	if err != nil {
