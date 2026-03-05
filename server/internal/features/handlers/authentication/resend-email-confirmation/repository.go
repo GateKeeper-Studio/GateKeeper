@@ -10,7 +10,7 @@ import (
 
 type IRepository interface {
 	GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error)
-	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.TenantUser, error)
 	AddEmailConfirmation(ctx context.Context, emailConfirmation *entities.EmailConfirmation) error
 	DeleteEmailConfirmation(ctx context.Context, emailConfirmationID uuid.UUID) error
 	GetEmailConfirmationByEmail(ctx context.Context, email string, userID uuid.UUID) (*entities.EmailConfirmation, error)

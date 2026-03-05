@@ -5,8 +5,8 @@
 --    enabled BOOLEAN NOT NULL DEFAULT TRUE,
 --    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 --    last_used_at TIMESTAMP NULL,
---    /* mfa_method >- application_user = fk_user_mfa_method */
---    CONSTRAINT fk_user_mfa_method FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+--    /* mfa_method >- tenant_user = fk_user_mfa_method */
+--    CONSTRAINT fk_user_mfa_method FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 -- );
 ------------------------------------COMMANDS--------------------------------------
 -- name: AddMfaMethod :exec

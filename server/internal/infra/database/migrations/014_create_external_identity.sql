@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS external_identity (
     application_oauth_provider_id UUID NOT NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NULL,
-    /* external_identity >- application_user = fk_user_external_identity*/
-    CONSTRAINT fk_user_external_identity FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE,
+    /* external_identity >- tenant_user = fk_user_external_identity*/
+    CONSTRAINT fk_user_external_identity FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE,
     CONSTRAINT fk_application_oauth_provider_external_identity FOREIGN KEY (application_oauth_provider_id) REFERENCES "application_oauth_provider" (id) ON DELETE CASCADE
 );
 

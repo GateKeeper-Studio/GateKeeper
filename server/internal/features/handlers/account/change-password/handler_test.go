@@ -21,12 +21,12 @@ import (
 
 type mockChangePassRepo struct{ mock.Mock }
 
-func (m *mockChangePassRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockChangePassRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockChangePassRepo) GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error) {
@@ -90,7 +90,7 @@ func TestHandler_ChangePassword_UserNotFound(t *testing.T) {
 func TestHandler_ChangePassword_CredentialsNotFound(t *testing.T) {
 	repo := new(mockChangePassRepo)
 	userID := uuid.New()
-	user := &entities.ApplicationUser{
+	user := &entities.TenantUser{
 		ID:        userID,
 		Email:     "user@test.com",
 		IsActive:  true,
@@ -118,7 +118,7 @@ func TestHandler_ChangePassword_IncorrectCurrentPassword(t *testing.T) {
 	repo := new(mockChangePassRepo)
 	userID := uuid.New()
 	appID := uuid.New()
-	user := &entities.ApplicationUser{
+	user := &entities.TenantUser{
 		ID:        userID,
 		Email:     "user@test.com",
 		IsActive:  true,
@@ -174,7 +174,7 @@ func TestHandler_ChangePassword_GetUserDBError(t *testing.T) {
 func TestHandler_ChangePassword_GetCredentialsDBError(t *testing.T) {
 	repo := new(mockChangePassRepo)
 	userID := uuid.New()
-	user := &entities.ApplicationUser{
+	user := &entities.TenantUser{
 		ID:        userID,
 		Email:     "user@test.com",
 		IsActive:  true,

@@ -41,7 +41,7 @@ func (m *mockSignUpRepo) AddEmailConfirmation(ctx context.Context, emailConfirma
 	return m.Called(ctx, emailConfirmation).Error(0)
 }
 
-func (m *mockSignUpRepo) AddUser(ctx context.Context, newUser *entities.ApplicationUser) error {
+func (m *mockSignUpRepo) AddUser(ctx context.Context, newUser *entities.TenantUser) error {
 	return m.Called(ctx, newUser).Error(0)
 }
 
@@ -162,7 +162,7 @@ func TestHandler_SignUp_Success(t *testing.T) {
 		Return(false, nil)
 	repo.On("GetApplicationByID", mock.Anything, appID).
 		Return(app, nil)
-	repo.On("AddUser", mock.Anything, mock.AnythingOfType("*entities.ApplicationUser")).
+	repo.On("AddUser", mock.Anything, mock.AnythingOfType("*entities.TenantUser")).
 		Return(nil)
 	repo.On("AddUserProfile", mock.Anything, mock.AnythingOfType("*entities.UserProfile")).
 		Return(nil)

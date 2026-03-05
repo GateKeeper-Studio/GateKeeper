@@ -86,7 +86,7 @@ type ApplicationSecret struct {
 	ExpiresAt     *time.Time       `db:"expires_at"`
 }
 
-type ApplicationUser struct {
+type TenantUser struct {
 	ID                 uuid.UUID        `db:"id"`
 	ApplicationID      uuid.UUID        `db:"application_id"`
 	Email              string           `db:"email"`

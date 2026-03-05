@@ -11,7 +11,7 @@ import (
 
 type IRepository interface {
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	AddMfaTotpSecretValidation(ctx context.Context, mfaUserSecret *entities.MfaUserSecret) error
 	GetMfaTotpSecretValidationByUserID(ctx context.Context, userID uuid.UUID) (*entities.MfaUserSecret, error)
 	UpdateMfaTotpSecretValidation(ctx context.Context, mfaUserSecret *entities.MfaUserSecret) error

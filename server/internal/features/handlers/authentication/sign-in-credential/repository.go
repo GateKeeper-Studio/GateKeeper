@@ -9,7 +9,7 @@ import (
 )
 
 type IRepository interface {
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error)
 	ListSecretsFromApplication(ctx context.Context, applicationID uuid.UUID) (*[]entities.ApplicationSecret, error)
 	RemoveAuthorizationCode(ctx context.Context, userID, applicationId uuid.UUID) error

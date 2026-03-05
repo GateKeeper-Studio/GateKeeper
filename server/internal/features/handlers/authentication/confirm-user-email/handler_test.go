@@ -18,24 +18,24 @@ import (
 
 type mockConfirmEmailRepo struct{ mock.Mock }
 
-func (m *mockConfirmEmailRepo) GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockConfirmEmailRepo) GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, email, applicationID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockConfirmEmailRepo) UpdateEmailConfirmation(ctx context.Context, emailConfirmation *entities.EmailConfirmation) error {
 	return m.Called(ctx, emailConfirmation).Error(0)
 }
 
-func (m *mockConfirmEmailRepo) UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error) {
+func (m *mockConfirmEmailRepo) UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error) {
 	args := m.Called(ctx, user)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockConfirmEmailRepo) AddAuthorizationCode(ctx context.Context, authorizationCode *entities.ApplicationAuthorizationCode) error {
@@ -57,9 +57,9 @@ var _ IRepository = (*mockConfirmEmailRepo)(nil)
 // Helpers
 // ---------------------------------------------------------------------------
 
-func newTestUser(appID uuid.UUID) *entities.ApplicationUser {
+func newTestUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
-	return &entities.ApplicationUser{
+	return &entities.TenantUser{
 		ID:               id,
 		ApplicationID:    appID,
 		Email:            "user@example.com",
@@ -106,7 +106,7 @@ func TestHandler_ConfirmEmail_UserNotFound(t *testing.T) {
 	appID, _ := uuid.NewV7()
 
 	repo.On("GetUserByEmail", mock.Anything, "user@example.com", appID).
-		Return((*entities.ApplicationUser)(nil), nil)
+		Return((*entities.TenantUser)(nil), nil)
 
 	h := &Handler{repository: repo}
 	_, err := h.Handler(context.Background(), baseConfirmEmailCommand(appID))
@@ -184,7 +184,7 @@ func TestHandler_ConfirmEmail_Success(t *testing.T) {
 	repo.On("GetUserByEmail", mock.Anything, "user@example.com", appID).Return(user, nil)
 	repo.On("AddAuthorizationCode", mock.Anything, mock.AnythingOfType("*entities.ApplicationAuthorizationCode")).Return(nil)
 	repo.On("GetEmailConfirmationByEmail", mock.Anything, "user@example.com", user.ID).Return(emailConf, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*entities.ApplicationUser")).Return(user, nil)
+	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*entities.TenantUser")).Return(user, nil)
 	repo.On("UpdateEmailConfirmation", mock.Anything, mock.AnythingOfType("*entities.EmailConfirmation")).Return(nil)
 
 	h := &Handler{repository: repo}

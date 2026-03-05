@@ -30,12 +30,12 @@ func (m *mockResetPasswordRepo) GetPasswordResetByTokenID(ctx context.Context, t
 	return args.Get(0).(*entities.PasswordResetToken), args.Error(1)
 }
 
-func (m *mockResetPasswordRepo) UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error) {
+func (m *mockResetPasswordRepo) UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error) {
 	args := m.Called(ctx, user)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockResetPasswordRepo) GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error) {
@@ -46,12 +46,12 @@ func (m *mockResetPasswordRepo) GetApplicationByID(ctx context.Context, applicat
 	return args.Get(0).(*entities.Application), args.Error(1)
 }
 
-func (m *mockResetPasswordRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockResetPasswordRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockResetPasswordRepo) DeletePasswordResetFromUser(ctx context.Context, userID uuid.UUID) error {
@@ -88,9 +88,9 @@ func newValidResetToken(userID uuid.UUID) *entities.PasswordResetToken {
 	}
 }
 
-func newResetUser(appID uuid.UUID) *entities.ApplicationUser {
+func newResetUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
-	return &entities.ApplicationUser{
+	return &entities.TenantUser{
 		ID:               id,
 		ApplicationID:    appID,
 		Email:            "user@example.com",
@@ -196,7 +196,7 @@ func TestHandler_ResetPassword_UserNotFound(t *testing.T) {
 	resetToken := newValidResetToken(userID)
 
 	repo.On("GetPasswordResetByTokenID", mock.Anything, resetToken.ID).Return(resetToken, nil)
-	repo.On("GetUserByID", mock.Anything, userID).Return((*entities.ApplicationUser)(nil), nil)
+	repo.On("GetUserByID", mock.Anything, userID).Return((*entities.TenantUser)(nil), nil)
 
 	h := &Handler{repository: repo}
 	err := h.Handler(context.Background(), Command{
@@ -246,7 +246,7 @@ func TestHandler_ResetPassword_Success(t *testing.T) {
 	repo.On("GetUserByID", mock.Anything, user.ID).Return(user, nil)
 	repo.On("GetApplicationByID", mock.Anything, app.ID).Return(app, nil)
 	repo.On("GetUserCredentialsByUserID", mock.Anything, user.ID).Return(creds, nil)
-	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*entities.ApplicationUser")).Return(user, nil)
+	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*entities.TenantUser")).Return(user, nil)
 	repo.On("UpdateUserCredentials", mock.Anything, mock.AnythingOfType("*entities.UserCredentials")).Return(nil)
 	repo.On("RevokeRefreshTokenFromUser", mock.Anything, user.ID).Return(nil)
 	repo.On("DeletePasswordResetFromUser", mock.Anything, user.ID).Return(nil)

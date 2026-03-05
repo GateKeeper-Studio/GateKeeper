@@ -12,7 +12,7 @@ type IRepository interface {
 	AddSessionCode(ctx context.Context, sessionCode *entities.SessionCode) error
 	DeleteEmailMfaCodeByID(ctx context.Context, emailMfaCodeID uuid.UUID) error
 	GetMfaEmailCodeByToken(ctx context.Context, mfaMethodID uuid.UUID, token string) (*entities.MfaEmailCode, error)
-	GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.TenantUser, error)
 	GetMfaMethodByUserID(ctx context.Context, userID uuid.UUID, method string) (*entities.MfaMethod, error)
 }
 

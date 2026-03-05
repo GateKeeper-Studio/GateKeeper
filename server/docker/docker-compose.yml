@@ -23,5 +23,30 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  gatekeeper-redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "256MB"
+    # Rate limit data is ephemeral — persistence is intentionally disabled.
+    # maxmemory-policy allkeys-lru evicts the least-recently-used keys when
+    # the memory limit is reached, preventing unbounded memory growth.
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 200mb
+      --maxmemory-policy allkeys-lru
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   postgres_data:

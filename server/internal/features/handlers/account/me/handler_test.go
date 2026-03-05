@@ -10,7 +10,7 @@ import (
 
 // ─── Mock Repository ──────────────────────────────────────────────────────
 type mockRepository struct {
-	user       *entities.ApplicationUser
+	user       *entities.TenantUser
 	profile    *entities.UserProfile
 	mfaMethods []*entities.MfaMethod
 	userErr    error
@@ -18,7 +18,7 @@ type mockRepository struct {
 	mfaErr     error
 }
 
-func (m *mockRepository) GetUserByID(_ context.Context, _ uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockRepository) GetUserByID(_ context.Context, _ uuid.UUID) (*entities.TenantUser, error) {
 	return m.user, m.userErr
 }
 
@@ -38,7 +38,7 @@ func TestHandler_ReturnsProfileWithoutMfa(t *testing.T) {
 
 	h := &Handler{
 		repository: &mockRepository{
-			user: &entities.ApplicationUser{
+			user: &entities.TenantUser{
 				ID:                 userID,
 				ApplicationID:      appID,
 				Email:              "user@example.com",
@@ -83,7 +83,7 @@ func TestHandler_ReturnsProfileWithMfa(t *testing.T) {
 
 	h := &Handler{
 		repository: &mockRepository{
-			user: &entities.ApplicationUser{
+			user: &entities.TenantUser{
 				ID:                 userID,
 				ApplicationID:      appID,
 				Email:              "user@example.com",

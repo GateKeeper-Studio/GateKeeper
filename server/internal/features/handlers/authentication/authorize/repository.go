@@ -10,7 +10,7 @@ import (
 )
 
 type IRepository interface {
-	GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.TenantUser, error)
 	GetAuthorizationSession(ctx context.Context, userID uuid.UUID, sessionCodeToken string) (*entities.SessionCode, error)
 	DeleteSessionCodeByID(ctx context.Context, sessionCodeID uuid.UUID) error
 	RemoveAuthorizationCode(ctx context.Context, userID, applicationID uuid.UUID) error

@@ -10,7 +10,7 @@ import (
 )
 
 type IRepository interface {
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	IsUserExistsByEmail(ctx context.Context, email string, applicationID uuid.UUID) (bool, error)
 	AddEmailChangeRequest(ctx context.Context, req *entities.EmailChangeRequest) error
 	RevokeEmailChangeRequestsByUserID(ctx context.Context, req *entities.EmailChangeRequest) error

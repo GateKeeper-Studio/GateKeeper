@@ -42,7 +42,7 @@ func CreateMfaChallenge(
 	ctx context.Context,
 	repo IMfaChallengeRepository,
 	mailSvc mailservice.IMailService,
-	user *entities.ApplicationUser,
+	user *entities.TenantUser,
 	applicationID uuid.UUID,
 ) (*MfaChallengeResult, error) {
 	if user.Preferred2FAMethod == nil {
@@ -67,7 +67,7 @@ func createEmailMfaChallenge(
 	ctx context.Context,
 	repo IMfaChallengeRepository,
 	mailSvc mailservice.IMailService,
-	user *entities.ApplicationUser,
+	user *entities.TenantUser,
 	applicationID uuid.UUID,
 ) (*MfaChallengeResult, error) {
 	userProfile, err := repo.GetUserProfileByID(ctx, user.ID)
@@ -109,7 +109,7 @@ func createEmailMfaChallenge(
 func createTotpMfaChallenge(
 	ctx context.Context,
 	repo IMfaChallengeRepository,
-	user *entities.ApplicationUser,
+	user *entities.TenantUser,
 	applicationID uuid.UUID,
 ) (*MfaChallengeResult, error) {
 	mfaMethod, err := repo.GetMfaMethodByUserID(ctx, user.ID, constants.MfaMethodTotp)
@@ -148,7 +148,7 @@ func createTotpMfaChallenge(
 func createWebAuthnMfaChallenge(
 	ctx context.Context,
 	repo IMfaChallengeRepository,
-	user *entities.ApplicationUser,
+	user *entities.TenantUser,
 	applicationID uuid.UUID,
 ) (*MfaChallengeResult, error) {
 	mfaMethod, err := repo.GetMfaMethodByUserID(ctx, user.ID, constants.MfaMethodWebauthn)

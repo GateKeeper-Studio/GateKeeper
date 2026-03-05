@@ -2,11 +2,10 @@
 CREATE TABLE IF NOT EXISTS refresh_token (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
-    available_refreshes INT NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP NOT NULL,
-    /* refresh_token >- application_user = fk_user_refresh_token*/
-    CONSTRAINT fk_user_refresh_token FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+    /* refresh_token >- tenant_user = fk_user_refresh_token*/
+    CONSTRAINT fk_user_refresh_token FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

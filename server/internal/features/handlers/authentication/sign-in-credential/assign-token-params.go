@@ -5,7 +5,7 @@ import (
 	application_utils "github.com/gate-keeper/internal/features/utils"
 )
 
-func assignTokenParams(userProfile entities.UserProfile, user entities.ApplicationUser) (string, error) {
+func assignTokenParams(userProfile entities.UserProfile, user entities.TenantUser) (string, error) {
 
 	return application_utils.CreateToken(
 		application_utils.JWTClaims{

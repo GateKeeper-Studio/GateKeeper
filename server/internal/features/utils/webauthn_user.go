@@ -11,7 +11,7 @@ import (
 
 // WebAuthnUser implements the webauthn.User interface.
 type WebAuthnUser struct {
-	User        *entities.ApplicationUser
+	User        *entities.TenantUser
 	Profile     *entities.UserProfile
 	Credentials []entities.MfaWebauthnCredentials
 }

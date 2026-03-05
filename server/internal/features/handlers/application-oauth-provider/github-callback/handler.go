@@ -151,7 +151,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*ServiceRespons
 	// externalProviderKey := entities.OAuthProviderNameGitHub
 
 	if currentUser == nil {
-		newUser, err := entities.CreateApplicationUser(
+		newUser, err := entities.CreateTenantUser(
 			gitHubUserData.Email,
 			oauthProvider.ApplicationID,
 			false,

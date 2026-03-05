@@ -18,12 +18,12 @@ import (
 
 type mockAuthorizeRepo struct{ mock.Mock }
 
-func (m *mockAuthorizeRepo) GetUserByEmail(ctx context.Context, email string, appID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockAuthorizeRepo) GetUserByEmail(ctx context.Context, email string, appID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, email, appID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockAuthorizeRepo) GetAuthorizationSession(ctx context.Context, userID uuid.UUID, token string) (*entities.SessionCode, error) {
@@ -58,9 +58,9 @@ func (m *mockAuthorizeRepo) GetUserCredentialsByUserID(ctx context.Context, user
 // Helpers
 // ---------------------------------------------------------------------------
 
-func newUser(appID uuid.UUID, active, confirmed bool) *entities.ApplicationUser {
+func newUser(appID uuid.UUID, active, confirmed bool) *entities.TenantUser {
 	id, _ := uuid.NewV7()
-	return &entities.ApplicationUser{
+	return &entities.TenantUser{
 		ID:               id,
 		ApplicationID:    appID,
 		Email:            "user@example.com",
@@ -111,7 +111,7 @@ func TestHandler_Authorize_UserNotFound(t *testing.T) {
 	appID, _ := uuid.NewV7()
 
 	repo.On("GetUserByEmail", mock.Anything, "user@example.com", appID).
-		Return((*entities.ApplicationUser)(nil), nil)
+		Return((*entities.TenantUser)(nil), nil)
 
 	h := &Handler{repository: repo}
 	_, err := h.Handler(context.Background(), baseAuthorizeCommand(appID))

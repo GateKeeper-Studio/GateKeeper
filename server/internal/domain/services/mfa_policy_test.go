@@ -11,8 +11,8 @@ func ptrString(s string) *string {
 	return &s
 }
 
-func makeUser(preferred2FA *string) *entities.ApplicationUser {
-	return &entities.ApplicationUser{
+func makeUser(preferred2FA *string) *entities.TenantUser {
+	return &entities.TenantUser{
 		ID:                 uuid.New(),
 		ApplicationID:      uuid.New(),
 		Email:              "test@example.com",

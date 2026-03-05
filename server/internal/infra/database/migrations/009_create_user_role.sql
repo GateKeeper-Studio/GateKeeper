@@ -5,8 +5,8 @@ CREATE TABLE IF NOT EXISTS user_role (
     created_at TIMESTAMP NOT NULL,
     /* user_role >- application_role = fk_user_role_application_role */
     CONSTRAINT fk_user_role_application_role FOREIGN KEY (role_id) REFERENCES "application_role" (id) ON DELETE CASCADE,
-    /* user_role >- application_user = fk_user_role_application_user */
-    CONSTRAINT fk_user_role_application_user FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+    /* user_role >- tenant_user = fk_user_role_tenant_user */
+    CONSTRAINT fk_user_role_tenant_user FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

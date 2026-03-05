@@ -10,7 +10,7 @@ import (
 )
 
 type IRepository interface {
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error)
 	GetUserMfaMethods(ctx context.Context, userID uuid.UUID) ([]*entities.MfaMethod, error)
 }

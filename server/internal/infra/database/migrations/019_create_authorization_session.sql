@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS authorization_session (
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     is_used BOOLEAN NOT NULL,
-    /* authorization_session >- application_user = fk_user_authorization_session */
-    CONSTRAINT fk_user_authorization_session FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+    /* authorization_session >- tenant_user = fk_user_authorization_session */
+    CONSTRAINT fk_user_authorization_session FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

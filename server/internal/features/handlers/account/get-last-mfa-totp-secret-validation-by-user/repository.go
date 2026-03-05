@@ -10,7 +10,7 @@ import (
 )
 
 type IRepository interface {
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	GetLastValidMfaTotpSecretByUserID(ctx context.Context, userID uuid.UUID) (*entities.MfaUserSecret, error)
 	DeleteExpiredMfaTotpSecretValidationByUserID(ctx context.Context, userID uuid.UUID) error
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)

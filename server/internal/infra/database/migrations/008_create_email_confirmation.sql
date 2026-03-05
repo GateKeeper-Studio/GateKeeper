@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS email_confirmation (
     cool_down TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     is_used BOOLEAN NOT NULL,
-    /* email_confirmation >- application_user = fk_user_email_confirmation */
-    CONSTRAINT fk_user_email_confirmation FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+    /* email_confirmation >- tenant_user = fk_user_email_confirmation */
+    CONSTRAINT fk_user_email_confirmation FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

@@ -7,7 +7,7 @@ import (
 	"github.com/gate-keeper/internal/domain/entities"
 )
 
-func assignRefreshToken(ctx context.Context, handler *Handler, user entities.ApplicationUser, ttlDays int) (*entities.RefreshToken, error) {
+func assignRefreshToken(ctx context.Context, handler *Handler, user entities.TenantUser, ttlDays int) (*entities.RefreshToken, error) {
 	currentDate := time.Now().UTC()
 	futureDate := currentDate.Add(time.Hour * 24 * time.Duration(ttlDays)).UTC()
 

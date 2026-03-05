@@ -70,12 +70,12 @@ func (m *mockLoginRepo) GetMfaTotpSecretValidationByUserID(ctx context.Context, 
 	return args.Get(0).(*entities.MfaUserSecret), args.Error(1)
 }
 
-func (m *mockLoginRepo) GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockLoginRepo) GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, email, applicationID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockLoginRepo) RevokeAllChangePasswordCodeByUserID(ctx context.Context, userID uuid.UUID) error {
@@ -139,9 +139,9 @@ var _ mailservice.IMailService = (*mockMailService)(nil)
 // Helpers
 // ---------------------------------------------------------------------------
 
-func newActiveConfirmedUser(appID uuid.UUID) *entities.ApplicationUser {
+func newActiveConfirmedUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
-	return &entities.ApplicationUser{
+	return &entities.TenantUser{
 		ID:               id,
 		ApplicationID:    appID,
 		Email:            "user@example.com",
@@ -177,7 +177,7 @@ func TestHandler_Login_UserNotFound(t *testing.T) {
 	appID, _ := uuid.NewV7()
 
 	repo.On("GetUserByEmail", mock.Anything, "user@example.com", appID).
-		Return((*entities.ApplicationUser)(nil), nil)
+		Return((*entities.TenantUser)(nil), nil)
 
 	h := &Handler{repository: repo, mailService: new(mockMailService)}
 	_, err := h.Handler(context.Background(), baseCommand(appID))

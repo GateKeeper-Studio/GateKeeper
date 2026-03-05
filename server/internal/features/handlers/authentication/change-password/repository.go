@@ -11,8 +11,8 @@ import (
 type IRepository interface {
 	GetChangePasswordCodeByToken(ctx context.Context, userID uuid.UUID, changePasswordCode string) (*entities.ChangePasswordCode, error)
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
-	UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
+	UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error)
 	RevokeRefreshTokenFromUser(ctx context.Context, userID uuid.UUID) error
 	RevokeAllChangePasswordCodeByUserID(ctx context.Context, userID uuid.UUID) error
 	GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error)

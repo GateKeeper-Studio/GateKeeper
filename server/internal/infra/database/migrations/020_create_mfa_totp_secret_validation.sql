@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS mfa_totp_secret_validation (
     is_validated BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,
-    /* mfa_totp_secret_validation >- application_user = fk_user_mfa_totp_secret_validation*/
-    CONSTRAINT fk_user_mfa_totp_secret_validation FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+    /* mfa_totp_secret_validation >- tenant_user = fk_user_mfa_totp_secret_validation*/
+    CONSTRAINT fk_user_mfa_totp_secret_validation FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

@@ -10,22 +10,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// IUserRepository defines all operations related to the ApplicationUser entity.
+// IUserRepository defines all operations related to the TenantUser entity.
 type IUserRepository interface {
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
-	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
+	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.TenantUser, error)
 	IsUserExistsByEmail(ctx context.Context, email string, applicationID uuid.UUID) (bool, error)
-	AddUser(ctx context.Context, newUser *entities.ApplicationUser) error
-	UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error)
-	DeleteApplicationUser(ctx context.Context, applicationID, userID uuid.UUID) error
+	AddUser(ctx context.Context, newUser *entities.TenantUser) error
+	UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error)
+	DeleteTenantUser(ctx context.Context, applicationID, userID uuid.UUID) error
 }
 
-// UserRepository is the shared implementation for ApplicationUser-related DB operations.
+// UserRepository is the shared implementation for TenantUser-related DB operations.
 type UserRepository struct {
 	Store *pgstore.Queries
 }
 
-func (r UserRepository) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error) {
+func (r UserRepository) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error) {
 	user, err := r.Store.GetUserById(ctx, userID)
 
 	if err == ErrNoRows {
@@ -36,7 +36,7 @@ func (r UserRepository) GetUserByID(ctx context.Context, userID uuid.UUID) (*ent
 		return nil, err
 	}
 
-	return &entities.ApplicationUser{
+	return &entities.TenantUser{
 		ID:                 user.ID,
 		Email:              user.Email,
 		CreatedAt:          user.CreatedAt.Time,
@@ -48,7 +48,7 @@ func (r UserRepository) GetUserByID(ctx context.Context, userID uuid.UUID) (*ent
 	}, nil
 }
 
-func (r UserRepository) GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.ApplicationUser, error) {
+func (r UserRepository) GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.TenantUser, error) {
 	user, err := r.Store.GetUserByEmail(ctx, pgstore.GetUserByEmailParams{
 		Email:         userEmail,
 		ApplicationID: applicationID,
@@ -62,7 +62,7 @@ func (r UserRepository) GetUserByEmail(ctx context.Context, userEmail string, ap
 		return nil, err
 	}
 
-	return &entities.ApplicationUser{
+	return &entities.TenantUser{
 		ID:                 user.ID,
 		Email:              user.Email,
 		CreatedAt:          user.CreatedAt.Time,
@@ -87,7 +87,7 @@ func (r UserRepository) IsUserExistsByEmail(ctx context.Context, email string, a
 	return true, nil
 }
 
-func (r UserRepository) AddUser(ctx context.Context, newUser *entities.ApplicationUser) error {
+func (r UserRepository) AddUser(ctx context.Context, newUser *entities.TenantUser) error {
 	return r.Store.AddUser(ctx, pgstore.AddUserParams{
 		ID:               newUser.ID,
 		Email:            newUser.Email,
@@ -99,7 +99,7 @@ func (r UserRepository) AddUser(ctx context.Context, newUser *entities.Applicati
 	})
 }
 
-func (r UserRepository) UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error) {
+func (r UserRepository) UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error) {
 	now := time.Now().UTC()
 
 	err := r.Store.UpdateUser(ctx, pgstore.UpdateUserParams{
@@ -114,8 +114,8 @@ func (r UserRepository) UpdateUser(ctx context.Context, user *entities.Applicati
 	return user, err
 }
 
-func (r UserRepository) DeleteApplicationUser(ctx context.Context, applicationID, userID uuid.UUID) error {
-	return r.Store.DeleteApplicationUser(ctx, pgstore.DeleteApplicationUserParams{
+func (r UserRepository) DeleteTenantUser(ctx context.Context, applicationID, userID uuid.UUID) error {
+	return r.Store.DeleteTenantUser(ctx, pgstore.DeleteTenantUserParams{
 		ID:            userID,
 		ApplicationID: applicationID,
 	})

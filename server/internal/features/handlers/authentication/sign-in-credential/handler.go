@@ -59,7 +59,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrInvalidClientSecret
 	}
 
-	if err := s.repository.RemoveAuthorizationCode(ctx, authorizationCode.ApplicationUserId, authorizationCode.ApplicationID); err != nil {
+	if err := s.repository.RemoveAuthorizationCode(ctx, authorizationCode.TenantUserId, authorizationCode.ApplicationID); err != nil {
 		return nil, err
 	}
 
@@ -68,7 +68,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrApplicationNotFound
 	}
 
-	user, err := s.repository.GetUserByID(ctx, authorizationCode.ApplicationUserId)
+	user, err := s.repository.GetUserByID(ctx, authorizationCode.TenantUserId)
 
 	if err != nil {
 		return nil, err

@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS user_credentials (
   should_change_pass BOOLEAN NOT NULL DEFAULT FALSE,
   updated_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL,
-  /* user_credentials >- application_user = fk_user_credentials_application_user */
-  CONSTRAINT fk_user_credentials_application_user FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+  /* user_credentials >- tenant_user = fk_user_credentials_tenant_user */
+  CONSTRAINT fk_user_credentials_tenant_user FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

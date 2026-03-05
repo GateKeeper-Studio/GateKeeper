@@ -12,7 +12,7 @@ type IRepository interface {
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
 	GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error)
 	GetMfaTotpSecretValidationByUserID(ctx context.Context, userID uuid.UUID) (*entities.MfaUserSecret, error)
-	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.TenantUser, error)
 	RevokeAllChangePasswordCodeByUserID(ctx context.Context, userID uuid.UUID) error
 	AddMfaEmailCode(ctx context.Context, emailMfaCode *entities.MfaEmailCode) error
 	AddMfaTotpCode(ctx context.Context, mfaTotpCode *entities.MfaTotpCode) error

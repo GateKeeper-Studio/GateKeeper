@@ -9,9 +9,9 @@ import (
 )
 
 type IRepository interface {
-	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.TenantUser, error)
 	UpdateEmailConfirmation(ctx context.Context, emailConfirmation *entities.EmailConfirmation) error
-	UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error)
+	UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error)
 	AddAuthorizationCode(ctx context.Context, authorizationCode *entities.ApplicationAuthorizationCode) error
 	GetEmailConfirmationByEmail(ctx context.Context, email string, userID uuid.UUID) (*entities.EmailConfirmation, error)
 }

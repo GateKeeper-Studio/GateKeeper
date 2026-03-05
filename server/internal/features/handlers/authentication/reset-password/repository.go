@@ -11,9 +11,9 @@ import (
 type IRepository interface {
 	RevokeRefreshTokenFromUser(ctx context.Context, userID uuid.UUID) error
 	GetPasswordResetByTokenID(ctx context.Context, tokenID uuid.UUID) (*entities.PasswordResetToken, error)
-	UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error)
+	UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error)
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	DeletePasswordResetFromUser(ctx context.Context, userID uuid.UUID) error
 	GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error)
 	UpdateUserCredentials(ctx context.Context, userCredentials *entities.UserCredentials) error

@@ -25,7 +25,7 @@ func (r AuthorizationCodeRepository) AddAuthorizationCode(ctx context.Context, n
 	return r.Store.AddAuthorizationCode(ctx, pgstore.AddAuthorizationCodeParams{
 		ID:                  newAuthorizationCode.ID,
 		ApplicationID:       newAuthorizationCode.ApplicationID,
-		UserID:              newAuthorizationCode.ApplicationUserId,
+		UserID:              newAuthorizationCode.TenantUserId,
 		ExpiredAt:           pgtype.Timestamp{Time: newAuthorizationCode.ExpiresAt, Valid: true},
 		Code:                newAuthorizationCode.Code,
 		RedirectUri:         newAuthorizationCode.RedirectUri,
@@ -55,7 +55,7 @@ func (r AuthorizationCodeRepository) GetAuthorizationCodeById(ctx context.Contex
 		ApplicationID:       authorizationCode.ApplicationID,
 		ExpiresAt:           authorizationCode.ExpiredAt.Time,
 		Code:                authorizationCode.Code,
-		ApplicationUserId:   authorizationCode.UserID,
+		TenantUserId:   authorizationCode.UserID,
 		RedirectUri:         authorizationCode.RedirectUri,
 		CodeChallenge:       authorizationCode.CodeChallenge,
 		CodeChallengeMethod: authorizationCode.CodeChallengeMethod,

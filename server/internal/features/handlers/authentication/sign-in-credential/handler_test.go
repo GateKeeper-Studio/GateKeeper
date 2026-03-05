@@ -19,12 +19,12 @@ import (
 
 type mockSignInRepo struct{ mock.Mock }
 
-func (m *mockSignInRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockSignInRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockSignInRepo) GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error) {
@@ -92,7 +92,7 @@ func newValidAuthCode(appID, userID uuid.UUID, verifier string) *entities.Applic
 	return &entities.ApplicationAuthorizationCode{
 		ID:                  id,
 		ApplicationID:       appID,
-		ApplicationUserId:   userID,
+		TenantUserId:   userID,
 		RedirectUri:         testRedirectURI,
 		CodeChallenge:       challenge,
 		CodeChallengeMethod: "S256",
@@ -113,9 +113,9 @@ func newTestSecrets(appID uuid.UUID) *[]entities.ApplicationSecret {
 	}
 }
 
-func newTestAppUser(appID uuid.UUID) *entities.ApplicationUser {
+func newTestAppUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
-	return &entities.ApplicationUser{
+	return &entities.TenantUser{
 		ID:               id,
 		ApplicationID:    appID,
 		Email:            "user@example.com",

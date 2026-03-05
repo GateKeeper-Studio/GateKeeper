@@ -12,8 +12,8 @@ import (
 type IRepository interface {
 	GetEmailChangeRequestByToken(ctx context.Context, token string) (*entities.EmailChangeRequest, error)
 	ConfirmEmailChangeRequest(ctx context.Context, req *entities.EmailChangeRequest) error
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
-	UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
+	UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error)
 	IsUserExistsByEmail(ctx context.Context, email string, applicationID uuid.UUID) (bool, error)
 	AddAuditLog(ctx context.Context, auditLog *entities.AuditLog) error
 }

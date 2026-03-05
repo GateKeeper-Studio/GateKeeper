@@ -13,7 +13,7 @@ type IRepository interface {
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
 	AddUserProfile(ctx context.Context, newUserProfile *entities.UserProfile) error
 	AddEmailConfirmation(ctx context.Context, emailConfirmation *entities.EmailConfirmation) error
-	AddUser(ctx context.Context, newUser *entities.ApplicationUser) error
+	AddUser(ctx context.Context, newUser *entities.TenantUser) error
 	AddUserCredentials(ctx context.Context, userCredentials *entities.UserCredentials) error
 }
 

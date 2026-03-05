@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS external_oauth_state (
   client_response_type VARCHAR(50),
   code_verifier VARCHAR(512) NOT NULL,
   client_redirect_uri VARCHAR(512),
+  client_nonce VARCHAR(255),
   created_at TIMESTAMP NOT NULL,
   /* external_oauth_state >- application_oauth_provider_id = fk_external_oauth_state_application_oauth_provider*/
   CONSTRAINT fk_external_oauth_state_application_oauth_provider FOREIGN KEY (application_oauth_provider_id) REFERENCES "application_oauth_provider" (id) ON DELETE CASCADE

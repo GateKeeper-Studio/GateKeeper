@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS change_password_code (
     token VARCHAR(64) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,
-    /* change_password_code >- application_user = fk_user_change_password_code */
-    CONSTRAINT fk_user_change_password_code FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+    /* change_password_code >- tenant_user = fk_user_change_password_code */
+    CONSTRAINT fk_user_change_password_code FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

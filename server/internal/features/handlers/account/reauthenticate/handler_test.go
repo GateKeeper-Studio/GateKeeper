@@ -21,12 +21,12 @@ import (
 
 type mockReauthRepo struct{ mock.Mock }
 
-func (m *mockReauthRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockReauthRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockReauthRepo) GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error) {
@@ -71,8 +71,8 @@ var _ IRepository = (*mockReauthRepo)(nil)
 // Helpers
 // ---------------------------------------------------------------------------
 
-func makeUser(id uuid.UUID) *entities.ApplicationUser {
-	return &entities.ApplicationUser{
+func makeUser(id uuid.UUID) *entities.TenantUser {
+	return &entities.TenantUser{
 		ID:               id,
 		ApplicationID:    uuid.New(),
 		Email:            "user@example.com",

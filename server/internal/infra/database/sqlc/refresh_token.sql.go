@@ -50,7 +50,7 @@ func (q *Queries) AddRefreshToken(ctx context.Context, arg AddRefreshTokenParams
 	return err
 }
 
-const getRefreshTokensByApplicationUser = `-- name: GetRefreshTokensByApplicationUser :many
+const getRefreshTokensByTenantUser = `-- name: GetRefreshTokensByTenantUser :many
 SELECT
     rt.id,
     rt.user_id,
@@ -58,7 +58,7 @@ SELECT
     rt.created_at
 FROM
     refresh_token rt
-    INNER JOIN application_user au ON au.id = rt.user_id
+    INNER JOIN tenant_user au ON au.id = rt.user_id
 WHERE
     au.id = $1
     AND au.application_id = $2
@@ -66,13 +66,13 @@ ORDER BY
     rt.created_at DESC
 `
 
-type GetRefreshTokensByApplicationUserParams struct {
+type GetRefreshTokensByTenantUserParams struct {
 	UserID        uuid.UUID `db:"user_id"`
 	ApplicationID uuid.UUID `db:"application_id"`
 }
 
-func (q *Queries) GetRefreshTokensByApplicationUser(ctx context.Context, arg GetRefreshTokensByApplicationUserParams) ([]RefreshToken, error) {
-	rows, err := q.db.Query(ctx, getRefreshTokensByApplicationUser, arg.UserID, arg.ApplicationID)
+func (q *Queries) GetRefreshTokensByTenantUser(ctx context.Context, arg GetRefreshTokensByTenantUserParams) ([]RefreshToken, error) {
+	rows, err := q.db.Query(ctx, getRefreshTokensByTenantUser, arg.UserID, arg.ApplicationID)
 	if err != nil {
 		return nil, err
 	}

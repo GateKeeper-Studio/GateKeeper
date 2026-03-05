@@ -10,7 +10,7 @@ import (
 // UserCredentials represents the credentials associated with an application user.
 type UserCredentials struct {
 	ID                uuid.UUID
-	UserID            uuid.UUID // references ApplicationUser.ID
+	UserID            uuid.UUID // references TenantUser.ID
 	PasswordHash      string    // hashed password
 	PasswordAlgorithm string    // e.g., "bcrypt", "argon2"
 	ShouldChangePass  bool      // indicates if the user should change their password on next login

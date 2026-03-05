@@ -12,9 +12,9 @@ import (
 type IRepository interface {
 	GetApplicationOAuthProviderByID(ctx context.Context, applicationOauthProviderID uuid.UUID) (*entities.ApplicationOAuthProvider, error)
 	GetExternalOAuthStateByState(ctx context.Context, state string) (*entities.ExternalOAuthState, error)
-	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.ApplicationUser, error)
-	AddUser(ctx context.Context, newUser *entities.ApplicationUser) error
-	UpdateUser(ctx context.Context, user *entities.ApplicationUser) (*entities.ApplicationUser, error)
+	GetUserByEmail(ctx context.Context, userEmail string, applicationID uuid.UUID) (*entities.TenantUser, error)
+	AddUser(ctx context.Context, newUser *entities.TenantUser) error
+	UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error)
 	AddUserProfile(ctx context.Context, newUserProfile *entities.UserProfile) error
 	AddExternalIdentity(ctx context.Context, newExternalIdentity *entities.ExternalIdentity) error
 	RemoveAuthorizationCode(ctx context.Context, userID, applicationID uuid.UUID) error

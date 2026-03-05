@@ -5,8 +5,8 @@ CREATE TABLE IF NOT EXISTS password_reset_token (
     token VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,
-    /* password_reset_token >- application_user = fk_user_password_reset_token*/
-    CONSTRAINT fk_user_password_reset_token FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+    /* password_reset_token >- tenant_user = fk_user_password_reset_token*/
+    CONSTRAINT fk_user_password_reset_token FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

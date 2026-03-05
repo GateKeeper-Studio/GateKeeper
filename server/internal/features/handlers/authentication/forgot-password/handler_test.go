@@ -19,20 +19,20 @@ import (
 
 type mockForgotPasswordRepo struct{ mock.Mock }
 
-func (m *mockForgotPasswordRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockForgotPasswordRepo) GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, userID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
-func (m *mockForgotPasswordRepo) GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.ApplicationUser, error) {
+func (m *mockForgotPasswordRepo) GetUserByEmail(ctx context.Context, email string, applicationID uuid.UUID) (*entities.TenantUser, error) {
 	args := m.Called(ctx, email, applicationID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*entities.ApplicationUser), args.Error(1)
+	return args.Get(0).(*entities.TenantUser), args.Error(1)
 }
 
 func (m *mockForgotPasswordRepo) GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error) {
@@ -78,9 +78,9 @@ var _ mailservice.IMailService = (*mockMailService)(nil)
 // Helpers
 // ---------------------------------------------------------------------------
 
-func newConfirmedUser(appID uuid.UUID) *entities.ApplicationUser {
+func newConfirmedUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
-	return &entities.ApplicationUser{
+	return &entities.TenantUser{
 		ID:               id,
 		ApplicationID:    appID,
 		Email:            "user@example.com",
@@ -116,7 +116,7 @@ func TestHandler_ForgotPassword_UserNotFound(t *testing.T) {
 	appID, _ := uuid.NewV7()
 
 	repo.On("GetUserByEmail", mock.Anything, "user@example.com", appID).
-		Return((*entities.ApplicationUser)(nil), nil)
+		Return((*entities.TenantUser)(nil), nil)
 
 	h := &Handler{repository: repo, mailService: mailSvc}
 	err := h.Handler(context.Background(), baseForgotPasswordCommand(appID))

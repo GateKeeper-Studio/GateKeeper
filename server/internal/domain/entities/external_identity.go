@@ -9,7 +9,7 @@ import (
 // ExternalIdentity represents an external identity linked to an application user. E.g: GitHub, Google etc
 type ExternalIdentity struct {
 	ID                         uuid.UUID
-	UserID                     uuid.UUID // references ApplicationUser.ID
+	UserID                     uuid.UUID // references TenantUser.ID
 	Email                      string    // email associated with the external identity
 	Provider                   string    // e.g., "github", "google"
 	ProviderUserID             string    // user ID from the external provider

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS mfa_email_code (
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     verified BOOLEAN NOT NULL,
-    /* mfa_email_code >- application_user = fk_user_mfa_email_code*/
+    /* mfa_email_code >- tenant_user = fk_user_mfa_email_code*/
     CONSTRAINT fk_mfa_method_mfa_email_code FOREIGN KEY (mfa_method_id) REFERENCES "mfa_method" (id) ON DELETE CASCADE
 );
 

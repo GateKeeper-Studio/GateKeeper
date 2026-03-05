@@ -10,7 +10,7 @@ import (
 )
 
 type IRepository interface {
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.ApplicationUser, error)
+	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	DeleteBackupCodesByUserID(ctx context.Context, userID uuid.UUID) error
 	AddBackupCode(ctx context.Context, code *entities.BackupCode) error
 	AddAuditLog(ctx context.Context, auditLog *entities.AuditLog) error

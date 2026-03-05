@@ -8,8 +8,10 @@ CREATE TABLE IF NOT EXISTS "application_authorization_code" (
     redirect_uri VARCHAR(255) NOT NULL,
     code_challenge VARCHAR(255) NOT NULL,
     code_challenge_method VARCHAR(255) NOT NULL,
-    /* authorization_code >- application_user = fk_application_authorization_code_user*/
-    CONSTRAINT fk_application_authorization_code_user FOREIGN KEY (user_id) REFERENCES "application_user" (id) ON DELETE CASCADE
+    nonce VARCHAR(255),
+    scope VARCHAR(512),
+    /* authorization_code >- tenant_user = fk_application_authorization_code_user*/
+    CONSTRAINT fk_application_authorization_code_user FOREIGN KEY (user_id) REFERENCES "tenant_user" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

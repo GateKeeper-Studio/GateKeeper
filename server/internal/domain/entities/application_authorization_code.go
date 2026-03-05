@@ -11,7 +11,7 @@ type ApplicationAuthorizationCode struct {
 	ApplicationID       uuid.UUID
 	ExpiresAt           time.Time
 	Code                string
-	ApplicationUserId   uuid.UUID
+	TenantUserId   uuid.UUID
 	RedirectUri         string
 	CodeChallenge       string
 	CodeChallengeMethod string
@@ -19,7 +19,7 @@ type ApplicationAuthorizationCode struct {
 	Scope               *string
 }
 
-func CreateApplicationAuthorizationCode(applicationID, applicationUserID uuid.UUID, redirectUri, codeChallenge, codeChallegeMethod string, nonce *string, scope *string) (*ApplicationAuthorizationCode, error) {
+func CreateApplicationAuthorizationCode(applicationID, tenantUserID uuid.UUID, redirectUri, codeChallenge, codeChallegeMethod string, nonce *string, scope *string) (*ApplicationAuthorizationCode, error) {
 	userId, err := uuid.NewV7()
 
 	if err != nil {
@@ -31,7 +31,7 @@ func CreateApplicationAuthorizationCode(applicationID, applicationUserID uuid.UU
 		ApplicationID:       applicationID,
 		ExpiresAt:           time.Now().UTC().Add(time.Minute * 5), // 5 minutes
 		Code:                GenerateRandomString(128),
-		ApplicationUserId:   applicationUserID,
+		TenantUserId:   tenantUserID,
 		RedirectUri:         redirectUri,
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: codeChallegeMethod,

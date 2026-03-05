@@ -50,9 +50,9 @@ SELECT
     rt.created_at
 FROM
     refresh_token rt
-    INNER JOIN application_user au ON au.id = rt.user_id
+    INNER JOIN tenant_user au ON au.id = rt.user_id
 WHERE
     au.id = sqlc.arg('user_id')
-    AND au.application_id = sqlc.arg('application_id')
+    AND au.organization_id = sqlc.arg('organization_id')
 ORDER BY
     rt.created_at DESC;

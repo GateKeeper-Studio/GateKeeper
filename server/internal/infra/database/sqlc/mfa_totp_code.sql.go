@@ -42,7 +42,7 @@ type AddMfaTotpCodeParams struct {
 //	mfa_method_id UUID NOT NULL,
 //	secret VARCHAR(64) NOT NULL,
 //	created_at TIMESTAMP NOT NULL,
-//	/* mfa_totp_code >- application_user = fk_user_mfa_totp_code*/
+//	/* mfa_totp_code >- tenant_user = fk_user_mfa_totp_code*/
 //	CONSTRAINT fk_mfa_method_mfa_totp_code FOREIGN KEY (mfa_method_id) REFERENCES "mfa_method" (id) ON DELETE CASCADE
 //
 // );

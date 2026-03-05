@@ -32,7 +32,7 @@ type MfaPolicyContext struct {
 
 	// User is the authenticated user. If the user has no MFA configured,
 	// MFA cannot be enforced regardless of policy.
-	User *entities.ApplicationUser
+	User *entities.TenantUser
 
 	// Application holds the application-level settings that control MFA behavior.
 	Application *entities.Application

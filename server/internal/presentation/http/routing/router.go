@@ -15,13 +15,13 @@ import (
 	listroles "github.com/gate-keeper/internal/features/handlers/application-role/list-roles"
 	createsecret "github.com/gate-keeper/internal/features/handlers/application-secret/create-secret"
 	deletesecret "github.com/gate-keeper/internal/features/handlers/application-secret/delete-secret"
-	createapplicationuser "github.com/gate-keeper/internal/features/handlers/application-user/create-application-user"
-	deleteapplicationuser "github.com/gate-keeper/internal/features/handlers/application-user/delete-application-user"
-	editapplicationuser "github.com/gate-keeper/internal/features/handlers/application-user/edit-application-user"
-	getapplicationuserbyid "github.com/gate-keeper/internal/features/handlers/application-user/get-application-user-by-id"
-	listapplicationusers "github.com/gate-keeper/internal/features/handlers/application-user/list-application-users"
-	listusersessions "github.com/gate-keeper/internal/features/handlers/application-user/list-user-sessions"
-	revokeusersession "github.com/gate-keeper/internal/features/handlers/application-user/revoke-user-session"
+	createtenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/create-tenant-user"
+	deletetenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/delete-tenant-user"
+	edittenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/edit-tenant-user"
+	gettenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/get-tenant-user-by-id"
+	listtenantusers "github.com/gate-keeper/internal/features/handlers/tenant-user/list-tenant-users"
+	listusersessions "github.com/gate-keeper/internal/features/handlers/tenant-user/list-user-sessions"
+	revokeusersession "github.com/gate-keeper/internal/features/handlers/tenant-user/revoke-user-session"
 	createapplication "github.com/gate-keeper/internal/features/handlers/application/create-application"
 	getapplicationauthdata "github.com/gate-keeper/internal/features/handlers/application/get-application-auth-data"
 	getapplicationbyid "github.com/gate-keeper/internal/features/handlers/application/get-application-by-id"
@@ -104,11 +104,11 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	removeOrganizationEndpoint := removeorganization.Endpoint{DbPool: pool}
 	editOrganizationEndpoint := editorganization.Endpoint{DbPool: pool}
 
-	createApplicationUserEndpoint := createapplicationuser.Endpoint{DbPool: pool}
-	updateApplicationUserEndpoint := editapplicationuser.Endpoint{DbPool: pool}
-	deleteApplicationUserEndpoint := deleteapplicationuser.Endpoint{DbPool: pool}
-	getApplicationUserByIdEndpoint := getapplicationuserbyid.Endpoint{DbPool: pool}
-	listApplicationUsersEndpoint := listapplicationusers.Endpoint{DbPool: pool}
+	createTenantUserEndpoint := createtenantuser.Endpoint{DbPool: pool}
+	updateTenantUserEndpoint := edittenantuser.Endpoint{DbPool: pool}
+	deleteTenantUserEndpoint := deletetenantuser.Endpoint{DbPool: pool}
+	getTenantUserByIdEndpoint := gettenantuser.Endpoint{DbPool: pool}
+	listTenantUsersEndpoint := listtenantusers.Endpoint{DbPool: pool}
 	listUserSessionsEndpoint := listusersessions.Endpoint{DbPool: pool}
 	revokeUserSessionEndpoint := revokeusersession.Endpoint{DbPool: pool}
 
@@ -311,11 +311,11 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 					r.Delete("/{applicationID}", removeApplicationEndpoint.Http)
 
 					r.Route("/{applicationID}/users", func(r chi.Router) {
-						r.Get("/", listApplicationUsersEndpoint.Http)
-						r.Post("/", createApplicationUserEndpoint.Http)
-						r.Put("/{userID}", updateApplicationUserEndpoint.Http)
-						r.Get("/{userID}", getApplicationUserByIdEndpoint.Http)
-						r.Delete("/{userID}", deleteApplicationUserEndpoint.Http)
+						r.Get("/", listTenantUsersEndpoint.Http)
+						r.Post("/", createTenantUserEndpoint.Http)
+						r.Put("/{userID}", updateTenantUserEndpoint.Http)
+						r.Get("/{userID}", getTenantUserByIdEndpoint.Http)
+						r.Delete("/{userID}", deleteTenantUserEndpoint.Http)
 
 						r.Get("/{userID}/sessions", listUserSessionsEndpoint.Http)
 						r.Delete("/{userID}/sessions/{sessionID}", revokeUserSessionEndpoint.Http)
