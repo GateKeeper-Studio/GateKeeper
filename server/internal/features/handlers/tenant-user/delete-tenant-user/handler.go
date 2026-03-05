@@ -3,7 +3,6 @@ package deletetenantuser
 import (
 	"context"
 
-	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 )
@@ -19,17 +18,7 @@ func New(q *pgstore.Queries) repositories.ServiceHandler[Command] {
 }
 
 func (s *Handler) Handler(ctx context.Context, request Command) error {
-	isApplicationExists, err := s.repository.CheckIfApplicationExists(ctx, request.ApplicationID)
-
-	if err != nil {
-		return err
-	}
-
-	if !isApplicationExists {
-		return &errors.ErrApplicationNotFound
-	}
-
-	if err := s.repository.DeleteTenantUser(ctx, request.ApplicationID, request.UserID); err != nil {
+	if err := s.repository.DeleteTenantUser(ctx, request.TenantID, request.UserID); err != nil {
 		return err
 	}
 

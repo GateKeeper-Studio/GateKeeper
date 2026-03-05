@@ -43,21 +43,21 @@ func (h *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrMfaUserSecretNotFound
 	}
 
-	// Reconstruct the OTP URL
-	application, err := h.repository.GetApplicationByID(ctx, user.ApplicationID)
+	// Reconstruct the OTP URL using the tenant name as the issuer
+	tenant, err := h.repository.GetTenantByID(ctx, user.TenantID)
 	if err != nil {
 		return nil, err
 	}
-	if application == nil {
-		return nil, &errors.ErrApplicationNotFound
+	if tenant == nil {
+		return nil, &errors.ErrTenantNotFound
 	}
 
 	otpUrl := fmt.Sprintf(
 		"otpauth://totp/%s:%s?secret=%s&issuer=%s&algorithm=SHA1&digits=6&period=30",
-		url.PathEscape(application.Name),
+		url.PathEscape(tenant.Name),
 		url.PathEscape(user.Email),
 		secret.Secret,
-		url.QueryEscape(application.Name),
+		url.QueryEscape(tenant.Name),
 	)
 
 	return &Response{

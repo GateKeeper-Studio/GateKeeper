@@ -3,31 +3,31 @@ package listtenantusers
 import (
 	"context"
 	"encoding/json"
+
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
 )
 
 type IRepository interface {
-	GetUsersByApplicationID(ctx context.Context, applicationID uuid.UUID, limit, offset int) (*Response, error)
-	CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error)
+	GetUsersByTenantID(ctx context.Context, tenantID uuid.UUID, limit, offset int) (*Response, error)
 }
 
 type Repository struct {
-	repositories.ApplicationRepository
+	repositories.UserRepository
 }
 
 func NewRepository(q *pgstore.Queries) Repository {
 	return Repository{
-		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+		UserRepository: repositories.UserRepository{Store: q},
 	}
 }
 
-func (r Repository) GetUsersByApplicationID(ctx context.Context, applicationID uuid.UUID, limit, offset int) (*Response, error) {
-	users, err := r.ApplicationRepository.Store.GetUsersByApplicationID(ctx, pgstore.GetUsersByApplicationIDParams{
-		ApplicationID: applicationID,
-		Limit:         int32(limit),
-		Offset:        int32(offset),
+func (r Repository) GetUsersByTenantID(ctx context.Context, tenantID uuid.UUID, limit, offset int) (*Response, error) {
+	users, err := r.UserRepository.Store.GetUsersByTenantID(ctx, pgstore.GetUsersByTenantIDParams{
+		TenantID: tenantID,
+		Limit:    int32(limit),
+		Offset:   int32(offset),
 	})
 
 	if err != nil && err != repositories.ErrNoRows {

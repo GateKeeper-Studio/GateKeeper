@@ -34,16 +34,16 @@ func TestMain(m *testing.M) {
 
 type mockLoginRepo struct{ mock.Mock }
 
-func (m *mockLoginRepo) AddMfaWebauthnSession(ctx context.Context, session *entities.MfaWebauthnSession) error {
+func (m *mockLoginRepo) AddMfaPasskeySession(ctx context.Context, session *entities.MfaPasskeySession) error {
 	return m.Called(ctx, session).Error(0)
 }
 
-func (m *mockLoginRepo) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error) {
+func (m *mockLoginRepo) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaPasskeyCredentials, error) {
 	args := m.Called(ctx, mfaMethodID)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).([]entities.MfaWebauthnCredentials), args.Error(1)
+	return args.Get(0).([]entities.MfaPasskeyCredentials), args.Error(1)
 }
 
 func (m *mockLoginRepo) GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error) {
@@ -143,7 +143,7 @@ func newActiveConfirmedUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
 	return &entities.TenantUser{
 		ID:               id,
-		ApplicationID:    appID,
+		TenantID:         appID,
 		Email:            "user@example.com",
 		IsActive:         true,
 		IsEmailConfirmed: true,

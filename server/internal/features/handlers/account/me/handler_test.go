@@ -40,7 +40,7 @@ func TestHandler_ReturnsProfileWithoutMfa(t *testing.T) {
 		repository: &mockRepository{
 			user: &entities.TenantUser{
 				ID:                 userID,
-				ApplicationID:      appID,
+				TenantID:           appID,
 				Email:              "user@example.com",
 				IsActive:           true,
 				Preferred2FAMethod: nil,
@@ -85,7 +85,7 @@ func TestHandler_ReturnsProfileWithMfa(t *testing.T) {
 		repository: &mockRepository{
 			user: &entities.TenantUser{
 				ID:                 userID,
-				ApplicationID:      appID,
+				TenantID:           appID,
 				Email:              "user@example.com",
 				IsActive:           true,
 				Preferred2FAMethod: &mfaMethod,

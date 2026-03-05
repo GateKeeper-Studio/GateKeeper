@@ -26,12 +26,12 @@ type IMfaRepository interface {
 	AddMfaEmailCode(ctx context.Context, emailMfaCode *entities.MfaEmailCode) error
 	GetMfaEmailCodeByToken(ctx context.Context, mfaMethodID uuid.UUID, token string) (*entities.MfaEmailCode, error)
 	DeleteEmailMfaCodeByID(ctx context.Context, emailMfaCodeID uuid.UUID) error
-	GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error)
-	AddWebAuthnCredential(ctx context.Context, cred *entities.MfaWebauthnCredentials) error
+	GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaPasskeyCredentials, error)
+	AddWebAuthnCredential(ctx context.Context, cred *entities.MfaPasskeyCredentials) error
 	UpdateWebAuthnCredentialSignCount(ctx context.Context, credID uuid.UUID, signCount uint32) error
-	AddMfaWebauthnSession(ctx context.Context, session *entities.MfaWebauthnSession) error
-	GetMfaWebauthnSessionByID(ctx context.Context, id uuid.UUID) (*entities.MfaWebauthnSession, error)
-	DeleteMfaWebauthnSession(ctx context.Context, id uuid.UUID) error
+	AddMfaPasskeySession(ctx context.Context, session *entities.MfaPasskeySession) error
+	GetMfaPasskeySessionByID(ctx context.Context, id uuid.UUID) (*entities.MfaPasskeySession, error)
+	DeleteMfaPasskeySession(ctx context.Context, id uuid.UUID) error
 }
 
 // MfaRepository is the shared implementation for MFA-related DB operations.
@@ -250,15 +250,15 @@ func (r MfaRepository) DeleteEmailMfaCodeByID(ctx context.Context, emailMfaCodeI
 
 // --- WebAuthn Credentials ---
 
-func (r MfaRepository) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error) {
-	rows, err := r.Store.GetMfaWebauthnCredentialsByMfaMethodID(ctx, mfaMethodID)
+func (r MfaRepository) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaPasskeyCredentials, error) {
+	rows, err := r.Store.GetMfaPasskeyCredentialsByMfaMethodID(ctx, mfaMethodID)
 	if err != nil {
 		return nil, err
 	}
 
-	creds := make([]entities.MfaWebauthnCredentials, 0, len(rows))
+	creds := make([]entities.MfaPasskeyCredentials, 0, len(rows))
 	for _, row := range rows {
-		creds = append(creds, entities.MfaWebauthnCredentials{
+		creds = append(creds, entities.MfaPasskeyCredentials{
 			ID:             row.ID,
 			MfaMethodID:    row.MfaMethodID,
 			CredentialID:   row.CredentialID,
@@ -273,8 +273,8 @@ func (r MfaRepository) GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, 
 	return creds, nil
 }
 
-func (r MfaRepository) AddWebAuthnCredential(ctx context.Context, cred *entities.MfaWebauthnCredentials) error {
-	return r.Store.AddMfaWebauthnCredential(ctx, pgstore.AddMfaWebauthnCredentialParams{
+func (r MfaRepository) AddWebAuthnCredential(ctx context.Context, cred *entities.MfaPasskeyCredentials) error {
+	return r.Store.AddMfaPasskeyCredential(ctx, pgstore.AddMfaPasskeyCredentialParams{
 		ID:             cred.ID,
 		MfaMethodID:    cred.MfaMethodID,
 		CredentialID:   cred.CredentialID,
@@ -287,7 +287,7 @@ func (r MfaRepository) AddWebAuthnCredential(ctx context.Context, cred *entities
 }
 
 func (r MfaRepository) UpdateWebAuthnCredentialSignCount(ctx context.Context, credID uuid.UUID, signCount uint32) error {
-	return r.Store.UpdateMfaWebauthnCredentialSignCount(ctx, pgstore.UpdateMfaWebauthnCredentialSignCountParams{
+	return r.Store.UpdateMfaPasskeyCredentialSignCount(ctx, pgstore.UpdateMfaPasskeyCredentialSignCountParams{
 		ID:        credID,
 		SignCount: int32(signCount),
 	})
@@ -295,8 +295,8 @@ func (r MfaRepository) UpdateWebAuthnCredentialSignCount(ctx context.Context, cr
 
 // --- WebAuthn Sessions ---
 
-func (r MfaRepository) AddMfaWebauthnSession(ctx context.Context, session *entities.MfaWebauthnSession) error {
-	return r.Store.AddMfaWebauthnSession(ctx, pgstore.AddMfaWebauthnSessionParams{
+func (r MfaRepository) AddMfaPasskeySession(ctx context.Context, session *entities.MfaPasskeySession) error {
+	return r.Store.AddMfaPasskeySession(ctx, pgstore.AddMfaPasskeySessionParams{
 		ID:          session.ID,
 		UserID:      session.UserID,
 		SessionData: session.SessionData,
@@ -305,8 +305,8 @@ func (r MfaRepository) AddMfaWebauthnSession(ctx context.Context, session *entit
 	})
 }
 
-func (r MfaRepository) GetMfaWebauthnSessionByID(ctx context.Context, id uuid.UUID) (*entities.MfaWebauthnSession, error) {
-	session, err := r.Store.GetMfaWebauthnSessionByID(ctx, id)
+func (r MfaRepository) GetMfaPasskeySessionByID(ctx context.Context, id uuid.UUID) (*entities.MfaPasskeySession, error) {
+	session, err := r.Store.GetMfaPasskeySessionByID(ctx, id)
 
 	if err == ErrNoRows {
 		return nil, nil
@@ -316,7 +316,7 @@ func (r MfaRepository) GetMfaWebauthnSessionByID(ctx context.Context, id uuid.UU
 		return nil, err
 	}
 
-	return &entities.MfaWebauthnSession{
+	return &entities.MfaPasskeySession{
 		ID:          session.ID,
 		UserID:      session.UserID,
 		SessionData: session.SessionData,
@@ -325,6 +325,6 @@ func (r MfaRepository) GetMfaWebauthnSessionByID(ctx context.Context, id uuid.UU
 	}, nil
 }
 
-func (r MfaRepository) DeleteMfaWebauthnSession(ctx context.Context, id uuid.UUID) error {
-	return r.Store.DeleteMfaWebauthnSession(ctx, id)
+func (r MfaRepository) DeleteMfaPasskeySession(ctx context.Context, id uuid.UUID) error {
+	return r.Store.DeleteMfaPasskeySession(ctx, id)
 }

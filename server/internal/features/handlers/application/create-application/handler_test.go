@@ -50,7 +50,7 @@ func TestHandler_CreateApplication_Success(t *testing.T) {
 		HasMfaEmail:        false,
 		HasMfaAuthApp:      false,
 		HasMfaWebauthn:     false,
-		OrganizationID:     orgID,
+		TenantID:           orgID,
 		CanSelfSignUp:      true,
 		CanSelfForgotPass:  true,
 	})
@@ -73,7 +73,7 @@ func TestHandler_CreateApplication_RepositoryError(t *testing.T) {
 		Name:               "My App",
 		PasswordHashSecret: "this-is-a-32-char-secret-key!!!1",
 		Badges:             []string{},
-		OrganizationID:     orgID,
+		TenantID:           orgID,
 	})
 
 	require.Error(t, err)
@@ -96,7 +96,7 @@ func TestHandler_CreateApplication_CreatesDefaultRoles(t *testing.T) {
 		Name:               "My App",
 		PasswordHashSecret: "this-is-a-32-char-secret-key!!!1",
 		Badges:             []string{},
-		OrganizationID:     orgID,
+		TenantID:           orgID,
 	})
 
 	require.NoError(t, err)

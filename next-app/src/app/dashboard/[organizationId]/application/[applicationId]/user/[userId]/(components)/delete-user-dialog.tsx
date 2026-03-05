@@ -23,13 +23,12 @@ import {
 } from "@/components/ui/tooltip";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 
-import { deleteApplicationUserApi } from "@/services/dashboard/delete-application-user";
+import { deleteTenantUserApi } from "@/services/dashboard/delete-tenant-user";
 
 export function DeleteUserDialog() {
   const [isLoading, setIsLoading] = useState(false);
-  const { userId, applicationId, organizationId } = useParams() as {
+  const { userId, organizationId } = useParams() as {
     userId: string;
-    applicationId: string;
     organizationId: string;
   };
 
@@ -38,9 +37,9 @@ export function DeleteUserDialog() {
   async function handler() {
     setIsLoading(true);
 
-    const [err] = await deleteApplicationUserApi(
-      { applicationId, organizationId, userId },
-      { accessToken: "" }
+    const [err] = await deleteTenantUserApi(
+      { organizationId, userId },
+      { accessToken: "" },
     );
 
     if (err) {
@@ -54,9 +53,7 @@ export function DeleteUserDialog() {
 
     toast.success("User deleted successfully");
 
-    router.push(
-      `/dashboard/${organizationId}/application/${applicationId}?tab=users`
-    );
+    router.push(`/dashboard/${organizationId}/users`);
   }
 
   return (

@@ -9,7 +9,7 @@ type Command struct {
 	Badges               []string  `json:"badges" validate:"required"`
 	HasMfaEmail          bool      `json:"hasMfaEmail" validate:"boolean"`
 	HasMfaAuthApp        bool      `json:"hasMfaAuthApp" validate:"boolean"`
-	OrganizationID       uuid.UUID `json:"organizationId" validate:"required"`
+	TenantID             uuid.UUID `json:"tenantId" validate:"required"`
 	IsActive             bool      `json:"isActive" validate:"required"`
 	CanSelfSignUp        bool      `json:"canSelfSignUp" validate:"boolean"`
 	CanSelfForgotPass    bool      `json:"canSelfForgotPass" validate:"boolean"`

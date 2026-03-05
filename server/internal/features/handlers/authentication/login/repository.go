@@ -2,6 +2,7 @@ package login
 
 import (
 	"context"
+
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
@@ -20,8 +21,8 @@ type IRepository interface {
 	AddChangePasswordCode(ctx context.Context, changePasswordCode *entities.ChangePasswordCode) error
 	GetMfaMethodByUserID(ctx context.Context, userID uuid.UUID, method string) (*entities.MfaMethod, error)
 	GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error)
-	GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error)
-	AddMfaWebauthnSession(ctx context.Context, session *entities.MfaWebauthnSession) error
+	GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaPasskeyCredentials, error)
+	AddMfaPasskeySession(ctx context.Context, session *entities.MfaPasskeySession) error
 }
 
 type Repository struct {
@@ -36,12 +37,12 @@ type Repository struct {
 
 func NewRepository(q *pgstore.Queries) Repository {
 	return Repository{
-		ApplicationRepository: repositories.ApplicationRepository{Store: q},
-		UserRepository: repositories.UserRepository{Store: q},
-		UserProfileRepository: repositories.UserProfileRepository{Store: q},
-		MfaRepository: repositories.MfaRepository{Store: q},
+		ApplicationRepository:        repositories.ApplicationRepository{Store: q},
+		UserRepository:               repositories.UserRepository{Store: q},
+		UserProfileRepository:        repositories.UserProfileRepository{Store: q},
+		MfaRepository:                repositories.MfaRepository{Store: q},
 		ChangePasswordCodeRepository: repositories.ChangePasswordCodeRepository{Store: q},
-		SessionRepository: repositories.SessionRepository{Store: q},
-		UserCredentialsRepository: repositories.UserCredentialsRepository{Store: q},
+		SessionRepository:            repositories.SessionRepository{Store: q},
+		UserCredentialsRepository:    repositories.UserCredentialsRepository{Store: q},
 	}
 }

@@ -39,14 +39,13 @@ import {
 import { revokeUserSessionApi } from "@/services/dashboard/revoke-user-session";
 
 export function UserSessionsSection() {
-  const { organizationId, applicationId, userId } = useParams() as {
+  const { organizationId, userId } = useParams() as {
     organizationId: string;
-    applicationId: string;
     userId: string;
   };
 
   const { data, isLoading, mutate } = useUserSessionsSWR(
-    { organizationId, applicationId, userId },
+    { organizationId, userId },
     { accessToken: "" },
   );
 
@@ -61,7 +60,6 @@ export function UserSessionsSection() {
     const [err] = await revokeUserSessionApi(
       {
         organizationId,
-        applicationId,
         userId,
         sessionId: revokeTarget.id,
       },

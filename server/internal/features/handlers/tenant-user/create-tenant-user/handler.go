@@ -32,7 +32,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*Response, erro
 		return nil, &errors.ErrApplicationNotFound
 	}
 
-	isEmailExists, err := s.repository.IsUserExistsByEmail(ctx, request.Email, request.ApplicationID)
+	isEmailExists, err := s.repository.IsUserExistsByEmail(ctx, request.Email, request.TenantID)
 
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*Response, erro
 
 	tenantUser, err := entities.CreateTenantUser(
 		request.Email,
-		request.ApplicationID,
+		request.TenantID,
 		true, // shouldChangePass
 	)
 

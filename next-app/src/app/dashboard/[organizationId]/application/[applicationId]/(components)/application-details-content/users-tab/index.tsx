@@ -7,23 +7,20 @@ import { ErrorAlert } from "@/components/error-alert";
 import { SectionTitle } from "@/components/section-title";
 
 import { UsersTable, UserTableItem } from "./users-table";
-import { useApplicationUsersSWR } from "@/services/dashboard/use-application-users-swr";
-import { useApplicationContext } from "../../../(contexts)/application-context-provider";
+import { useTenantUsersSWR } from "@/services/dashboard/use-tenant-users-swr";
 import { useOrganizationsContext } from "@/app/dashboard/(contexts)/organizations-context-provider";
 
 export function UsersTab() {
   const { selectedOrganization } = useOrganizationsContext();
-  const { application } = useApplicationContext();
 
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: 10,
   });
 
-  const { data, error, isLoading, mutate } = useApplicationUsersSWR(
+  const { data, error, isLoading, mutate } = useTenantUsersSWR(
     {
       organizationId: selectedOrganization?.id || "",
-      applicationId: application?.id || "",
       page: pagination.pageIndex + 1,
       pageSize: pagination.pageSize,
     },
@@ -48,8 +45,8 @@ export function UsersTab() {
       <SectionTitle>Users</SectionTitle>
 
       <span className="text-sm tracking-tight text-gray-600 dark:text-gray-300">
-        Users are the individuals who have access to this application. They can
-        be assigned roles and permissions to control their access.
+        Users belong to the organization and can be assigned roles per
+        application. Manage all organization users here.
       </span>
 
       <UsersTable

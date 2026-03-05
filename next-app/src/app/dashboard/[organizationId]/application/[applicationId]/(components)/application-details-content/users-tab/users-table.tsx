@@ -62,7 +62,7 @@ import { useOrganizationsContext } from "@/app/dashboard/(contexts)/organization
 import { Item } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 
-export type ApplicationUser = IApplication["users"]["data"][number];
+export type TenantUser = IApplication["users"]["data"][number];
 
 export type UserTableItem = IApplication["users"]["data"][number];
 
@@ -85,7 +85,7 @@ export function UsersTable({
 }: Props) {
   const { selectedOrganization } = useOrganizationsContext();
 
-  const [selectedUser, setSelectedUser] = useState<ApplicationUser | null>(
+  const [selectedUser, setSelectedUser] = useState<TenantUser | null>(
     null,
   );
   const [isDeleteModalOpened, setIsDeleteModalOpened] = useState(false);
@@ -100,7 +100,7 @@ export function UsersTable({
     organizationId: string;
   };
 
-  const columns: ColumnDef<ApplicationUser>[] = [
+  const columns: ColumnDef<TenantUser>[] = [
     {
       id: "select",
       header: ({ table }) => (
@@ -154,7 +154,7 @@ export function UsersTable({
       accessorKey: "roles",
       header: "Roles",
       cell: ({ row }) => {
-        const roles = row.getValue("roles") as ApplicationUser["roles"];
+        const roles = row.getValue("roles") as TenantUser["roles"];
 
         return (
           <div className="flex gap-1">
@@ -191,16 +191,14 @@ export function UsersTable({
               <DropdownMenuSeparator />
 
               <DropdownMenuItem asChild>
-                <Link
-                  href={`/dashboard/${organizationId}/application/${applicationId}/user/${user.id}`}
-                >
+                <Link href={`/dashboard/${organizationId}/users/${user.id}`}>
                   View User
                 </Link>
               </DropdownMenuItem>
 
               <DropdownMenuItem asChild>
                 <Link
-                  href={`/dashboard/${organizationId}/application/${applicationId}/user/${user.id}?edit=true`}
+                  href={`/dashboard/${organizationId}/users/${user.id}/edit-user`}
                 >
                   Update User
                 </Link>
@@ -257,7 +255,7 @@ export function UsersTable({
 
   //   await Promise.all(
   //     currentUsers.map(async (row) => {
-  //       await deleteApplicationUserApi(
+  //       await deleteTenantUserApi(
   //         { applicationId, organizationId, userId: row.id },
   //         { accessToken: "" },
   //       );
@@ -347,7 +345,7 @@ export function UsersTable({
             )}
 
             <Link
-              href={`/dashboard/${selectedOrganization?.id}/application/${applicationId}/user/create-user`}
+              href={`/dashboard/${selectedOrganization?.id}/users/create-user`}
               className={cn(buttonVariants({ variant: "default" }), "ml-auto")}
             >
               <Plus /> Add User

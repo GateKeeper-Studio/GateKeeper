@@ -24,7 +24,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 
 	application := entities.Application{
 		ID:                   command.ID,
-		OrganizationID:       command.OrganizationID,
+		TenantID:             command.TenantID,
 		Name:                 command.Name,
 		Description:          command.Description,
 		IsActive:             command.IsActive,

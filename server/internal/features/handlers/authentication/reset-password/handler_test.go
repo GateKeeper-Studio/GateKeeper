@@ -92,7 +92,7 @@ func newResetUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
 	return &entities.TenantUser{
 		ID:               id,
-		ApplicationID:    appID,
+		TenantID:         appID,
 		Email:            "user@example.com",
 		IsActive:         true,
 		IsEmailConfirmed: true,
@@ -103,7 +103,7 @@ func newResetUser(appID uuid.UUID) *entities.TenantUser {
 func newResetApp(orgID uuid.UUID) *entities.Application {
 	return &entities.Application{
 		ID:                 uuid.New(),
-		OrganizationID:     orgID,
+		TenantID:           orgID,
 		Name:               "Test App",
 		IsActive:           true,
 		PasswordHashSecret: "test-salt-key-for-password-hashing",

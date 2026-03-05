@@ -15,13 +15,6 @@ import (
 	listroles "github.com/gate-keeper/internal/features/handlers/application-role/list-roles"
 	createsecret "github.com/gate-keeper/internal/features/handlers/application-secret/create-secret"
 	deletesecret "github.com/gate-keeper/internal/features/handlers/application-secret/delete-secret"
-	createtenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/create-tenant-user"
-	deletetenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/delete-tenant-user"
-	edittenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/edit-tenant-user"
-	gettenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/get-tenant-user-by-id"
-	listtenantusers "github.com/gate-keeper/internal/features/handlers/tenant-user/list-tenant-users"
-	listusersessions "github.com/gate-keeper/internal/features/handlers/tenant-user/list-user-sessions"
-	revokeusersession "github.com/gate-keeper/internal/features/handlers/tenant-user/revoke-user-session"
 	createapplication "github.com/gate-keeper/internal/features/handlers/application/create-application"
 	getapplicationauthdata "github.com/gate-keeper/internal/features/handlers/application/get-application-auth-data"
 	getapplicationbyid "github.com/gate-keeper/internal/features/handlers/application/get-application-by-id"
@@ -45,8 +38,15 @@ import (
 	userinfo "github.com/gate-keeper/internal/features/handlers/authentication/userinfo"
 	verifyappmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-app-mfa"
 	verifyemailmfa "github.com/gate-keeper/internal/features/handlers/authentication/verify-email-mfa"
-	verifywebauthnauth "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-authentication"
-	verifywebauthnregistration "github.com/gate-keeper/internal/features/handlers/authentication/verify-webauthn-registration"
+	verifypasskeyauth "github.com/gate-keeper/internal/features/handlers/authentication/verify-passkey-authentication"
+	verifypasskeyregistration "github.com/gate-keeper/internal/features/handlers/authentication/verify-passkey-registration"
+	createtenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/create-tenant-user"
+	deletetenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/delete-tenant-user"
+	edittenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/edit-tenant-user"
+	gettenantuser "github.com/gate-keeper/internal/features/handlers/tenant-user/get-tenant-user-by-id"
+	listtenantusers "github.com/gate-keeper/internal/features/handlers/tenant-user/list-tenant-users"
+	listusersessions "github.com/gate-keeper/internal/features/handlers/tenant-user/list-user-sessions"
+	revokeusersession "github.com/gate-keeper/internal/features/handlers/tenant-user/revoke-user-session"
 
 	accountchangepassword "github.com/gate-keeper/internal/features/handlers/account/change-password"
 	accountconfirmemailchange "github.com/gate-keeper/internal/features/handlers/account/confirm-email-change"
@@ -65,11 +65,11 @@ import (
 	accountupdatepreferredmfa "github.com/gate-keeper/internal/features/handlers/account/update-preferred-mfa"
 	accountupdateprofile "github.com/gate-keeper/internal/features/handlers/account/update-profile"
 
-	createorganization "github.com/gate-keeper/internal/features/handlers/organization/create-organization"
-	editorganization "github.com/gate-keeper/internal/features/handlers/organization/edit-organization"
-	getorganizationbyid "github.com/gate-keeper/internal/features/handlers/organization/get-organization-by-id"
-	listorganizations "github.com/gate-keeper/internal/features/handlers/organization/list-organizations"
-	removeorganization "github.com/gate-keeper/internal/features/handlers/organization/remove-organization"
+	createtenant "github.com/gate-keeper/internal/features/handlers/tenant/create-tenant"
+	edittenant "github.com/gate-keeper/internal/features/handlers/tenant/edit-tenant"
+	gettenantbyid "github.com/gate-keeper/internal/features/handlers/tenant/get-tenant-by-id"
+	listtenants "github.com/gate-keeper/internal/features/handlers/tenant/list-tenants"
+	removetenant "github.com/gate-keeper/internal/features/handlers/tenant/remove-tenant"
 	http_middlewares "github.com/gate-keeper/internal/presentation/http/middlewares"
 
 	"github.com/go-chi/chi"
@@ -98,11 +98,11 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	createEndpoint := createsecret.Endpoint{DbPool: pool}
 	deleteSecretEndpoint := deletesecret.Endpoint{DbPool: pool}
 
-	getOrganizationByIdEndpoint := getorganizationbyid.Endpoint{DbPool: pool}
-	createOrganizationEndpoint := createorganization.Endpoint{DbPool: pool}
-	listOrganizationsEndpoint := listorganizations.Endpoint{DbPool: pool}
-	removeOrganizationEndpoint := removeorganization.Endpoint{DbPool: pool}
-	editOrganizationEndpoint := editorganization.Endpoint{DbPool: pool}
+	getTenantByIdEndpoint := gettenantbyid.Endpoint{DbPool: pool}
+	createTenantEndpoint := createtenant.Endpoint{DbPool: pool}
+	listTenantsEndpoint := listtenants.Endpoint{DbPool: pool}
+	removeTenantEndpoint := removetenant.Endpoint{DbPool: pool}
+	editTenantEndpoint := edittenant.Endpoint{DbPool: pool}
 
 	createTenantUserEndpoint := createtenantuser.Endpoint{DbPool: pool}
 	updateTenantUserEndpoint := edittenantuser.Endpoint{DbPool: pool}
@@ -127,8 +127,8 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 	verfifyAppMfaEndpoint := verifyappmfa.Endpoint{DbPool: pool}
 	confirmMfaAuthAppSecretEndpoint := confirmmfaauthappsecret.Endpoint{DbPool: pool}
 	beginWebAuthnRegistrationEndpoint := beginwebauthnregistration.Endpoint{DbPool: pool}
-	verifyWebAuthnRegistrationEndpoint := verifywebauthnregistration.Endpoint{DbPool: pool}
-	verifyWebAuthnAuthEndpoint := verifywebauthnauth.Endpoint{DbPool: pool}
+	verifypasskeynRegistrationEndpoint := verifypasskeyregistration.Endpoint{DbPool: pool}
+	verifypasskeynAuthEndpoint := verifypasskeyauth.Endpoint{DbPool: pool}
 
 	githubLoginEndpoint := githublogin.Endpoint{DbPool: pool}
 	githubCallbackEndpoint := githubcallback.Endpoint{DbPool: pool}
@@ -201,7 +201,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 			r.Post("/generate-auth-secret", generateAuthAppSecretEndpoint.Http)
 			r.Post("/verify-mfa/email", verfifyEmailMfaEndpoint.Http)
 			r.Post("/verify-mfa/app", verfifyAppMfaEndpoint.Http)
-			r.Post("/verify-mfa/webauthn", verifyWebAuthnAuthEndpoint.Http)
+			r.Post("/verify-mfa/webauthn", verifypasskeynAuthEndpoint.Http)
 			r.Post("/sign-up", signUpCredentialEndpoint.Http)
 			r.Post("/confirm-email", confirmUserEmailEndpoint.Http)
 			r.Post("/reset-password", resetRepositoryEndpoint.Http)
@@ -212,7 +212,7 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 
 			r.Route("/webauthn", func(r chi.Router) {
 				r.Post("/begin-registration", beginWebAuthnRegistrationEndpoint.Http)
-				r.Post("/verify-registration", verifyWebAuthnRegistrationEndpoint.Http)
+				r.Post("/verify-registration", verifypasskeynRegistrationEndpoint.Http)
 			})
 
 			r.Get("/application/{applicationID}/auth-data", getApplicationAuthDataEndpoint.Http)
@@ -292,16 +292,27 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 		// Confirm email change — public (token-based, no JWT required)
 		r.Post("/account/email/confirm", accountConfirmEmailChangeEndpoint.Http)
 
-		r.Route("/organizations", func(r chi.Router) {
+		r.Route("/tenants", func(r chi.Router) {
 			// r.Use(http_middlewares.JwtHandler)
 
-			r.Get("/", listOrganizationsEndpoint.Http)
-			r.Post("/", createOrganizationEndpoint.Http)
+			r.Get("/", listTenantsEndpoint.Http)
+			r.Post("/", createTenantEndpoint.Http)
 
-			r.Route("/{organizationID}", func(r chi.Router) {
-				r.Get("/", getOrganizationByIdEndpoint.Http)
-				r.Delete("/", removeOrganizationEndpoint.Http)
-				r.Put("/", editOrganizationEndpoint.Http)
+			r.Route("/{tenantID}", func(r chi.Router) {
+				r.Get("/", getTenantByIdEndpoint.Http)
+				r.Delete("/", removeTenantEndpoint.Http)
+				r.Put("/", editTenantEndpoint.Http)
+
+				r.Route("/users", func(r chi.Router) {
+					r.Get("/", listTenantUsersEndpoint.Http)
+					r.Post("/", createTenantUserEndpoint.Http)
+					r.Put("/{userID}", updateTenantUserEndpoint.Http)
+					r.Get("/{userID}", getTenantUserByIdEndpoint.Http)
+					r.Delete("/{userID}", deleteTenantUserEndpoint.Http)
+
+					r.Get("/{userID}/sessions", listUserSessionsEndpoint.Http)
+					r.Delete("/{userID}/sessions/{sessionID}", revokeUserSessionEndpoint.Http)
+				})
 
 				r.Route("/applications", func(r chi.Router) {
 					r.Get("/", listApplicationsEndpoint.Http)
@@ -309,17 +320,6 @@ func SetHttpRoutes(pool *pgxpool.Pool) http.Handler {
 					r.Put("/{applicationID}", updateApplicationEndpoint.Http)
 					r.Get("/{applicationID}", getApplicationByIdEndpoint.Http)
 					r.Delete("/{applicationID}", removeApplicationEndpoint.Http)
-
-					r.Route("/{applicationID}/users", func(r chi.Router) {
-						r.Get("/", listTenantUsersEndpoint.Http)
-						r.Post("/", createTenantUserEndpoint.Http)
-						r.Put("/{userID}", updateTenantUserEndpoint.Http)
-						r.Get("/{userID}", getTenantUserByIdEndpoint.Http)
-						r.Delete("/{userID}", deleteTenantUserEndpoint.Http)
-
-						r.Get("/{userID}/sessions", listUserSessionsEndpoint.Http)
-						r.Delete("/{userID}/sessions/{sessionID}", revokeUserSessionEndpoint.Http)
-					})
 
 					r.Route("/{applicationID}/roles", func(r chi.Router) {
 						r.Get("/", listRolesEndpoint.Http)

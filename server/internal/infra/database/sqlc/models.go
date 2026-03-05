@@ -13,7 +13,7 @@ import (
 
 type Application struct {
 	ID                   uuid.UUID        `db:"id"`
-	OrganizationID       uuid.UUID        `db:"organization_id"`
+	TenantID             uuid.UUID        `db:"tenant_id"`
 	Name                 string           `db:"name"`
 	Description          *string          `db:"description"`
 	IsActive             bool             `db:"is_active"`
@@ -84,17 +84,6 @@ type ApplicationSecret struct {
 	CreatedAt     pgtype.Timestamp `db:"created_at"`
 	UpdatedAt     *time.Time       `db:"updated_at"`
 	ExpiresAt     *time.Time       `db:"expires_at"`
-}
-
-type TenantUser struct {
-	ID                 uuid.UUID        `db:"id"`
-	ApplicationID      uuid.UUID        `db:"application_id"`
-	Email              string           `db:"email"`
-	CreatedAt          pgtype.Timestamp `db:"created_at"`
-	UpdatedAt          *time.Time       `db:"updated_at"`
-	IsActive           bool             `db:"is_active"`
-	IsEmailConfirmed   bool             `db:"is_email_confirmed"`
-	Preferred2faMethod *string          `db:"preferred_2fa_method"`
 }
 
 type AuditLog struct {
@@ -180,8 +169,8 @@ type ExternalOauthState struct {
 	ClientResponseType         *string          `db:"client_response_type"`
 	CodeVerifier               string           `db:"code_verifier"`
 	ClientRedirectUri          *string          `db:"client_redirect_uri"`
-	CreatedAt                  pgtype.Timestamp `db:"created_at"`
 	ClientNonce                *string          `db:"client_nonce"`
+	CreatedAt                  pgtype.Timestamp `db:"created_at"`
 }
 
 type MfaEmailCode struct {
@@ -202,6 +191,25 @@ type MfaMethod struct {
 	LastUsedAt *time.Time       `db:"last_used_at"`
 }
 
+type MfaPasskeyCredential struct {
+	ID             uuid.UUID        `db:"id"`
+	MfaMethodID    uuid.UUID        `db:"mfa_method_id"`
+	CredentialID   string           `db:"credential_id"`
+	PublicKey      string           `db:"public_key"`
+	SignCount      int32            `db:"sign_count"`
+	CreatedAt      pgtype.Timestamp `db:"created_at"`
+	BackupEligible bool             `db:"backup_eligible"`
+	BackupState    bool             `db:"backup_state"`
+}
+
+type MfaPasskeySession struct {
+	ID          uuid.UUID        `db:"id"`
+	UserID      uuid.UUID        `db:"user_id"`
+	SessionData string           `db:"session_data"`
+	CreatedAt   pgtype.Timestamp `db:"created_at"`
+	ExpiresAt   pgtype.Timestamp `db:"expires_at"`
+}
+
 type MfaTotpCode struct {
 	ID          uuid.UUID        `db:"id"`
 	MfaMethodID uuid.UUID        `db:"mfa_method_id"`
@@ -216,33 +224,6 @@ type MfaTotpSecretValidation struct {
 	IsValidated bool             `db:"is_validated"`
 	CreatedAt   pgtype.Timestamp `db:"created_at"`
 	ExpiresAt   pgtype.Timestamp `db:"expires_at"`
-}
-
-type MfaWebauthnCredential struct {
-	ID             uuid.UUID        `db:"id"`
-	MfaMethodID    uuid.UUID        `db:"mfa_method_id"`
-	CredentialID   string           `db:"credential_id"`
-	PublicKey      string           `db:"public_key"`
-	SignCount      int32            `db:"sign_count"`
-	CreatedAt      pgtype.Timestamp `db:"created_at"`
-	BackupEligible bool             `db:"backup_eligible"`
-	BackupState    bool             `db:"backup_state"`
-}
-
-type MfaWebauthnSession struct {
-	ID          uuid.UUID        `db:"id"`
-	UserID      uuid.UUID        `db:"user_id"`
-	SessionData string           `db:"session_data"`
-	CreatedAt   pgtype.Timestamp `db:"created_at"`
-	ExpiresAt   pgtype.Timestamp `db:"expires_at"`
-}
-
-type Organization struct {
-	ID          uuid.UUID        `db:"id"`
-	Name        string           `db:"name"`
-	Description *string          `db:"description"`
-	CreatedAt   pgtype.Timestamp `db:"created_at"`
-	UpdatedAt   *time.Time       `db:"updated_at"`
 }
 
 type PasswordResetToken struct {
@@ -268,6 +249,25 @@ type StepUpToken struct {
 	CreatedAt     pgtype.Timestamp `db:"created_at"`
 	ExpiresAt     pgtype.Timestamp `db:"expires_at"`
 	IsUsed        bool             `db:"is_used"`
+}
+
+type Tenant struct {
+	ID          uuid.UUID        `db:"id"`
+	Name        string           `db:"name"`
+	Description *string          `db:"description"`
+	CreatedAt   pgtype.Timestamp `db:"created_at"`
+	UpdatedAt   *time.Time       `db:"updated_at"`
+}
+
+type TenantUser struct {
+	ID                 uuid.UUID        `db:"id"`
+	TenantID           uuid.UUID        `db:"tenant_id"`
+	Email              string           `db:"email"`
+	CreatedAt          pgtype.Timestamp `db:"created_at"`
+	UpdatedAt          *time.Time       `db:"updated_at"`
+	IsActive           bool             `db:"is_active"`
+	IsEmailConfirmed   bool             `db:"is_email_confirmed"`
+	Preferred2faMethod *string          `db:"preferred_2fa_method"`
 }
 
 type UserCredential struct {

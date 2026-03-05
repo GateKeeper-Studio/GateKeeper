@@ -15,14 +15,14 @@ type Endpoint struct {
 }
 
 func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
-	organizationIDString := chi.URLParam(request, "organizationID")
-	organizationIdUUID, err := uuid.Parse(organizationIDString)
+	tenantIDString := chi.URLParam(request, "tenantID")
+	tenantIdUUID, err := uuid.Parse(tenantIDString)
 
 	if err != nil {
 		panic(err)
 	}
 
-	query := Query{OrganizationID: organizationIdUUID}
+	query := Query{TenantID: tenantIdUUID}
 
 	params := repositories.ParamsRs[Query, *[]Response, Handler]{
 		DbPool:  c.DbPool,

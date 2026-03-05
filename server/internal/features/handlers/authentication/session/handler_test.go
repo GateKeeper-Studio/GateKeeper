@@ -30,12 +30,12 @@ func TestHandler_Session_Success(t *testing.T) {
 	appID, _ := uuid.NewV7()
 
 	token, err := application_utils.CreateToken(application_utils.JWTClaims{
-		UserID:        userID,
-		FirstName:     "John",
-		LastName:      "Doe",
-		DisplayName:   "johndoe",
-		Email:         "john@test.com",
-		ApplicationID: appID,
+		UserID:      userID,
+		FirstName:   "John",
+		LastName:    "Doe",
+		DisplayName: "johndoe",
+		Email:       "john@test.com",
+		TenantID:    appID,
 	})
 	require.NoError(t, err)
 
@@ -49,7 +49,7 @@ func TestHandler_Session_Success(t *testing.T) {
 	assert.Equal(t, "Doe", resp.User.LastName)
 	assert.Equal(t, "johndoe", resp.User.DisplayName)
 	assert.Equal(t, "john@test.com", resp.User.Email)
-	assert.Equal(t, appID, resp.User.ApplicationID)
+	assert.Equal(t, appID, resp.User.TenantID)
 	assert.Equal(t, token, resp.AccessToken)
 }
 
@@ -59,12 +59,12 @@ func TestHandler_Session_WrongSecret(t *testing.T) {
 	appID, _ := uuid.NewV7()
 
 	token, err := application_utils.CreateToken(application_utils.JWTClaims{
-		UserID:        userID,
-		FirstName:     "Jane",
-		LastName:      "Doe",
-		DisplayName:   "janedoe",
-		Email:         "jane@test.com",
-		ApplicationID: appID,
+		UserID:      userID,
+		FirstName:   "Jane",
+		LastName:    "Doe",
+		DisplayName: "janedoe",
+		Email:       "jane@test.com",
+		TenantID:    appID,
 	})
 	require.NoError(t, err)
 

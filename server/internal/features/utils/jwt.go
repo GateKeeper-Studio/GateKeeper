@@ -9,12 +9,12 @@ import (
 )
 
 type JWTClaims struct {
-	UserID        uuid.UUID
-	FirstName     string
-	LastName      string
-	DisplayName   string
-	Email         string
-	ApplicationID uuid.UUID
+	UserID      uuid.UUID
+	FirstName   string
+	LastName    string
+	DisplayName string
+	Email       string
+	TenantID    uuid.UUID
 }
 
 // CreateToken creates an OAuth2 access token (JWT) with OIDC-compatible claims
@@ -44,7 +44,7 @@ func createTokenWithOptions(claims JWTClaims, nonce *string, audience interface{
 		"family_name": claims.LastName,
 		"name":        claims.DisplayName,
 		"email":       claims.Email,
-		"app_id":      claims.ApplicationID.String(),
+		"org_id":      claims.TenantID.String(),
 		// JWT registered claims
 		"aud": "https://proxymity.tech/guard",
 		"exp": now.Add(time.Minute * 15).Unix(),
@@ -85,7 +85,7 @@ func createIDTokenWithOptions(claims JWTClaims, nonce *string, audience string) 
 		"family_name": claims.LastName,
 		"name":        claims.DisplayName,
 		"email":       claims.Email,
-		"app_id":      claims.ApplicationID.String(),
+		"org_id":      claims.TenantID.String(),
 	}
 
 	if nonce != nil && *nonce != "" {
@@ -159,11 +159,11 @@ func DecodeToken(jwtToken string) (*JWTClaims, error) {
 	}
 
 	return &JWTClaims{
-		UserID:        uuid.MustParse(claims["sub"].(string)),
-		FirstName:     claims["given_name"].(string),
-		LastName:      claims["family_name"].(string),
-		DisplayName:   claims["name"].(string),
-		Email:         claims["email"].(string),
-		ApplicationID: uuid.MustParse(claims["app_id"].(string)),
+		UserID:      uuid.MustParse(claims["sub"].(string)),
+		FirstName:   claims["given_name"].(string),
+		LastName:    claims["family_name"].(string),
+		DisplayName: claims["name"].(string),
+		Email:       claims["email"].(string),
+		TenantID:    uuid.MustParse(claims["org_id"].(string)),
 	}, nil
 }

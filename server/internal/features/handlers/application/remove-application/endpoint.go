@@ -22,16 +22,16 @@ func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
 		panic(err)
 	}
 
-	organizationIDString := chi.URLParam(request, "organizationID")
-	organizationIdUUID, err := uuid.Parse(organizationIDString)
+	tenantIDString := chi.URLParam(request, "tenantID")
+	tenantIdUUID, err := uuid.Parse(tenantIDString)
 
 	if err != nil {
 		panic(err)
 	}
 
 	requestSchema := Command{
-		ApplicationID:  applicationIdUUID,
-		OrganizationID: organizationIdUUID,
+		ApplicationID: applicationIdUUID,
+		TenantID:      tenantIdUUID,
 	}
 
 	requestSchema.ApplicationID = applicationIdUUID

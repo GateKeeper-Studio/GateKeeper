@@ -42,7 +42,7 @@ FROM
 WHERE
     user_id = sqlc.arg('user_id');
 
--- name: GetRefreshTokensByApplicationUser :many
+-- name: GetRefreshTokensByTenantUser :many
 SELECT
     rt.id,
     rt.user_id,
@@ -53,6 +53,6 @@ FROM
     INNER JOIN tenant_user au ON au.id = rt.user_id
 WHERE
     au.id = sqlc.arg('user_id')
-    AND au.organization_id = sqlc.arg('organization_id')
+    AND au.tenant_id = sqlc.arg('tenant_id')
 ORDER BY
     rt.created_at DESC;

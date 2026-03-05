@@ -9,12 +9,12 @@ func assignTokenParams(userProfile entities.UserProfile, user entities.TenantUse
 
 	return application_utils.CreateToken(
 		application_utils.JWTClaims{
-			UserID:        user.ID,
-			Email:         user.Email,
-			FirstName:     userProfile.FirstName,
-			LastName:      userProfile.LastName,
-			DisplayName:   userProfile.DisplayName,
-			ApplicationID: user.ApplicationID,
+			UserID:      user.ID,
+			Email:       user.Email,
+			FirstName:   userProfile.FirstName,
+			LastName:    userProfile.LastName,
+			DisplayName: userProfile.DisplayName,
+			TenantID:    user.TenantID,
 		},
 	)
 }

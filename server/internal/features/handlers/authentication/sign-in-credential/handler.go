@@ -95,12 +95,12 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	}
 
 	jwtClaims := application_utils.JWTClaims{
-		UserID:        user.ID,
-		Email:         user.Email,
-		FirstName:     userProfile.FirstName,
-		LastName:      userProfile.LastName,
-		DisplayName:   userProfile.DisplayName,
-		ApplicationID: user.ApplicationID,
+		UserID:      user.ID,
+		Email:       user.Email,
+		FirstName:   userProfile.FirstName,
+		LastName:    userProfile.LastName,
+		DisplayName: userProfile.DisplayName,
+		TenantID:    user.TenantID,
 	}
 
 	jwtToken, err := application_utils.CreateToken(jwtClaims)
@@ -128,14 +128,14 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 
 	return &Response{
 		User: UserResponse{
-			ID:            user.ID,
-			DisplayName:   userProfile.DisplayName,
-			FirstName:     userProfile.FirstName,
-			LastName:      userProfile.LastName,
-			Email:         user.Email,
-			PhotoURL:      userProfile.PhotoURL,
-			CreatedAt:     user.CreatedAt,
-			ApplicationID: user.ApplicationID,
+			ID:          user.ID,
+			DisplayName: userProfile.DisplayName,
+			FirstName:   userProfile.FirstName,
+			LastName:    userProfile.LastName,
+			Email:       user.Email,
+			PhotoURL:    userProfile.PhotoURL,
+			CreatedAt:   user.CreatedAt,
+			TenantID:    user.TenantID,
 		},
 		AccessToken:  jwtToken,
 		IDToken:      idToken,

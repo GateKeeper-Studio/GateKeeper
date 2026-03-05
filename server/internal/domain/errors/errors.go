@@ -44,7 +44,7 @@ var (
 	ErrInvalidClientSecret      = CustomError{Name: "ErrInvalidClientSecret", Code: http.StatusBadRequest, Message: "Invalid client secret", Title: "Invalid client secret"}
 	ErrClientSecretExpired      = CustomError{Name: "ErrClientSecretExpired", Code: http.StatusBadRequest, Message: "Client secret expired", Title: "Client secret expired"}
 
-	ErrOrganizationNotFound = CustomError{Name: "ErrOrganizationNotFound", Code: http.StatusNotFound, Message: "Organization not found", Title: "Organization not found"}
+	ErrTenantNotFound = CustomError{Name: "ErrTenantNotFound", Code: http.StatusNotFound, Message: "Tenant not found", Title: "Tenant not found"}
 
 	ErrUserRoleNotFound = CustomError{Name: "ErrUserRoleNotFound", Code: http.StatusNotFound, Message: "User role not found", Title: "User role not found"}
 
@@ -148,7 +148,7 @@ var ErrorsList = map[string]CustomError{
 	"ErrUserSignUpWithSocial":                ErrUserSignUpWithSocial,
 	"ErrApplicationNotFound":                 ErrApplicationNotFound,
 	"ErrAplicationSecretNotFound":            ErrAplicationSecretNotFound,
-	"ErrOrganizationNotFound":                ErrOrganizationNotFound,
+	"ErrTenantNotFound":                      ErrTenantNotFound,
 	"ErrUserRoleNotFound":                    ErrUserRoleNotFound,
 	"ErrAuthorizationCodeNotFound":           ErrAuthorizationCodeNotFound,
 	"ErrAuthorizationCodeExpired":            ErrAuthorizationCodeExpired,

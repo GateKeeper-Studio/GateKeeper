@@ -92,7 +92,7 @@ func newValidAuthCode(appID, userID uuid.UUID, verifier string) *entities.Applic
 	return &entities.ApplicationAuthorizationCode{
 		ID:                  id,
 		ApplicationID:       appID,
-		TenantUserId:   userID,
+		TenantUserId:        userID,
 		RedirectUri:         testRedirectURI,
 		CodeChallenge:       challenge,
 		CodeChallengeMethod: "S256",
@@ -117,7 +117,7 @@ func newTestAppUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
 	return &entities.TenantUser{
 		ID:               id,
-		ApplicationID:    appID,
+		TenantID:         appID,
 		Email:            "user@example.com",
 		IsActive:         true,
 		IsEmailConfirmed: true,

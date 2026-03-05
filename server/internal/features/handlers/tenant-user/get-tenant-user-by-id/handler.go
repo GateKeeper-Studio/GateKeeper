@@ -75,10 +75,15 @@ func (s *Handler) Handler(ctx context.Context, query Query) (*Response, error) {
 		}
 	}
 
-	application, err := s.repository.GetApplicationByID(ctx, user.ApplicationID)
+	tenant, err := s.repository.GetTenantByID(ctx, user.TenantID)
 
 	if err != nil {
 		return nil, err
+	}
+
+	tenantName := ""
+	if tenant != nil {
+		tenantName = tenant.Name
 	}
 
 	return &Response{
@@ -88,8 +93,8 @@ func (s *Handler) Handler(ctx context.Context, query Query) (*Response, error) {
 		DisplayName:            userProfile.DisplayName,
 		FirstName:              userProfile.FirstName,
 		Lastname:               userProfile.LastName,
-		ApplicationID:          user.ApplicationID,
-		ApplicationName:        application.Name,
+		TenantID:               user.TenantID,
+		TenantName:             tenantName,
 		Address:                userProfile.Address,
 		PhotoURL:               userProfile.PhotoURL,
 		IsEmailVerified:        user.IsEmailConfirmed,

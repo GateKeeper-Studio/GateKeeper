@@ -44,7 +44,7 @@ func newTestApp(appID uuid.UUID) *entities.Application {
 	orgID, _ := uuid.NewV7()
 	return &entities.Application{
 		ID:                  appID,
-		OrganizationID:      orgID,
+		TenantID:            orgID,
 		Name:                "Test App",
 		IsActive:            true,
 		PasswordHashSecret:  "secret-key-for-hashing",

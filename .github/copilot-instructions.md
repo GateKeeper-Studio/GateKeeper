@@ -4,11 +4,11 @@
 
 GateKeeper is an **OIDC-compliant Identity Provider** with three components:
 
-| Component | Stack | Port | Path |
-|---|---|---|---|
-| **Server** (Go API) | Chi router, pgx/v5, SQLC, JWT (HS256) | :8080 | `server/` |
-| **Dashboard** (IDP frontend) | Next.js 16, ShadCN/Radix, SWR, Axios | :3000 | `next-app/` |
-| **Client Test** (sample OIDC client) | Next.js 15, native fetch | :3001 | `client-test/` |
+| Component                            | Stack                                 | Port  | Path           |
+| ------------------------------------ | ------------------------------------- | ----- | -------------- |
+| **Server** (Go API)                  | Chi router, pgx/v5, SQLC, JWT (HS256) | :8080 | `server/`      |
+| **Dashboard** (IDP frontend)         | Next.js 16, ShadCN/Radix, SWR, Axios  | :3000 | `next-app/`    |
+| **Client Test** (sample OIDC client) | Next.js 15, native fetch              | :3001 | `client-test/` |
 
 The server is the single source of truth. The dashboard hosts **both** the admin panel (`/dashboard`) and the **auth pages** (`/auth/[applicationId]/sign-in`, `mfa-*`, etc.) that client apps redirect to. Client-test is a consumer — it must **never** contain auth/MFA logic; that belongs to the IDP.
 
@@ -43,15 +43,15 @@ Uses **double-PKCE**: GateKeeper generates its own `code_verifier` for the exter
 
 ### Security Controls
 
-| Control | Implementation |
-|---|---|
-| PKCE | Required (`S256` or `plain`), verified at token exchange |
-| State | Client-provided, echoed unmodified for CSRF protection |
-| Nonce | Stored on auth code → embedded in ID Token for replay protection |
-| SessionCode | 56-char random, 15-min TTL, one-time use |
-| AuthorizationCode | 128-char random, 5-min TTL, one-time use |
-| Redirect URI | Exact match at token exchange |
-| Passwords | Argon2id hashing via `golang.org/x/crypto` |
+| Control           | Implementation                                                   |
+| ----------------- | ---------------------------------------------------------------- |
+| PKCE              | Required (`S256` or `plain`), verified at token exchange         |
+| State             | Client-provided, echoed unmodified for CSRF protection           |
+| Nonce             | Stored on auth code → embedded in ID Token for replay protection |
+| SessionCode       | 56-char random, 15-min TTL, one-time use                         |
+| AuthorizationCode | 128-char random, 5-min TTL, one-time use                         |
+| Redirect URI      | Exact match at token exchange                                    |
+| Passwords         | Argon2id hashing via `golang.org/x/crypto`                       |
 
 ---
 
@@ -61,23 +61,24 @@ Located at `internal/domain/services/mfa_policy.go`. Decides whether local MFA i
 
 ### Decision Rules (evaluated in order)
 
-| # | Condition | Requires MFA? | Rationale |
-|---|---|---|---|
-| 1 | `Application.RequiresHighSecurity` + user has MFA configured | **Yes** | High-security apps always enforce local MFA |
-| 1b | `RequiresHighSecurity` but user has NO MFA | No | Can't enforce what's not configured |
-| 2 | User is nil or has no `Preferred2FAMethod` | No | No MFA method to challenge |
-| 3 | Auth provider is `email` (local login) | **Yes** | Login handler already handles local MFA |
-| 4 | External provider + AMR contains a strong value | No | Provider already performed strong auth |
-| 5 | External provider + no strong AMR | **Yes** | Weak external auth → require local MFA |
+| #   | Condition                                                    | Requires MFA? | Rationale                                   |
+| --- | ------------------------------------------------------------ | ------------- | ------------------------------------------- |
+| 1   | `Application.RequiresHighSecurity` + user has MFA configured | **Yes**       | High-security apps always enforce local MFA |
+| 1b  | `RequiresHighSecurity` but user has NO MFA                   | No            | Can't enforce what's not configured         |
+| 2   | User is nil or has no `Preferred2FAMethod`                   | No            | No MFA method to challenge                  |
+| 3   | Auth provider is `email` (local login)                       | **Yes**       | Login handler already handles local MFA     |
+| 4   | External provider + AMR contains a strong value              | No            | Provider already performed strong auth      |
+| 5   | External provider + no strong AMR                            | **Yes**       | Weak external auth → require local MFA      |
 
 **Strong AMR values**: `mfa`, `otp`, `hwk`, `swk`, `sms`, `pin`, `fpt`, `face`, `iris`, `retina`, `vbm`, `pop`, `sc`
 
 ### MFA Challenge Creation
 
 `application_utils.CreateMfaChallenge()` dispatches by `user.Preferred2FAMethod`:
+
 - **email**: creates `MfaEmailCode`, sends email asynchronously
 - **totp**: creates `MfaTotpCode` record
-- **webauthn**: calls `webauthn.BeginLogin()`, stores `MfaWebauthnSession`, returns challenge options JSON
+- **webauthn**: calls `webauthn.BeginLogin()`, stores `MfaPasskeySession`, returns challenge options JSON
 
 ---
 
@@ -86,6 +87,7 @@ Located at `internal/domain/services/mfa_policy.go`. Decides whether local MFA i
 Sensitive self-service operations require **re-authentication** before proceeding.
 
 ### Flow
+
 1. Frontend calls `requestStepUp()` from `StepUpProvider` → opens `ReauthDialog`
 2. User enters password (+ TOTP if configured) → `POST /v1/account/reauthenticate`
 3. Server verifies credentials, creates `StepUpToken` (5-min TTL, time-based not single-use)
@@ -112,13 +114,13 @@ Sensitive self-service operations require **re-authentication** before proceedin
 
 Each feature is a self-contained package at `internal/features/handlers/{domain}/{verb-noun}/` with these files:
 
-| File | Purpose |
-|---|---|
-| `command.go` / `query.go` | Input DTO with `json` + `validate` tags |
-| `handler.go` | Business logic implementing `ServiceHandler` or `ServiceHandlerRs` |
-| `endpoint.go` | HTTP glue: parse request → wire `WithTransaction(Rs)` → send JSON |
-| `repository.go` | Feature-scoped `IRepository` interface + composition of shared repos |
-| `response.go` | Output DTO with `json:"camelCase"` tags |
+| File                      | Purpose                                                              |
+| ------------------------- | -------------------------------------------------------------------- |
+| `command.go` / `query.go` | Input DTO with `json` + `validate` tags                              |
+| `handler.go`              | Business logic implementing `ServiceHandler` or `ServiceHandlerRs`   |
+| `endpoint.go`             | HTTP glue: parse request → wire `WithTransaction(Rs)` → send JSON    |
+| `repository.go`           | Feature-scoped `IRepository` interface + composition of shared repos |
+| `response.go`             | Output DTO with `json:"camelCase"` tags                              |
 
 Handler factory: `func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Query, *Response]`
 
@@ -133,17 +135,20 @@ All handler execution is wrapped in a DB transaction via generic `WithTransactio
 ### Repository Composition
 
 Feature repos define a minimal `IRepository` interface, then compose shared repos via embedding:
+
 ```go
 type Repository struct {
     repositories.ApplicationRepository
     repositories.UserRepository
 }
 ```
+
 Convention: `nil, nil` return means "not found" (no error) — handler decides behavior.
 
 ### Domain Entities
 
 Entities live in `internal/domain/entities/` — **no JSON tags** (serialization is in DTOs). Conventions:
+
 - `NewXxx(...)` = reconstruct from DB, `AddXxx(...)` / `CreateXxx(...)` = new instance (generates UUID + timestamps)
 - Nullable fields use pointers (`*string`, `*time.Time`)
 
@@ -155,33 +160,33 @@ Entities live in `internal/domain/entities/` — **no JSON tags** (serialization
 
 ### Key Commands
 
-| Action | Command / Task |
-|---|---|
-| Run server | `go run ./cmd/server` or task "🚀 Run Server" |
-| Watch mode | `air` or task "🚀 Run Server (watch mode)" |
-| Run tests | `go test ./...` or task "Run Server Tests" |
-| Generate SQLC | `sqlc generate` from `internal/infra/database/` or task "Generate SQLC commands" |
+| Action         | Command / Task                                                                                 |
+| -------------- | ---------------------------------------------------------------------------------------------- |
+| Run server     | `go run ./cmd/server` or task "🚀 Run Server"                                                  |
+| Watch mode     | `air` or task "🚀 Run Server (watch mode)"                                                     |
+| Run tests      | `go test ./...` or task "Run Server Tests"                                                     |
+| Generate SQLC  | `sqlc generate` from `internal/infra/database/` or task "Generate SQLC commands"               |
 | Run migrations | `tern migrate` from `internal/infra/database/migrations/` or task "Generate Server Migrations" |
-| Build check | `go build ./...` |
+| Build check    | `go build ./...`                                                                               |
 
 ### Environment Variables
 
-| Variable | Where | Purpose |
-|---|---|---|
-| `JWT_SECRET` | server | HS256 signing key for access/ID tokens |
-| `ISSUER_URL` | server | `iss` claim in tokens, OIDC discovery |
-| `BASE_URL` | server | Endpoint URLs in OIDC discovery document |
-| `CLIENT_APPLICATION_URL` | server | Client-test origin (`:3001`), used as OAuth redirect base |
-| `DASHBOARD_URL` | server | IDP frontend origin (`:3000`), used for MFA redirects |
-| `WEBAUTHN_RPID` | server | WebAuthn Relying Party ID (`localhost`) |
-| `WEBAUTHN_RPORIGIN` | server | Comma-separated allowed origins for WebAuthn |
-| `MAIL_HOST/PORT/USERNAME/PASSWORD` | server | SMTP configuration |
-| `NEXT_PUBLIC_BASE_API_URL` | next-app | Server API base URL for axios |
-| `GATEKEEPER_CLIENT_ID` | client-test | Application ID for OIDC flow |
-| `GATEKEEPER_CLIENT_SECRET` | client-test | Application secret for token exchange |
-| `GATEKEEPER_SERVICE_URL` | client-test | Server URL for token exchange |
-| `GATEKEEPER_IDP_URL` | client-test | IDP frontend URL (default `http://localhost:3000`) |
-| `SESSION_SECRET` | client-test | Symmetric key for encrypting session cookies |
+| Variable                           | Where       | Purpose                                                   |
+| ---------------------------------- | ----------- | --------------------------------------------------------- |
+| `JWT_SECRET`                       | server      | HS256 signing key for access/ID tokens                    |
+| `ISSUER_URL`                       | server      | `iss` claim in tokens, OIDC discovery                     |
+| `BASE_URL`                         | server      | Endpoint URLs in OIDC discovery document                  |
+| `CLIENT_APPLICATION_URL`           | server      | Client-test origin (`:3001`), used as OAuth redirect base |
+| `DASHBOARD_URL`                    | server      | IDP frontend origin (`:3000`), used for MFA redirects     |
+| `WEBAUTHN_RPID`                    | server      | WebAuthn Relying Party ID (`localhost`)                   |
+| `WEBAUTHN_RPORIGIN`                | server      | Comma-separated allowed origins for WebAuthn              |
+| `MAIL_HOST/PORT/USERNAME/PASSWORD` | server      | SMTP configuration                                        |
+| `NEXT_PUBLIC_BASE_API_URL`         | next-app    | Server API base URL for axios                             |
+| `GATEKEEPER_CLIENT_ID`             | client-test | Application ID for OIDC flow                              |
+| `GATEKEEPER_CLIENT_SECRET`         | client-test | Application secret for token exchange                     |
+| `GATEKEEPER_SERVICE_URL`           | client-test | Server URL for token exchange                             |
+| `GATEKEEPER_IDP_URL`               | client-test | IDP frontend URL (default `http://localhost:3000`)        |
+| `SESSION_SECRET`                   | client-test | Symmetric key for encrypting session cookies              |
 
 ---
 

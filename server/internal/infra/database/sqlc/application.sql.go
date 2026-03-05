@@ -17,7 +17,7 @@ const addApplication = `-- name: AddApplication :exec
 INSERT INTO
     "application" (
         id,
-        organization_id,
+        tenant_id,
         name,
         is_active,
         has_mfa_auth_app,
@@ -52,7 +52,7 @@ VALUES
 
 type AddApplicationParams struct {
 	ID                 uuid.UUID        `db:"id"`
-	OrganizationID     uuid.UUID        `db:"organization_id"`
+	TenantID           uuid.UUID        `db:"tenant_id"`
 	Name               string           `db:"name"`
 	IsActive           bool             `db:"is_active"`
 	HasMfaAuthApp      bool             `db:"has_mfa_auth_app"`
@@ -71,7 +71,7 @@ type AddApplicationParams struct {
 func (q *Queries) AddApplication(ctx context.Context, arg AddApplicationParams) error {
 	_, err := q.db.Exec(ctx, addApplication,
 		arg.ID,
-		arg.OrganizationID,
+		arg.TenantID,
 		arg.Name,
 		arg.IsActive,
 		arg.HasMfaAuthApp,
@@ -123,7 +123,7 @@ func (q *Queries) DeleteApplication(ctx context.Context, id uuid.UUID) error {
 const getApplicationByID = `-- name: GetApplicationByID :one
 SELECT
     id,
-    organization_id,
+    tenant_id,
     name,
     description,
     badges,
@@ -146,7 +146,7 @@ WHERE
 
 type GetApplicationByIDRow struct {
 	ID                   uuid.UUID        `db:"id"`
-	OrganizationID       uuid.UUID        `db:"organization_id"`
+	TenantID             uuid.UUID        `db:"tenant_id"`
 	Name                 string           `db:"name"`
 	Description          *string          `db:"description"`
 	Badges               *string          `db:"badges"`
@@ -168,7 +168,7 @@ func (q *Queries) GetApplicationByID(ctx context.Context, id uuid.UUID) (GetAppl
 	var i GetApplicationByIDRow
 	err := row.Scan(
 		&i.ID,
-		&i.OrganizationID,
+		&i.TenantID,
 		&i.Name,
 		&i.Description,
 		&i.Badges,
@@ -187,10 +187,10 @@ func (q *Queries) GetApplicationByID(ctx context.Context, id uuid.UUID) (GetAppl
 	return i, err
 }
 
-const listApplicationsFromOrganization = `-- name: ListApplicationsFromOrganization :many
+const listApplicationsFromTenant = `-- name: ListApplicationsFromTenant :many
 SELECT
     id,
-    organization_id,
+    tenant_id,
     name,
     description,
     badges,
@@ -200,12 +200,12 @@ SELECT
 FROM
     "application"
 WHERE
-    organization_id = $1
+    tenant_id = $1
 `
 
-type ListApplicationsFromOrganizationRow struct {
+type ListApplicationsFromTenantRow struct {
 	ID             uuid.UUID        `db:"id"`
-	OrganizationID uuid.UUID        `db:"organization_id"`
+	TenantID       uuid.UUID        `db:"tenant_id"`
 	Name           string           `db:"name"`
 	Description    *string          `db:"description"`
 	Badges         *string          `db:"badges"`
@@ -214,18 +214,18 @@ type ListApplicationsFromOrganizationRow struct {
 	UpdatedAt      *time.Time       `db:"updated_at"`
 }
 
-func (q *Queries) ListApplicationsFromOrganization(ctx context.Context, organizationID uuid.UUID) ([]ListApplicationsFromOrganizationRow, error) {
-	rows, err := q.db.Query(ctx, listApplicationsFromOrganization, organizationID)
+func (q *Queries) ListApplicationsFromTenant(ctx context.Context, tenantID uuid.UUID) ([]ListApplicationsFromTenantRow, error) {
+	rows, err := q.db.Query(ctx, listApplicationsFromTenant, tenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListApplicationsFromOrganizationRow
+	var items []ListApplicationsFromTenantRow
 	for rows.Next() {
-		var i ListApplicationsFromOrganizationRow
+		var i ListApplicationsFromTenantRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.OrganizationID,
+			&i.TenantID,
 			&i.Name,
 			&i.Description,
 			&i.Badges,

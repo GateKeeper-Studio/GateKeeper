@@ -1,7 +1,7 @@
 -- Write your migrate up statements here
 CREATE TABLE IF NOT EXISTS "application" (
     id UUID PRIMARY KEY,
-    organization_id UUID NOT NULL,
+    tenant_id UUID NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS "application" (
     can_self_forgot_pass BOOLEAN NOT NULL DEFAULT FALSE,
     refresh_token_ttl_days INT NOT NULL DEFAULT 7,
     requires_high_security BOOLEAN NOT NULL DEFAULT FALSE,
-    /* application >- organization = fk_organization_application */
-    CONSTRAINT fk_organization_application FOREIGN KEY (organization_id) REFERENCES "organization" (id) ON DELETE CASCADE
+    /* application >- tenant = fk_tenant_application */
+    CONSTRAINT fk_tenant_application FOREIGN KEY (tenant_id) REFERENCES "tenant" (id) ON DELETE CASCADE
 );
 
 ---- create above / drop below ----

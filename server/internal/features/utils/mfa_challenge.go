@@ -28,8 +28,8 @@ type IMfaChallengeRepository interface {
 	GetMfaTotpSecretValidationByUserID(ctx context.Context, userID uuid.UUID) (*entities.MfaUserSecret, error)
 	AddMfaEmailCode(ctx context.Context, emailMfaCode *entities.MfaEmailCode) error
 	AddMfaTotpCode(ctx context.Context, mfaTotpCode *entities.MfaTotpCode) error
-	GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaWebauthnCredentials, error)
-	AddMfaWebauthnSession(ctx context.Context, session *entities.MfaWebauthnSession) error
+	GetWebAuthnCredentialsByMfaMethodID(ctx context.Context, mfaMethodID uuid.UUID) ([]entities.MfaPasskeyCredentials, error)
+	AddMfaPasskeySession(ctx context.Context, session *entities.MfaPasskeySession) error
 	GetUserProfileByID(ctx context.Context, userID uuid.UUID) (*entities.UserProfile, error)
 }
 
@@ -196,12 +196,12 @@ func createWebAuthnMfaChallenge(
 		return nil, err
 	}
 
-	webauthnSession, err := entities.NewMfaWebauthnSession(user.ID, sessionDataJSON)
+	webauthnSession, err := entities.NewMfaPasskeySession(user.ID, sessionDataJSON)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := repo.AddMfaWebauthnSession(ctx, webauthnSession); err != nil {
+	if err := repo.AddMfaPasskeySession(ctx, webauthnSession); err != nil {
 		return nil, err
 	}
 

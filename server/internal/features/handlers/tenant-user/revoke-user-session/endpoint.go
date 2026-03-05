@@ -15,13 +15,6 @@ type Endpoint struct {
 }
 
 func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
-	applicationIDString := chi.URLParam(request, "applicationID")
-	applicationIdUUID, err := uuid.Parse(applicationIDString)
-
-	if err != nil {
-		panic(err)
-	}
-
 	userIDString := chi.URLParam(request, "userID")
 	userIdUUID, err := uuid.Parse(userIDString)
 
@@ -37,9 +30,8 @@ func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
 	}
 
 	command := Command{
-		ApplicationID: applicationIdUUID,
-		UserID:        userIdUUID,
-		SessionID:     sessionIdUUID,
+		UserID:    userIdUUID,
+		SessionID: sessionIdUUID,
 	}
 
 	params := repositories.Params[Command, Handler]{

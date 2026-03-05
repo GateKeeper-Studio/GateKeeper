@@ -14,7 +14,7 @@ func ptrString(s string) *string {
 func makeUser(preferred2FA *string) *entities.TenantUser {
 	return &entities.TenantUser{
 		ID:                 uuid.New(),
-		ApplicationID:      uuid.New(),
+		TenantID:           uuid.New(),
 		Email:              "test@example.com",
 		IsActive:           true,
 		IsEmailConfirmed:   true,

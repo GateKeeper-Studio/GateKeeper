@@ -8,11 +8,11 @@ type Response struct {
 }
 
 type UserData struct {
-	ID            uuid.UUID `json:"id"`
-	DisplayName   string    `json:"displayName"`
-	ApplicationID uuid.UUID `json:"applicationId"`
-	FirstName     string    `json:"firstName"`
-	LastName      string    `json:"lastName"`
-	Email         string    `json:"email"`
-	PhotoURL      *string   `json:"photoUrl"`
+	ID          uuid.UUID `json:"id"`
+	DisplayName string    `json:"displayName"`
+	TenantID    uuid.UUID `json:"tenantId"`
+	FirstName   string    `json:"firstName"`
+	LastName    string    `json:"lastName"`
+	Email       string    `json:"email"`
+	PhotoURL    *string   `json:"photoUrl"`
 }

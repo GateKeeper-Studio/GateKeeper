@@ -22,7 +22,7 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	newApplication := entities.AddApplication(
 		command.Name,
 		command.Description,
-		command.OrganizationID,
+		command.TenantID,
 		command.PasswordHashSecret,
 		command.Badges,
 		command.HasMfaEmail,

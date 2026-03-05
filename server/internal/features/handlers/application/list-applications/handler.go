@@ -19,17 +19,17 @@ func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Query, *[]Response] {
 }
 
 func (s *Handler) Handler(ctx context.Context, query Query) (*[]Response, error) {
-	organization, err := s.Repository.GetOrganizationByID(ctx, query.OrganizationID)
+	tenant, err := s.Repository.GetTenantByID(ctx, query.TenantID)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if organization == nil {
-		return nil, &errors.ErrOrganizationNotFound
+	if tenant == nil {
+		return nil, &errors.ErrTenantNotFound
 	}
 
-	applications, err := s.Repository.ListApplicationsFromOrganization(ctx, organization.ID)
+	applications, err := s.Repository.ListApplicationsFromTenant(ctx, tenant.ID)
 
 	if err != nil {
 		return nil, err

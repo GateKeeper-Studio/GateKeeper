@@ -13,19 +13,19 @@ type IRepository interface {
 	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	GetLastValidMfaTotpSecretByUserID(ctx context.Context, userID uuid.UUID) (*entities.MfaUserSecret, error)
 	DeleteExpiredMfaTotpSecretValidationByUserID(ctx context.Context, userID uuid.UUID) error
-	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
+	GetTenantByID(ctx context.Context, tenantID uuid.UUID) (*entities.Tenant, error)
 }
 
 type Repository struct {
 	repositories.UserRepository
 	repositories.MfaRepository
-	repositories.ApplicationRepository
+	repositories.TenantRepository
 }
 
 func NewRepository(q *pgstore.Queries) Repository {
 	return Repository{
-		UserRepository:        repositories.UserRepository{Store: q},
-		MfaRepository:         repositories.MfaRepository{Store: q},
-		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+		UserRepository:   repositories.UserRepository{Store: q},
+		MfaRepository:    repositories.MfaRepository{Store: q},
+		TenantRepository: repositories.TenantRepository{Store: q},
 	}
 }

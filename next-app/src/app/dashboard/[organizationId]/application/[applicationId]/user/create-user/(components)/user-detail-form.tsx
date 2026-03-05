@@ -24,18 +24,31 @@ import { Separator } from "@/components/ui/separator";
 import { formSchema } from "../schema";
 import { MultiFactorAuthForm } from "./multi-factor-auth-form";
 import { ApplicationRolesSection } from "./application-roles-section";
-import { createApplicationUserApi } from "@/services/dashboard/create-application-user";
+import { createTenantUserApi } from "@/services/dashboard/create-tenant-user";
+import { useApplicationsSWR } from "@/services/dashboard/use-applications-swr";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type FormType = UseFormReturn<z.infer<typeof formSchema>>;
 
 export function UserDetailForm() {
-  const { applicationId, organizationId } = useParams() as {
+  const { organizationId } = useParams() as {
     organizationId: string;
-    applicationId: string;
   };
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedAppId, setSelectedAppId] = useState("");
 
   const router = useRouter();
+
+  const { data: applications } = useApplicationsSWR(
+    { organizationId },
+    { accessToken: "" },
+  );
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -54,9 +67,9 @@ export function UserDetailForm() {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
 
-    const [response, err] = await createApplicationUserApi(
+    const [response, err] = await createTenantUserApi(
       {
-        applicationId,
+        applicationId: selectedAppId,
         organizationId,
         displayName: values.displayName,
         email: values.email,
@@ -68,14 +81,14 @@ export function UserDetailForm() {
         roles: values.roles,
         temporaryPasswordHash: values.temporaryPassword,
       },
-      { accessToken: "" }
+      { accessToken: "" },
     );
 
     if (err) {
       console.error(err);
       toast.error(
         err.response?.data.message ||
-          "An error occurred while creating the user."
+          "An error occurred while creating the user.",
       );
       setIsLoading(false);
       return;
@@ -83,9 +96,7 @@ export function UserDetailForm() {
 
     setIsLoading(false);
 
-    router.push(
-      `/dashboard/${organizationId}/application/${applicationId}/user/${response?.id}`
-    );
+    router.push(`/dashboard/${organizationId}/users/${response?.id}`);
   }
 
   return (
@@ -286,7 +297,26 @@ export function UserDetailForm() {
 
           <Separator className="my-2" />
 
-          <ApplicationRolesSection form={form} />
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium">Application Context</span>
+            <span className="text-muted-foreground my-1 text-sm">
+              Select the application to assign roles from.
+            </span>
+            <Select onValueChange={setSelectedAppId} value={selectedAppId}>
+              <SelectTrigger className="max-w-xs">
+                <SelectValue placeholder="Select an application" />
+              </SelectTrigger>
+              <SelectContent>
+                {applications?.map((app) => (
+                  <SelectItem key={app.id} value={app.id}>
+                    {app.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <ApplicationRolesSection form={form} applicationId={selectedAppId} />
         </div>
 
         <Button type="submit" className="float-right mt-4" disabled={isLoading}>

@@ -6,6 +6,7 @@ import (
 
 type Command struct {
 	UserID                uuid.UUID
+	TenantID              uuid.UUID
 	ApplicationID         uuid.UUID
 	DisplayName           string
 	FirstName             string
@@ -19,6 +20,7 @@ type Command struct {
 }
 
 type RequestBody struct {
+	ApplicationID         uuid.UUID   `json:"applicationId" validate:"required"`
 	DisplayName           string      `json:"displayName" validate:"required,min=1,max=100"`
 	FirstName             string      `json:"firstName" validate:"required,min=1,max=100"`
 	LastName              string      `json:"lastName" validate:"required,min=1,max=100"`

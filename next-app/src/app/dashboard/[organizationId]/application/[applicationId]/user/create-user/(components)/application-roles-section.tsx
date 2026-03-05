@@ -26,13 +26,19 @@ import { useApplicationRolesSWR } from "@/services/dashboard/use-application-rol
 
 type Props = {
   form: FormType;
+  applicationId?: string;
 };
 
-export function ApplicationRolesSection({ form }: Props) {
-  const { applicationId, organizationId } = useParams() as {
+export function ApplicationRolesSection({
+  form,
+  applicationId: applicationIdProp,
+}: Props) {
+  const { organizationId, applicationId: applicationIdParam } = useParams() as {
     organizationId: string;
-    applicationId: string;
+    applicationId?: string;
   };
+
+  const applicationId = applicationIdProp || applicationIdParam || "";
 
   const { data, error, isLoading } = useApplicationRolesSWR(
     { applicationId, organizationId, pageSize: 100 },

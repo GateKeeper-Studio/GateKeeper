@@ -18,7 +18,7 @@ INSERT INTO
     "tenant_user" (
         id,
         email,
-        application_id,
+        tenant_id,
         created_at,
         updated_at,
         is_active,
@@ -41,7 +41,7 @@ VALUES
 type AddUserParams struct {
 	ID                 uuid.UUID        `db:"id"`
 	Email              string           `db:"email"`
-	ApplicationID      uuid.UUID        `db:"application_id"`
+	TenantID           uuid.UUID        `db:"tenant_id"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
 	UpdatedAt          *time.Time       `db:"updated_at"`
 	IsActive           bool             `db:"is_active"`
@@ -55,7 +55,7 @@ func (q *Queries) AddUser(ctx context.Context, arg AddUserParams) error {
 	_, err := q.db.Exec(ctx, addUser,
 		arg.ID,
 		arg.Email,
-		arg.ApplicationID,
+		arg.TenantID,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.IsActive,
@@ -70,16 +70,16 @@ DELETE FROM
     "tenant_user"
 WHERE
     id = $1
-    AND application_id = $2
+    AND tenant_id = $2
 `
 
 type DeleteTenantUserParams struct {
-	ID            uuid.UUID `db:"id"`
-	ApplicationID uuid.UUID `db:"application_id"`
+	ID       uuid.UUID `db:"id"`
+	TenantID uuid.UUID `db:"tenant_id"`
 }
 
 func (q *Queries) DeleteTenantUser(ctx context.Context, arg DeleteTenantUserParams) error {
-	_, err := q.db.Exec(ctx, deleteTenantUser, arg.ID, arg.ApplicationID)
+	_, err := q.db.Exec(ctx, deleteTenantUser, arg.ID, arg.TenantID)
 	return err
 }
 
@@ -87,7 +87,7 @@ const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT
     id,
     email,
-    application_id,
+    tenant_id,
     created_at,
     updated_at,
     is_active,
@@ -97,18 +97,18 @@ FROM
     "tenant_user"
 WHERE
     email = $1
-    AND application_id = $2
+    AND tenant_id = $2
 `
 
 type GetUserByEmailParams struct {
-	Email         string    `db:"email"`
-	ApplicationID uuid.UUID `db:"application_id"`
+	Email    string    `db:"email"`
+	TenantID uuid.UUID `db:"tenant_id"`
 }
 
 type GetUserByEmailRow struct {
 	ID                 uuid.UUID        `db:"id"`
 	Email              string           `db:"email"`
-	ApplicationID      uuid.UUID        `db:"application_id"`
+	TenantID           uuid.UUID        `db:"tenant_id"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
 	UpdatedAt          *time.Time       `db:"updated_at"`
 	IsActive           bool             `db:"is_active"`
@@ -118,12 +118,12 @@ type GetUserByEmailRow struct {
 
 // Get user by email
 func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (GetUserByEmailRow, error) {
-	row := q.db.QueryRow(ctx, getUserByEmail, arg.Email, arg.ApplicationID)
+	row := q.db.QueryRow(ctx, getUserByEmail, arg.Email, arg.TenantID)
 	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.ApplicationID,
+		&i.TenantID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsActive,
@@ -137,7 +137,7 @@ const getUserById = `-- name: GetUserById :one
 SELECT
     id,
     email,
-    application_id,
+    tenant_id,
     created_at,
     updated_at,
     is_active,
@@ -152,7 +152,7 @@ WHERE
 type GetUserByIdRow struct {
 	ID                 uuid.UUID        `db:"id"`
 	Email              string           `db:"email"`
-	ApplicationID      uuid.UUID        `db:"application_id"`
+	TenantID           uuid.UUID        `db:"tenant_id"`
 	CreatedAt          pgtype.Timestamp `db:"created_at"`
 	UpdatedAt          *time.Time       `db:"updated_at"`
 	IsActive           bool             `db:"is_active"`
@@ -168,7 +168,7 @@ func (q *Queries) GetUserById(ctx context.Context, id uuid.UUID) (GetUserByIdRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
-		&i.ApplicationID,
+		&i.TenantID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.IsActive,
@@ -178,11 +178,11 @@ func (q *Queries) GetUserById(ctx context.Context, id uuid.UUID) (GetUserByIdRow
 	return i, err
 }
 
-const getUsersByApplicationID = `-- name: GetUsersByApplicationID :many
+const getUsersByTenantID = `-- name: GetUsersByTenantID :many
 SELECT
     au.id,
     au.email,
-    au.application_id,
+    au.tenant_id,
     up.display_name,
     au.created_at,
     au.updated_at,
@@ -212,23 +212,23 @@ FROM
             ur.user_id = au.id
     ) r ON TRUE
 WHERE
-    au.application_id = $1
+    au.tenant_id = $1
 ORDER BY
     au.created_at
 LIMIT
     $3 OFFSET $2
 `
 
-type GetUsersByApplicationIDParams struct {
-	ApplicationID uuid.UUID `db:"application_id"`
-	Offset        int32     `db:"offset"`
-	Limit         int32     `db:"limit"`
+type GetUsersByTenantIDParams struct {
+	TenantID uuid.UUID `db:"tenant_id"`
+	Offset   int32     `db:"offset"`
+	Limit    int32     `db:"limit"`
 }
 
-type GetUsersByApplicationIDRow struct {
+type GetUsersByTenantIDRow struct {
 	ID               uuid.UUID        `db:"id"`
 	Email            string           `db:"email"`
-	ApplicationID    uuid.UUID        `db:"application_id"`
+	TenantID         uuid.UUID        `db:"tenant_id"`
 	DisplayName      *string          `db:"display_name"`
 	CreatedAt        pgtype.Timestamp `db:"created_at"`
 	UpdatedAt        *time.Time       `db:"updated_at"`
@@ -238,20 +238,20 @@ type GetUsersByApplicationIDRow struct {
 	TotalUsers       int64            `db:"total_users"`
 }
 
-// Get users by application id paged, and ordered by created_at, that includes the application roles
-func (q *Queries) GetUsersByApplicationID(ctx context.Context, arg GetUsersByApplicationIDParams) ([]GetUsersByApplicationIDRow, error) {
-	rows, err := q.db.Query(ctx, getUsersByApplicationID, arg.ApplicationID, arg.Offset, arg.Limit)
+// Get users by tenant id paged, ordered by created_at, that includes the application roles
+func (q *Queries) GetUsersByTenantID(ctx context.Context, arg GetUsersByTenantIDParams) ([]GetUsersByTenantIDRow, error) {
+	rows, err := q.db.Query(ctx, getUsersByTenantID, arg.TenantID, arg.Offset, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetUsersByApplicationIDRow
+	var items []GetUsersByTenantIDRow
 	for rows.Next() {
-		var i GetUsersByApplicationIDRow
+		var i GetUsersByTenantIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Email,
-			&i.ApplicationID,
+			&i.TenantID,
 			&i.DisplayName,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -279,18 +279,18 @@ SELECT
             "tenant_user"
         WHERE
             email = $1
-            AND application_id = $2
+            AND tenant_id = $2
     )
 `
 
 type IsUserExistsByEmailParams struct {
-	Email         string    `db:"email"`
-	ApplicationID uuid.UUID `db:"application_id"`
+	Email    string    `db:"email"`
+	TenantID uuid.UUID `db:"tenant_id"`
 }
 
 // Check if user exists by email
 func (q *Queries) IsUserExistsByEmail(ctx context.Context, arg IsUserExistsByEmailParams) (bool, error) {
-	row := q.db.QueryRow(ctx, isUserExistsByEmail, arg.Email, arg.ApplicationID)
+	row := q.db.QueryRow(ctx, isUserExistsByEmail, arg.Email, arg.TenantID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

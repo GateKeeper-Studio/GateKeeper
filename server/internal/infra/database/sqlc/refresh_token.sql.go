@@ -61,18 +61,18 @@ FROM
     INNER JOIN tenant_user au ON au.id = rt.user_id
 WHERE
     au.id = $1
-    AND au.application_id = $2
+    AND au.tenant_id = $2
 ORDER BY
     rt.created_at DESC
 `
 
 type GetRefreshTokensByTenantUserParams struct {
-	UserID        uuid.UUID `db:"user_id"`
-	ApplicationID uuid.UUID `db:"application_id"`
+	UserID   uuid.UUID `db:"user_id"`
+	TenantID uuid.UUID `db:"tenant_id"`
 }
 
 func (q *Queries) GetRefreshTokensByTenantUser(ctx context.Context, arg GetRefreshTokensByTenantUserParams) ([]RefreshToken, error) {
-	rows, err := q.db.Query(ctx, getRefreshTokensByTenantUser, arg.UserID, arg.ApplicationID)
+	rows, err := q.db.Query(ctx, getRefreshTokensByTenantUser, arg.UserID, arg.TenantID)
 	if err != nil {
 		return nil, err
 	}

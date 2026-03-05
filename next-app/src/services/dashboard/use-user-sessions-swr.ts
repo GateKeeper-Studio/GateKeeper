@@ -6,7 +6,6 @@ import type { IServiceOptions } from "@/types/service-options";
 
 type Request = {
   organizationId: string;
-  applicationId: string;
   userId: string;
 };
 
@@ -33,8 +32,8 @@ const fetcher = (url: string, options: IServiceOptions) =>
 
 export function useUserSessionsSWR(request: Request, options: IServiceOptions) {
   return useSWR(
-    request?.organizationId && request?.applicationId && request?.userId
-      ? `/v1/organizations/${request.organizationId}/applications/${request.applicationId}/users/${request.userId}/sessions`
+    request?.organizationId && request?.userId
+      ? `/v1/organizations/${request.organizationId}/users/${request.userId}/sessions`
       : null,
     (url) => fetcher(url, options),
     {

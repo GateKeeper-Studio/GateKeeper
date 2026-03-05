@@ -61,7 +61,7 @@ func newTestUser(appID uuid.UUID) *entities.TenantUser {
 	id, _ := uuid.NewV7()
 	return &entities.TenantUser{
 		ID:               id,
-		ApplicationID:    appID,
+		TenantID:         appID,
 		Email:            "user@example.com",
 		IsActive:         true,
 		IsEmailConfirmed: false,

@@ -44,12 +44,12 @@ func (h *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 
 	// 3. Issue a fresh access token
 	claims := application_utils.JWTClaims{
-		UserID:        user.ID,
-		FirstName:     firstName,
-		LastName:      lastName,
-		DisplayName:   displayName,
-		Email:         user.Email,
-		ApplicationID: user.ApplicationID,
+		UserID:      user.ID,
+		FirstName:   firstName,
+		LastName:    lastName,
+		DisplayName: displayName,
+		Email:       user.Email,
+		TenantID:    user.TenantID,
 	}
 
 	accessToken, err := application_utils.CreateToken(claims)

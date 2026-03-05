@@ -74,7 +74,7 @@ var _ IRepository = (*mockReauthRepo)(nil)
 func makeUser(id uuid.UUID) *entities.TenantUser {
 	return &entities.TenantUser{
 		ID:               id,
-		ApplicationID:    uuid.New(),
+		TenantID:         uuid.New(),
 		Email:            "user@example.com",
 		IsActive:         true,
 		IsEmailConfirmed: true,

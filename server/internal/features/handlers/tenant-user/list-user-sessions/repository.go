@@ -3,30 +3,30 @@ package listusersessions
 import (
 	"context"
 	"time"
+
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 	"github.com/google/uuid"
 )
 
 type IRepository interface {
-	CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error)
-	GetRefreshTokensByTenantUser(ctx context.Context, userID, applicationID uuid.UUID) (*Response, error)
+	GetRefreshTokensByTenantUser(ctx context.Context, userID, tenantID uuid.UUID) (*Response, error)
 }
 
 type Repository struct {
-	repositories.ApplicationRepository
+	repositories.RefreshTokenRepository
 }
 
 func NewRepository(q *pgstore.Queries) Repository {
 	return Repository{
-		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+		RefreshTokenRepository: repositories.RefreshTokenRepository{Store: q},
 	}
 }
 
-func (r Repository) GetRefreshTokensByTenantUser(ctx context.Context, userID, applicationID uuid.UUID) (*Response, error) {
-	tokens, err := r.ApplicationRepository.Store.GetRefreshTokensByTenantUser(ctx, pgstore.GetRefreshTokensByTenantUserParams{
-		UserID:        userID,
-		ApplicationID: applicationID,
+func (r Repository) GetRefreshTokensByTenantUser(ctx context.Context, userID, tenantID uuid.UUID) (*Response, error) {
+	tokens, err := r.RefreshTokenRepository.Store.GetRefreshTokensByTenantUser(ctx, pgstore.GetRefreshTokensByTenantUserParams{
+		UserID:   userID,
+		TenantID: tenantID,
 	})
 
 	if err != nil {

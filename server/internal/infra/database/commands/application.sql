@@ -3,7 +3,7 @@
 INSERT INTO
     "application" (
         id,
-        organization_id,
+        tenant_id,
         name,
         is_active,
         has_mfa_auth_app,
@@ -20,7 +20,7 @@ INSERT INTO
 VALUES
     (
         sqlc.arg('id'),
-        sqlc.arg('organization_id'),
+        sqlc.arg('tenant_id'),
         sqlc.arg('name'),
         sqlc.arg('is_active'),
         sqlc.arg('has_mfa_auth_app'),
@@ -75,7 +75,7 @@ SELECT
 -- name: GetApplicationByID :one
 SELECT
     id,
-    organization_id,
+    tenant_id,
     name,
     description,
     badges,
@@ -95,10 +95,10 @@ FROM
 WHERE
     id = sqlc.arg('id');
 
--- name: ListApplicationsFromOrganization :many
+-- name: ListApplicationsFromTenant :many
 SELECT
     id,
-    organization_id,
+    tenant_id,
     name,
     description,
     badges,
@@ -108,4 +108,4 @@ SELECT
 FROM
     "application"
 WHERE
-    organization_id = sqlc.arg('organization_id');
+    tenant_id = sqlc.arg('tenant_id');

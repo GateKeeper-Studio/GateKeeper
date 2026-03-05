@@ -27,13 +27,13 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 
 	return &Response{
 		User: UserData{
-			ID:            token.UserID,
-			DisplayName:   token.DisplayName,
-			FirstName:     token.FirstName,
-			LastName:      token.LastName,
-			Email:         token.Email,
-			ApplicationID: token.ApplicationID,
-			PhotoURL:      nil,
+			ID:          token.UserID,
+			DisplayName: token.DisplayName,
+			FirstName:   token.FirstName,
+			LastName:    token.LastName,
+			Email:       token.Email,
+			TenantID:    token.TenantID,
+			PhotoURL:    nil,
 		},
 		AccessToken: command.AccessToken,
 	}, nil

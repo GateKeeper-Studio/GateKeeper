@@ -6,10 +6,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Application represents an application within the system. Each application is tied to an organization
+// Application represents an application within the system. Each application is tied to an tenant
 type Application struct {
 	ID                   uuid.UUID
-	OrganizationID       uuid.UUID
+	TenantID             uuid.UUID
 	Name                 string
 	Description          *string
 	CanSelfSignUp        bool
@@ -26,10 +26,10 @@ type Application struct {
 	UpdatedAt            *time.Time
 }
 
-func NewApplication(ID uuid.UUID, name string, description *string, organizationID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, createdAt time.Time, canSelfSignUp, canSelfForgotPass bool, refreshTokenTTLDays int, requiresHighSecurity bool) *Application {
+func NewApplication(ID uuid.UUID, name string, description *string, tenantID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, createdAt time.Time, canSelfSignUp, canSelfForgotPass bool, refreshTokenTTLDays int, requiresHighSecurity bool) *Application {
 	return &Application{
 		ID:                   ID,
-		OrganizationID:       organizationID,
+		TenantID:             tenantID,
 		Name:                 name,
 		Description:          description,
 		CreatedAt:            createdAt,
@@ -47,12 +47,12 @@ func NewApplication(ID uuid.UUID, name string, description *string, organization
 	}
 }
 
-func AddApplication(name string, description *string, organizationID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, canSelfSignUp, canSelfForgotPass bool) *Application {
+func AddApplication(name string, description *string, tenantID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, canSelfSignUp, canSelfForgotPass bool) *Application {
 	newID := uuid.New()
 
 	return &Application{
 		ID:                 newID,
-		OrganizationID:     organizationID,
+		TenantID:           tenantID,
 		Name:               name,
 		Description:        description,
 		CreatedAt:          time.Now(),

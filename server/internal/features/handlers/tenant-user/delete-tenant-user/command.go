@@ -5,6 +5,6 @@ import (
 )
 
 type Command struct {
-	ApplicationID uuid.UUID
-	UserID        uuid.UUID
+	TenantID uuid.UUID
+	UserID   uuid.UUID
 }

@@ -6,12 +6,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// TenantUser represents a user within a specific application.
-// It's the core entity for user management, and each user is tied to a single application.
+// TenantUser represents a user within a specific tenant.
+// It's the core entity for user management, and each user is tied to a single tenant.
 type TenantUser struct {
 	ID                 uuid.UUID
-	ApplicationID      uuid.UUID // references Application.ID, the application this user belongs to
-	Email              string    // unique email for the user within the application
+	TenantID           uuid.UUID // references Tenant.ID, the tenant this user belongs to
+	Email              string    // unique email for the user within the tenant
 	CreatedAt          time.Time
 	UpdatedAt          *time.Time
 	IsActive           bool    // indicates if the user account is active
@@ -24,7 +24,7 @@ type TenantUser struct {
 	// TwoFactorSecret     *string
 }
 
-func CreateTenantUser(email string, applicationID uuid.UUID, shouldChangePass bool) (*TenantUser, error) {
+func CreateTenantUser(email string, tenantID uuid.UUID, shouldChangePass bool) (*TenantUser, error) {
 	userId, err := uuid.NewV7()
 
 	if err != nil {
@@ -33,7 +33,7 @@ func CreateTenantUser(email string, applicationID uuid.UUID, shouldChangePass bo
 
 	return &TenantUser{
 		ID:                 userId,
-		ApplicationID:      applicationID,
+		TenantID:           tenantID,
 		Email:              email,
 		CreatedAt:          time.Now().UTC(),
 		UpdatedAt:          nil,
@@ -48,10 +48,10 @@ func CreateTenantUser(email string, applicationID uuid.UUID, shouldChangePass bo
 	}, nil
 }
 
-func NewTenantUser(applicationID, id uuid.UUID, email string, createdAt time.Time, updatedAt *time.Time, isActive, isEmailConfirmed, IsMfaEmailEnabled, IsMfaAuthAppEnabled bool, twoFactorSecret *string, shouldChangePass bool) *TenantUser {
+func NewTenantUser(tenantID, id uuid.UUID, email string, createdAt time.Time, updatedAt *time.Time, isActive, isEmailConfirmed, IsMfaEmailEnabled, IsMfaAuthAppEnabled bool, twoFactorSecret *string, shouldChangePass bool) *TenantUser {
 	return &TenantUser{
 		ID:               id,
-		ApplicationID:    applicationID,
+		TenantID:         tenantID,
 		Email:            email,
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,

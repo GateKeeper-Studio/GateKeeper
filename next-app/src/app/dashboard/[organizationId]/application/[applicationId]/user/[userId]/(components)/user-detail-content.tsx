@@ -18,16 +18,15 @@ import { cn, copy } from "@/lib/utils";
 import { DeleteUserDialog } from "./delete-user-dialog";
 import { UserSessionsSection } from "./user-sessions-section";
 
-import { UserByIdResponse } from "@/services/dashboard/get-application-user-by-id";
+import { UserByIdResponse } from "@/services/dashboard/get-tenant-user-by-id";
 
 type Props = {
   user: UserByIdResponse | null;
 };
 
 export function UserDetailContent({ user }: Props) {
-  const { organizationId, applicationId, userId } = useParams() as {
+  const { organizationId, userId } = useParams() as {
     organizationId: string;
-    applicationId: string;
     userId: string;
   };
 
@@ -73,7 +72,7 @@ export function UserDetailContent({ user }: Props) {
               asChild
             >
               <Link
-                href={`/dashboard/${organizationId}/application/${applicationId}/user/${userId}/edit-user`}
+                href={`/dashboard/${organizationId}/users/${userId}/edit-user`}
               >
                 <Pencil />
               </Link>

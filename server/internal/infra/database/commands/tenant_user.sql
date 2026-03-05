@@ -5,7 +5,7 @@ INSERT INTO
     "tenant_user" (
         id,
         email,
-        organization_id,
+        tenant_id,
         created_at,
         updated_at,
         is_active,
@@ -16,7 +16,7 @@ VALUES
     (
         sqlc.arg('id'),
         sqlc.arg('email'),
-        sqlc.arg('organization_id'),
+        sqlc.arg('tenant_id'),
         sqlc.arg('created_at'),
         sqlc.narg('updated_at'),
         sqlc.arg('is_active'),
@@ -37,12 +37,12 @@ SET
 WHERE
     id = sqlc.arg('id');
 
--- name: DeleteApplicationUser :exec
+-- name: DeleteTenantUser :exec
 DELETE FROM
     "tenant_user"
 WHERE
     id = sqlc.arg('id')
-    AND organization_id = sqlc.arg('organization_id');
+    AND tenant_id = sqlc.arg('tenant_id');
 
 ------------------------------------QUERIES--------------------------------------
 -- name: GetUserById :one
@@ -50,7 +50,7 @@ WHERE
 SELECT
     id,
     email,
-    organization_id,
+    tenant_id,
     created_at,
     updated_at,
     is_active,
@@ -66,7 +66,7 @@ WHERE
 SELECT
     id,
     email,
-    organization_id,
+    tenant_id,
     created_at,
     updated_at,
     is_active,
@@ -76,7 +76,7 @@ FROM
     "tenant_user"
 WHERE
     email = sqlc.arg('email')
-    AND organization_id = sqlc.arg('organization_id');
+    AND tenant_id = sqlc.arg('tenant_id');
 
 -- name: IsUserExistsByEmail :one
 -- Check if user exists by email
@@ -88,7 +88,7 @@ SELECT
             "tenant_user"
         WHERE
             email = sqlc.arg('email')
-            AND organization_id = sqlc.arg('organization_id')
+            AND tenant_id = sqlc.arg('tenant_id')
     );
 
 -- name: IsUserExistsById :one
@@ -103,12 +103,12 @@ SELECT
             id = sqlc.arg('id')
     );
 
--- name: GetUsersByOrganizationID :many
--- Get users by organization id paged, ordered by created_at, that includes the application roles
+-- name: GetUsersByTenantID :many
+-- Get users by tenant id paged, ordered by created_at, that includes the application roles
 SELECT
     au.id,
     au.email,
-    au.organization_id,
+    au.tenant_id,
     up.display_name,
     au.created_at,
     au.updated_at,
@@ -138,7 +138,7 @@ FROM
             ur.user_id = au.id
     ) r ON TRUE
 WHERE
-    au.organization_id = sqlc.arg('organization_id')
+    au.tenant_id = sqlc.arg('tenant_id')
 ORDER BY
     au.created_at
 LIMIT

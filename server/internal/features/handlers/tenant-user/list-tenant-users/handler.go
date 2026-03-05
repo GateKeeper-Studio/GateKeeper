@@ -3,7 +3,6 @@ package listtenantusers
 import (
 	"context"
 
-	"github.com/gate-keeper/internal/domain/errors"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
 )
@@ -19,19 +18,9 @@ func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Query, *Response] {
 }
 
 func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error) {
-	isApplicationExists, err := s.repository.CheckIfApplicationExists(ctx, request.ApplicationID)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if !isApplicationExists {
-		return nil, &errors.ErrApplicationNotFound
-	}
-
 	offset := (request.Page - 1) * request.PageSize
 
-	response, err := s.repository.GetUsersByApplicationID(ctx, request.ApplicationID, request.PageSize, offset)
+	response, err := s.repository.GetUsersByTenantID(ctx, request.TenantID, request.PageSize, offset)
 
 	if err != nil {
 		return nil, err

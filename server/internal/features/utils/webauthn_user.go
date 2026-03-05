@@ -13,7 +13,7 @@ import (
 type WebAuthnUser struct {
 	User        *entities.TenantUser
 	Profile     *entities.UserProfile
-	Credentials []entities.MfaWebauthnCredentials
+	Credentials []entities.MfaPasskeyCredentials
 }
 
 func (w *WebAuthnUser) WebAuthnID() []byte {

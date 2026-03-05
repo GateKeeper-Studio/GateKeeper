@@ -88,7 +88,7 @@ func (h *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 	}
 
 	// Log audit event
-	auditLog := entities.NewAuditLog(user.ID, user.ApplicationID,
+	auditLog := entities.NewAuditLog(user.ID, user.TenantID,
 		constants.AuditEventMfaDisabled, command.IPAddress, command.UserAgent, "success", nil)
 	_ = h.repository.AddAuditLog(ctx, auditLog)
 

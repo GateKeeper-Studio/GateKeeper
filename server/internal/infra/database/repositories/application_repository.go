@@ -17,7 +17,7 @@ type IApplicationRepository interface {
 	UpdateApplication(ctx context.Context, application *entities.Application) error
 	RemoveApplication(ctx context.Context, applicationID uuid.UUID) error
 	CheckIfApplicationExists(ctx context.Context, applicationID uuid.UUID) (bool, error)
-	ListApplicationsFromOrganization(ctx context.Context, organizationID uuid.UUID) (*[]entities.Application, error)
+	ListApplicationsFromTenant(ctx context.Context, tenantID uuid.UUID) (*[]entities.Application, error)
 }
 
 // ApplicationRepository is the shared implementation for Application-related DB operations.
@@ -40,7 +40,7 @@ func (r ApplicationRepository) GetApplicationByID(ctx context.Context, applicati
 		ID:                   application.ID,
 		Name:                 application.Name,
 		Description:          application.Description,
-		OrganizationID:       application.OrganizationID,
+		TenantID:             application.TenantID,
 		CreatedAt:            application.CreatedAt.Time,
 		IsActive:             application.IsActive,
 		HasMfaAuthApp:        application.HasMfaAuthApp,
@@ -63,7 +63,7 @@ func (r ApplicationRepository) AddApplication(ctx context.Context, newApplicatio
 		ID:                 newApplication.ID,
 		Name:               newApplication.Name,
 		Description:        newApplication.Description,
-		OrganizationID:     newApplication.OrganizationID,
+		TenantID:           newApplication.TenantID,
 		IsActive:           newApplication.IsActive,
 		HasMfaAuthApp:      newApplication.HasMfaAuthApp,
 		HasMfaEmail:        newApplication.HasMfaEmail,
@@ -108,8 +108,8 @@ func (r ApplicationRepository) CheckIfApplicationExists(ctx context.Context, app
 	return exists, nil
 }
 
-func (r ApplicationRepository) ListApplicationsFromOrganization(ctx context.Context, organizationID uuid.UUID) (*[]entities.Application, error) {
-	applications, err := r.Store.ListApplicationsFromOrganization(ctx, organizationID)
+func (r ApplicationRepository) ListApplicationsFromTenant(ctx context.Context, tenantID uuid.UUID) (*[]entities.Application, error) {
+	applications, err := r.Store.ListApplicationsFromTenant(ctx, tenantID)
 
 	if err != nil && err != ErrNoRows {
 		return nil, err
@@ -123,13 +123,13 @@ func (r ApplicationRepository) ListApplicationsFromOrganization(ctx context.Cont
 		}
 
 		applicationList = append(applicationList, entities.Application{
-			ID:             application.ID,
-			Name:           application.Name,
-			Description:    application.Description,
-			OrganizationID: application.OrganizationID,
-			CreatedAt:      application.CreatedAt.Time,
-			Badges:         strings.Split(*application.Badges, ","),
-			UpdatedAt:      application.UpdatedAt,
+			ID:          application.ID,
+			Name:        application.Name,
+			Description: application.Description,
+			TenantID:    application.TenantID,
+			CreatedAt:   application.CreatedAt.Time,
+			Badges:      strings.Split(*application.Badges, ","),
+			UpdatedAt:   application.UpdatedAt,
 		})
 	}
 

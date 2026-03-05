@@ -22,14 +22,22 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { formSchema } from "../../schema";
 import { ResetPasswordDialog } from "../../(components)/reset-password-dialog";
 import { MultiFactorAuthForm } from "../../(components)/multi-factor-auth-form";
 import { ApplicationRolesSection } from "../../(components)/application-roles-section";
 
-import { UserByIdResponse } from "@/services/dashboard/get-application-user-by-id";
-import { editApplicationUserApi } from "@/services/dashboard/edit-application-user";
+import { UserByIdResponse } from "@/services/dashboard/get-tenant-user-by-id";
+import { editTenantUserApi } from "@/services/dashboard/edit-tenant-user";
+import { useApplicationsSWR } from "@/services/dashboard/use-applications-swr";
 
 type Props = {
   user: UserByIdResponse | null;
@@ -37,13 +45,18 @@ type Props = {
 
 export function EditUserForm({ user }: Props) {
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedAppId, setSelectedAppId] = useState("");
   const router = useRouter();
 
-  const { applicationId, organizationId, userId } = useParams() as {
+  const { organizationId, userId } = useParams() as {
     organizationId: string;
-    applicationId: string;
     userId: string;
   };
+
+  const { data: applications } = useApplicationsSWR(
+    { organizationId },
+    { accessToken: "" },
+  );
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -66,9 +79,9 @@ export function EditUserForm({ user }: Props) {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
 
-    const [, err] = await editApplicationUserApi(
+    const [, err] = await editTenantUserApi(
       {
-        applicationId,
+        applicationId: selectedAppId,
         organizationId,
         userId,
         displayName: values.displayName,
@@ -94,9 +107,7 @@ export function EditUserForm({ user }: Props) {
     setIsLoading(false);
     toast.success("User updated successfully.");
 
-    router.push(
-      `/dashboard/${organizationId}/application/${applicationId}/user/${userId}`,
-    );
+    router.push(`/dashboard/${organizationId}/users/${userId}`);
   }
 
   const temporaryPassword = useWatch({
@@ -303,12 +314,35 @@ export function EditUserForm({ user }: Props) {
             isEditEnabled={true}
             form={form}
             userId={userId}
-            applicationId={applicationId}
+            applicationId={selectedAppId}
           />
 
           <Separator className="my-2" />
 
-          <ApplicationRolesSection isEditEnabled={true} form={form} />
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium">Application Context</span>
+            <span className="text-muted-foreground my-1 text-sm">
+              Select the application to assign roles from.
+            </span>
+            <Select onValueChange={setSelectedAppId} value={selectedAppId}>
+              <SelectTrigger className="max-w-xs">
+                <SelectValue placeholder="Select an application" />
+              </SelectTrigger>
+              <SelectContent>
+                {applications?.map((app) => (
+                  <SelectItem key={app.id} value={app.id}>
+                    {app.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <ApplicationRolesSection
+            isEditEnabled={true}
+            form={form}
+            applicationId={selectedAppId}
+          />
         </div>
 
         <Button type="submit" className="float-right mt-4" disabled={isLoading}>

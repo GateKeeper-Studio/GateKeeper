@@ -19,15 +19,8 @@ type Endpoint struct {
 }
 
 func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
-	organizationIDString := chi.URLParam(request, "organizationID")
-	organizationIdUUID, err := uuid.Parse(organizationIDString)
-
-	if err != nil {
-		panic(err)
-	}
-
-	applicationIDString := chi.URLParam(request, "applicationID")
-	applicationIdUUID, err := uuid.Parse(applicationIDString)
+	tenantIDString := chi.URLParam(request, "tenantID")
+	tenantIdUUID, err := uuid.Parse(tenantIDString)
 
 	if err != nil {
 		panic(err)
@@ -49,10 +42,9 @@ func (c *Endpoint) Http(writter http.ResponseWriter, request *http.Request) {
 	}
 
 	query := Query{
-		OrganizationID: organizationIdUUID,
-		ApplicationID:  applicationIdUUID,
-		Page:           page,
-		PageSize:       pageSize,
+		TenantID: tenantIdUUID,
+		Page:     page,
+		PageSize: pageSize,
 	}
 
 	params := repositories.ParamsRs[Query, *Response, Handler]{

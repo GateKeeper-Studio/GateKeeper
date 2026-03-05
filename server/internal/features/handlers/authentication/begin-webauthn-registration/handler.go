@@ -83,12 +83,12 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, err
 	}
 
-	webauthnSession, err := entities.NewMfaWebauthnSession(command.UserID, sessionDataJSON)
+	webauthnSession, err := entities.NewMfaPasskeySession(command.UserID, sessionDataJSON)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := s.repository.AddMfaWebauthnSession(ctx, webauthnSession); err != nil {
+	if err := s.repository.AddMfaPasskeySession(ctx, webauthnSession); err != nil {
 		return nil, err
 	}
 

@@ -8,7 +8,14 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
-import { Home, LayoutPanelLeft, LogOut, Plus, Settings } from "lucide-react";
+import {
+  Home,
+  LayoutPanelLeft,
+  LogOut,
+  Plus,
+  Settings,
+  Users,
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -49,6 +56,11 @@ export function DashboardSidebar() {
       title: "Home",
       url: `/dashboard/${organizationId}`,
       icon: Home,
+    },
+    {
+      title: "Users",
+      url: `/dashboard/${organizationId}/users`,
+      icon: Users,
     },
   ];
 
