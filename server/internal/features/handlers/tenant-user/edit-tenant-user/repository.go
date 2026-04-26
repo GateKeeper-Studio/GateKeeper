@@ -2,6 +2,7 @@ package edittenantuser
 
 import (
 	"context"
+
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
@@ -10,6 +11,7 @@ import (
 
 type IRepository interface {
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
+	GetTenantByID(ctx context.Context, id uuid.UUID) (*entities.Tenant, error)
 	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error)
 	EditUserProfile(ctx context.Context, updatedUser *entities.UserProfile) error
@@ -23,6 +25,7 @@ type IRepository interface {
 
 type Repository struct {
 	repositories.ApplicationRepository
+	repositories.TenantRepository
 	repositories.UserRepository
 	repositories.UserProfileRepository
 	repositories.RoleRepository
@@ -31,10 +34,11 @@ type Repository struct {
 
 func NewRepository(q *pgstore.Queries) Repository {
 	return Repository{
-		ApplicationRepository: repositories.ApplicationRepository{Store: q},
-		UserRepository: repositories.UserRepository{Store: q},
-		UserProfileRepository: repositories.UserProfileRepository{Store: q},
-		RoleRepository: repositories.RoleRepository{Store: q},
+		ApplicationRepository:     repositories.ApplicationRepository{Store: q},
+		TenantRepository:          repositories.TenantRepository{Store: q},
+		UserRepository:            repositories.UserRepository{Store: q},
+		UserProfileRepository:     repositories.UserProfileRepository{Store: q},
+		RoleRepository:            repositories.RoleRepository{Store: q},
 		UserCredentialsRepository: repositories.UserCredentialsRepository{Store: q},
 	}
 }

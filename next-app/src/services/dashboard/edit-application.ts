@@ -8,7 +8,7 @@ type Request = {
   badges: string[];
   hasMfaEmail: boolean;
   hasMfaAuthApp: boolean;
-  organizationId: string;
+  tenantId: string;
   isActive: boolean;
   canSelfSignUp: boolean;
   canSelfForgotPass: boolean;
@@ -36,7 +36,7 @@ export async function editApplicationApi(
     badges,
     hasMfaAuthApp,
     hasMfaEmail,
-    organizationId,
+    tenantId,
     isActive,
     canSelfForgotPass,
     canSelfSignUp,
@@ -46,7 +46,7 @@ export async function editApplicationApi(
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.put<Response>(
-      `/v1/organizations/${organizationId}/applications/${id}`,
+      `/v1/tenants/${tenantId}/applications/${id}`,
       {
         id,
         name,
@@ -54,7 +54,7 @@ export async function editApplicationApi(
         badges,
         hasMfaAuthApp,
         hasMfaEmail,
-        organizationId,
+        tenantId,
         isActive,
         canSelfForgotPass,
         canSelfSignUp,

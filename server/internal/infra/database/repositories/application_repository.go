@@ -47,7 +47,6 @@ func (r ApplicationRepository) GetApplicationByID(ctx context.Context, applicati
 		HasMfaEmail:          application.HasMfaEmail,
 		HasMfaWebauthn:       application.HasMfaWebauthn,
 		RequiresHighSecurity: application.RequiresHighSecurity,
-		PasswordHashSecret:   application.PasswordHashSecret,
 		UpdatedAt:            application.UpdatedAt,
 		Badges:               strings.Split(*application.Badges, ","),
 		CanSelfSignUp:        application.CanSelfSignUp,
@@ -60,20 +59,19 @@ func (r ApplicationRepository) AddApplication(ctx context.Context, newApplicatio
 	badges := strings.Join(newApplication.Badges, ",")
 
 	return r.Store.AddApplication(ctx, pgstore.AddApplicationParams{
-		ID:                 newApplication.ID,
-		Name:               newApplication.Name,
-		Description:        newApplication.Description,
-		TenantID:           newApplication.TenantID,
-		IsActive:           newApplication.IsActive,
-		HasMfaAuthApp:      newApplication.HasMfaAuthApp,
-		HasMfaEmail:        newApplication.HasMfaEmail,
-		HasMfaWebauthn:     newApplication.HasMfaWebauthn,
-		PasswordHashSecret: newApplication.PasswordHashSecret,
-		Badges:             &badges,
-		UpdatedAt:          newApplication.UpdatedAt,
-		CanSelfSignUp:      newApplication.CanSelfSignUp,
-		CanSelfForgotPass:  newApplication.CanSelfForgotPass,
-		CreatedAt:          pgtype.Timestamp{Time: newApplication.CreatedAt, Valid: true},
+		ID:                newApplication.ID,
+		Name:              newApplication.Name,
+		Description:       newApplication.Description,
+		TenantID:          newApplication.TenantID,
+		IsActive:          newApplication.IsActive,
+		HasMfaAuthApp:     newApplication.HasMfaAuthApp,
+		HasMfaEmail:       newApplication.HasMfaEmail,
+		HasMfaWebauthn:    newApplication.HasMfaWebauthn,
+		Badges:            &badges,
+		UpdatedAt:         newApplication.UpdatedAt,
+		CanSelfSignUp:     newApplication.CanSelfSignUp,
+		CanSelfForgotPass: newApplication.CanSelfForgotPass,
+		CreatedAt:         pgtype.Timestamp{Time: newApplication.CreatedAt, Valid: true},
 	})
 }
 

@@ -17,16 +17,15 @@ type Application struct {
 	IsActive             bool
 	HasMfaAuthApp        bool
 	HasMfaEmail          bool
-	HasMfaWebauthn       bool
+	HasMfaPasskey        bool
 	RequiresHighSecurity bool
-	PasswordHashSecret   string
 	Badges               []string
 	RefreshTokenTTLDays  int
 	CreatedAt            time.Time
 	UpdatedAt            *time.Time
 }
 
-func NewApplication(ID uuid.UUID, name string, description *string, tenantID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, createdAt time.Time, canSelfSignUp, canSelfForgotPass bool, refreshTokenTTLDays int, requiresHighSecurity bool) *Application {
+func NewApplication(ID uuid.UUID, name string, description *string, tenantID uuid.UUID, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaPasskey, isActive bool, updatedAt *time.Time, createdAt time.Time, canSelfSignUp, canSelfForgotPass bool, refreshTokenTTLDays int, requiresHighSecurity bool) *Application {
 	return &Application{
 		ID:                   ID,
 		TenantID:             tenantID,
@@ -34,11 +33,10 @@ func NewApplication(ID uuid.UUID, name string, description *string, tenantID uui
 		Description:          description,
 		CreatedAt:            createdAt,
 		UpdatedAt:            updatedAt,
-		PasswordHashSecret:   passwordHashSecret,
 		IsActive:             isActive,
 		HasMfaAuthApp:        hasMfaAuthApp,
 		HasMfaEmail:          hasMfaEmail,
-		HasMfaWebauthn:       hasMfaWebauthn,
+		HasMfaPasskey:        hasMfaPasskey,
 		RequiresHighSecurity: requiresHighSecurity,
 		Badges:               badges,
 		RefreshTokenTTLDays:  refreshTokenTTLDays,
@@ -47,23 +45,22 @@ func NewApplication(ID uuid.UUID, name string, description *string, tenantID uui
 	}
 }
 
-func AddApplication(name string, description *string, tenantID uuid.UUID, passwordHashSecret string, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaWebauthn, isActive bool, updatedAt *time.Time, canSelfSignUp, canSelfForgotPass bool) *Application {
+func AddApplication(name string, description *string, tenantID uuid.UUID, badges []string, hasMfaEmail, hasMfaAuthApp, hasMfaPasskey, isActive bool, updatedAt *time.Time, canSelfSignUp, canSelfForgotPass bool) *Application {
 	newID := uuid.New()
 
 	return &Application{
-		ID:                 newID,
-		TenantID:           tenantID,
-		Name:               name,
-		Description:        description,
-		CreatedAt:          time.Now(),
-		UpdatedAt:          updatedAt,
-		PasswordHashSecret: passwordHashSecret,
-		IsActive:           isActive,
-		HasMfaAuthApp:      hasMfaAuthApp,
-		HasMfaEmail:        hasMfaEmail,
-		HasMfaWebauthn:     hasMfaWebauthn,
-		Badges:             badges,
-		CanSelfSignUp:      canSelfSignUp,
-		CanSelfForgotPass:  canSelfForgotPass,
+		ID:                newID,
+		TenantID:          tenantID,
+		Name:              name,
+		Description:       description,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         updatedAt,
+		IsActive:          isActive,
+		HasMfaAuthApp:     hasMfaAuthApp,
+		HasMfaEmail:       hasMfaEmail,
+		HasMfaPasskey:     hasMfaPasskey,
+		Badges:            badges,
+		CanSelfSignUp:     canSelfSignUp,
+		CanSelfForgotPass: canSelfForgotPass,
 	}
 }

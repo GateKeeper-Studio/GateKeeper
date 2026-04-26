@@ -36,8 +36,9 @@ func TestHandler_CreateTenant_Success(t *testing.T) {
 
 	h := &Handler{repository: repo}
 	resp, err := h.Handler(context.Background(), Command{
-		Name:        "My Tenant",
-		Description: &desc,
+		Name:               "My Tenant",
+		Description:        &desc,
+		PasswordHashSecret: "this-is-a-32-char-secret-key!!!1",
 	})
 
 	require.NoError(t, err)
@@ -56,8 +57,9 @@ func TestHandler_CreateTenant_NilDescription(t *testing.T) {
 
 	h := &Handler{repository: repo}
 	resp, err := h.Handler(context.Background(), Command{
-		Name:        "Org Without Desc",
-		Description: nil,
+		Name:               "Org Without Desc",
+		Description:        nil,
+		PasswordHashSecret: "this-is-a-32-char-secret-key!!!1",
 	})
 
 	require.NoError(t, err)
@@ -74,7 +76,8 @@ func TestHandler_CreateTenant_RepositoryError(t *testing.T) {
 
 	h := &Handler{repository: repo}
 	resp, err := h.Handler(context.Background(), Command{
-		Name: "Failing Org",
+		Name:               "Failing Org",
+		PasswordHashSecret: "this-is-a-32-char-secret-key!!!1",
 	})
 
 	require.Error(t, err)

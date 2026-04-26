@@ -9,7 +9,7 @@ type Request = {
   hasMfaEmail: boolean;
   hasMfaAuthApp: boolean;
   hasMfaWebauthn: boolean;
-  organizationId: string;
+  tenantId: string;
   canSelfSignUp: boolean;
   canSelfForgotPass: boolean;
 };
@@ -36,7 +36,7 @@ export async function createApplicationApi(
     hasMfaEmail,
     hasMfaWebauthn,
     passwordHashSecret,
-    organizationId,
+    tenantId,
     canSelfForgotPass,
     canSelfSignUp,
   }: Request,
@@ -44,7 +44,7 @@ export async function createApplicationApi(
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.post<Response>(
-      `/v1/organizations/${organizationId}/applications`,
+      `/v1/tenants/${tenantId}/applications`,
       {
         name,
         description: description || null,
@@ -53,7 +53,7 @@ export async function createApplicationApi(
         hasMfaEmail,
         hasMfaWebauthn,
         passwordHashSecret,
-        organizationId,
+        tenantId,
         canSelfForgotPass,
         canSelfSignUp,
       },

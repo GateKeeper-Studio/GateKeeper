@@ -32,6 +32,12 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*Response, erro
 		return nil, &errors.ErrApplicationNotFound
 	}
 
+	tenant, err := s.repository.GetTenantByID(ctx, application.TenantID)
+
+	if err != nil {
+		return nil, err
+	}
+
 	isEmailExists, err := s.repository.IsUserExistsByEmail(ctx, request.Email, request.TenantID)
 
 	if err != nil {
@@ -42,7 +48,7 @@ func (s *Handler) Handler(ctx context.Context, request Command) (*Response, erro
 		return nil, &errors.ErrUserAlreadyExists
 	}
 
-	hashedPassword, err := application_utils.HashPassword(*request.TemporaryPasswordHash, application.PasswordHashSecret)
+	hashedPassword, err := application_utils.HashPassword(*request.TemporaryPasswordHash, tenant.PasswordHashSecret)
 
 	if err != nil {
 		return nil, err

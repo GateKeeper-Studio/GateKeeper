@@ -5,7 +5,7 @@ type Request = {
   name: string;
   description: string;
   applicationId: string;
-  organizationId: string;
+  tenantId: string;
 };
 
 type Response = {
@@ -18,12 +18,12 @@ type Response = {
 };
 
 export async function createApplicationRoleApi(
-  { name, applicationId, description, organizationId }: Request,
+  { name, applicationId, description, tenantId }: Request,
   { accessToken }: IServiceOptions
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.post<Response>(
-      `/v1/organizations/${organizationId}/applications/${applicationId}/roles`,
+      `/v1/tenants/${tenantId}/applications/${applicationId}/roles`,
       {
         name,
         description,

@@ -2,7 +2,7 @@ import { api } from "../base/gatekeeper-api";
 import { APIError, IServiceOptions, Result } from "@/types/service-options";
 
 type Request = {
-  organizationId: string;
+  tenantId: string;
   userId: string;
 };
 
@@ -15,8 +15,8 @@ export type UserByIdResponse = {
   lastName: string;
   email: string;
   isActive: boolean;
-  organizationId: string;
-  organizationName: string;
+  tenantId: string;
+  tenantName: string;
   address: string | null;
   photoUrl: string | null;
   isMfaEmailConfigured: boolean;
@@ -31,12 +31,12 @@ export type UserByIdResponse = {
 };
 
 export async function getTenantUserByIdService(
-  { userId, organizationId }: Request,
+  { userId, tenantId }: Request,
   { accessToken }: IServiceOptions,
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.get<Response>(
-      `/v1/organizations/${organizationId}/users/${userId}`,
+      `/v1/tenants/${tenantId}/users/${userId}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,

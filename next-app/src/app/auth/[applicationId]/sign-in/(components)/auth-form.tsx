@@ -20,8 +20,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { GithubLogo } from "@/app/dashboard/[organizationId]/application/[applicationId]/(components)/application-details-content/providers/github-logo";
-import { GoogleLogo } from "@/app/dashboard/[organizationId]/application/[applicationId]/(components)/application-details-content/providers/google-logo";
+import { GithubLogo } from "@/app/dashboard/[tenantId]/application/[applicationId]/(components)/application-details-content/providers/github-logo";
+import { GoogleLogo } from "@/app/dashboard/[tenantId]/application/[applicationId]/(components)/application-details-content/providers/google-logo";
 
 import { formSchema } from "./auth-schema";
 import { zodResolver } from "@hookform/resolvers/zod";

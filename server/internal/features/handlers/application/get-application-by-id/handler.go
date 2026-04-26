@@ -29,6 +29,11 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 		return nil, &errors.ErrApplicationNotFound
 	}
 
+	tenant, err := s.repository.GetTenantByID(ctx, application.TenantID)
+	if err != nil {
+		return nil, err
+	}
+
 	secrets := make([]ApplicationSecrets, 0)
 
 	applicationSecretsDb, err := s.repository.ListSecretsFromApplication(ctx, application.ID)
@@ -65,7 +70,7 @@ func (s *Handler) Handler(ctx context.Context, request Query) (*Response, error)
 		MfaAuthAppEnabled:     application.HasMfaAuthApp,
 		MfaEmailEnabled:       application.HasMfaEmail,
 		MfaWebauthnEnabled:    application.HasMfaWebauthn,
-		PasswordHashingSecret: application.PasswordHashSecret,
+		PasswordHashingSecret: tenant.PasswordHashSecret,
 		RefreshTokenTtlDays:   application.RefreshTokenTTLDays,
 		RequiresHighSecurity:  application.RequiresHighSecurity,
 		Secrets:               secrets,

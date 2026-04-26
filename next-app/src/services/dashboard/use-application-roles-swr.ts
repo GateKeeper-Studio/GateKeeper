@@ -5,7 +5,7 @@ import { api } from "../base/gatekeeper-api";
 import type { IServiceOptions } from "@/types/service-options";
 
 type Request = {
-  organizationId?: string;
+  tenantId?: string;
   applicationId: string;
   page?: number;
   pageSize?: number;
@@ -41,8 +41,8 @@ export function useApplicationRolesSWR(
   const pageSize = request?.pageSize ?? 10;
 
   return useSWR(
-    request?.organizationId
-      ? `/v1/organizations/${request?.organizationId}/applications/${request?.applicationId}/roles?page=${page}&pageSize=${pageSize}`
+    request?.tenantId
+      ? `/v1/tenants/${request?.tenantId}/applications/${request?.applicationId}/roles?page=${page}&pageSize=${pageSize}`
       : null,
     (url) => fetcher(url, options),
     {

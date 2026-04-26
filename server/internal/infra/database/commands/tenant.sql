@@ -5,6 +5,7 @@ INSERT INTO
         id,
         name,
         description,
+        password_hash_secret,
         created_at
     )
 VALUES
@@ -15,6 +16,8 @@ VALUES
         -- name
         sqlc.arg('description'),
         -- description
+        sqlc.arg('password_hash_secret'),
+        -- password_hash_secret
         sqlc.arg('created_at') -- created_at
     );
 
@@ -30,6 +33,7 @@ UPDATE
 SET
     name = sqlc.arg('name'),
     description = sqlc.arg('description'),
+    password_hash_secret = sqlc.arg('password_hash_secret'),
     updated_at = sqlc.arg('updated_at')
 WHERE
     id = sqlc.arg('id');
@@ -40,6 +44,7 @@ SELECT
     id,
     name,
     description,
+    password_hash_secret,
     created_at,
     updated_at
 FROM
@@ -52,6 +57,7 @@ SELECT
     id,
     name,
     description,
+    password_hash_secret,
     created_at,
     updated_at
 FROM

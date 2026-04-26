@@ -12,7 +12,7 @@ type Request = {
   isMfaEmailEnabled: boolean;
   roles: string[];
   applicationId: string;
-  organizationId: string;
+  tenantId: string;
 };
 
 type Response = {
@@ -34,13 +34,13 @@ export async function createTenantUserApi(
     roles,
     temporaryPasswordHash,
     applicationId,
-    organizationId,
+    tenantId,
   }: Request,
   { accessToken }: IServiceOptions,
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.post<Response>(
-      `/v1/organizations/${organizationId}/users`,
+      `/v1/tenants/${tenantId}/users`,
       {
         displayName,
         email,

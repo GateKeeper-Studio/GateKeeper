@@ -7,16 +7,16 @@ import {
 
 type Request = {
   applicationId: string;
-  organizationId?: string;
+  tenantId?: string;
 };
 
 export async function deleteApplicationApi(
-  { applicationId, organizationId }: Request,
+  { applicationId, tenantId }: Request,
   { accessToken }: IServiceOptions
 ): Promise<ResultWithoutResponse<APIError>> {
   try {
     await api.delete<Response>(
-      `/v1/organizations/${organizationId}/applications/${applicationId}`,
+      `/v1/tenants/${tenantId}/applications/${applicationId}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,

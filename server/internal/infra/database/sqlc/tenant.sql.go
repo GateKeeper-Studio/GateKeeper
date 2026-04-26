@@ -19,6 +19,7 @@ INSERT INTO
         id,
         name,
         description,
+        password_hash_secret,
         created_at
     )
 VALUES
@@ -29,15 +30,18 @@ VALUES
         -- name
         $3,
         -- description
-        $4 -- created_at
+        $4,
+        -- password_hash_secret
+        $5 -- created_at
     )
 `
 
 type AddTenantParams struct {
-	ID          uuid.UUID        `db:"id"`
-	Name        string           `db:"name"`
-	Description *string          `db:"description"`
-	CreatedAt   pgtype.Timestamp `db:"created_at"`
+	ID                 uuid.UUID        `db:"id"`
+	Name               string           `db:"name"`
+	Description        *string          `db:"description"`
+	PasswordHashSecret string           `db:"password_hash_secret"`
+	CreatedAt          pgtype.Timestamp `db:"created_at"`
 }
 
 // ----------------------------------COMMANDS--------------------------------------
@@ -46,6 +50,7 @@ func (q *Queries) AddTenant(ctx context.Context, arg AddTenantParams) error {
 		arg.ID,
 		arg.Name,
 		arg.Description,
+		arg.PasswordHashSecret,
 		arg.CreatedAt,
 	)
 	return err
@@ -56,6 +61,7 @@ SELECT
     id,
     name,
     description,
+    password_hash_secret,
     created_at,
     updated_at
 FROM
@@ -72,6 +78,7 @@ func (q *Queries) GetTenantByID(ctx context.Context, tenantID uuid.UUID) (Tenant
 		&i.ID,
 		&i.Name,
 		&i.Description,
+		&i.PasswordHashSecret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -83,6 +90,7 @@ SELECT
     id,
     name,
     description,
+    password_hash_secret,
     created_at,
     updated_at
 FROM
@@ -104,6 +112,7 @@ func (q *Queries) ListTenants(ctx context.Context) ([]Tenant, error) {
 			&i.ID,
 			&i.Name,
 			&i.Description,
+			&i.PasswordHashSecret,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -135,22 +144,25 @@ UPDATE
 SET
     name = $1,
     description = $2,
-    updated_at = $3
+    password_hash_secret = $3,
+    updated_at = $4
 WHERE
-    id = $4
+    id = $5
 `
 
 type UpdateTenantParams struct {
-	Name        string     `db:"name"`
-	Description *string    `db:"description"`
-	UpdatedAt   *time.Time `db:"updated_at"`
-	ID          uuid.UUID  `db:"id"`
+	Name               string     `db:"name"`
+	Description        *string    `db:"description"`
+	PasswordHashSecret string     `db:"password_hash_secret"`
+	UpdatedAt          *time.Time `db:"updated_at"`
+	ID                 uuid.UUID  `db:"id"`
 }
 
 func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) error {
 	_, err := q.db.Exec(ctx, updateTenant,
 		arg.Name,
 		arg.Description,
+		arg.PasswordHashSecret,
 		arg.UpdatedAt,
 		arg.ID,
 	)

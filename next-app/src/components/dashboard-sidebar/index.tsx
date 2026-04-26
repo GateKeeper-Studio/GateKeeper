@@ -34,14 +34,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 import { SettingsDialog } from "../settings-dialog";
-import { OrganizationList } from "./organization-list";
+import { TenantList } from "./tenant-list";
 
 import { useApplicationsSWR } from "@/services/dashboard/use-applications-swr";
 
 export function DashboardSidebar() {
-  const organizationId = useParams().organizationId as string;
+  const tenantId = useParams().tenantId as string;
   const applicationId = useParams().applicationId as string | undefined;
-  const { data } = useApplicationsSWR({ organizationId }, { accessToken: "" });
+  const { data } = useApplicationsSWR({ tenantId }, { accessToken: "" });
   const router = useRouter();
   const pathname = usePathname();
 
@@ -54,12 +54,12 @@ export function DashboardSidebar() {
   const items = [
     {
       title: "Home",
-      url: `/dashboard/${organizationId}`,
+      url: `/dashboard/${tenantId}`,
       icon: Home,
     },
     {
       title: "Users",
-      url: `/dashboard/${organizationId}/users`,
+      url: `/dashboard/${tenantId}/users`,
       icon: Users,
     },
   ];
@@ -69,7 +69,7 @@ export function DashboardSidebar() {
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <SidebarMenu>
-            <OrganizationList />
+            <TenantList />
           </SidebarMenu>
         </SidebarHeader>
 
@@ -100,7 +100,7 @@ export function DashboardSidebar() {
               title="Add Application"
               onClick={() =>
                 router.push(
-                  `/dashboard/${organizationId}/application/create-application`,
+                  `/dashboard/${tenantId}/application/create-application`,
                 )
               }
             >
@@ -118,7 +118,7 @@ export function DashboardSidebar() {
                           className="font-semibold h-[3rem] flex justify-between gap-4 border-dashed border-1 border-gray-300 dark:border-gray-700"
                         >
                           <Link
-                            href={`/dashboard/${organizationId}/application/create-application`}
+                            href={`/dashboard/${tenantId}/application/create-application`}
                           >
                             No applications found
                             <div className="p-1 border-dashed border-1 border-gray-300 dark:border-gray-700 rounded-lg">
@@ -143,7 +143,7 @@ export function DashboardSidebar() {
                       isActive={application.id === applicationId}
                     >
                       <Link
-                        href={`/dashboard/${organizationId}/application/${application.id}`}
+                        href={`/dashboard/${tenantId}/application/${application.id}`}
                       >
                         <LayoutPanelLeft />
                         {application.name}

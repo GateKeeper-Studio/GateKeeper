@@ -43,16 +43,15 @@ func TestHandler_CreateApplication_Success(t *testing.T) {
 
 	h := &Handler{repository: repo}
 	resp, err := h.Handler(context.Background(), Command{
-		Name:               "My App",
-		Description:        &desc,
-		PasswordHashSecret: "this-is-a-32-char-secret-key!!!1",
-		Badges:             []string{"badge1"},
-		HasMfaEmail:        false,
-		HasMfaAuthApp:      false,
-		HasMfaWebauthn:     false,
-		TenantID:           orgID,
-		CanSelfSignUp:      true,
-		CanSelfForgotPass:  true,
+		Name:              "My App",
+		Description:       &desc,
+		Badges:            []string{"badge1"},
+		HasMfaEmail:       false,
+		HasMfaAuthApp:     false,
+		HasMfaWebauthn:    false,
+		TenantID:          orgID,
+		CanSelfSignUp:     true,
+		CanSelfForgotPass: true,
 	})
 
 	require.NoError(t, err)
@@ -70,10 +69,9 @@ func TestHandler_CreateApplication_RepositoryError(t *testing.T) {
 
 	h := &Handler{repository: repo}
 	resp, err := h.Handler(context.Background(), Command{
-		Name:               "My App",
-		PasswordHashSecret: "this-is-a-32-char-secret-key!!!1",
-		Badges:             []string{},
-		TenantID:           orgID,
+		Name:     "My App",
+		Badges:   []string{},
+		TenantID: orgID,
 	})
 
 	require.Error(t, err)
@@ -93,10 +91,9 @@ func TestHandler_CreateApplication_CreatesDefaultRoles(t *testing.T) {
 
 	h := &Handler{repository: repo}
 	resp, err := h.Handler(context.Background(), Command{
-		Name:               "My App",
-		PasswordHashSecret: "this-is-a-32-char-secret-key!!!1",
-		Badges:             []string{},
-		TenantID:           orgID,
+		Name:     "My App",
+		Badges:   []string{},
+		TenantID: orgID,
 	})
 
 	require.NoError(t, err)

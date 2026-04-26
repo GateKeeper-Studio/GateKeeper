@@ -2,6 +2,7 @@ package resetpassword
 
 import (
 	"context"
+
 	"github.com/gate-keeper/internal/domain/entities"
 	"github.com/gate-keeper/internal/infra/database/repositories"
 	pgstore "github.com/gate-keeper/internal/infra/database/sqlc"
@@ -13,6 +14,7 @@ type IRepository interface {
 	GetPasswordResetByTokenID(ctx context.Context, tokenID uuid.UUID) (*entities.PasswordResetToken, error)
 	UpdateUser(ctx context.Context, user *entities.TenantUser) (*entities.TenantUser, error)
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
+	GetTenantByID(ctx context.Context, id uuid.UUID) (*entities.Tenant, error)
 	GetUserByID(ctx context.Context, userID uuid.UUID) (*entities.TenantUser, error)
 	DeletePasswordResetFromUser(ctx context.Context, userID uuid.UUID) error
 	GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error)
@@ -24,15 +26,17 @@ type Repository struct {
 	repositories.PasswordResetRepository
 	repositories.UserRepository
 	repositories.ApplicationRepository
+	repositories.TenantRepository
 	repositories.UserCredentialsRepository
 }
 
 func NewRepository(q *pgstore.Queries) Repository {
 	return Repository{
-		RefreshTokenRepository: repositories.RefreshTokenRepository{Store: q},
-		PasswordResetRepository: repositories.PasswordResetRepository{Store: q},
-		UserRepository: repositories.UserRepository{Store: q},
-		ApplicationRepository: repositories.ApplicationRepository{Store: q},
+		RefreshTokenRepository:    repositories.RefreshTokenRepository{Store: q},
+		PasswordResetRepository:   repositories.PasswordResetRepository{Store: q},
+		UserRepository:            repositories.UserRepository{Store: q},
+		ApplicationRepository:     repositories.ApplicationRepository{Store: q},
+		TenantRepository:          repositories.TenantRepository{Store: q},
 		UserCredentialsRepository: repositories.UserCredentialsRepository{Store: q},
 	}
 }

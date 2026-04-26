@@ -20,7 +20,6 @@ type Application struct {
 	HasMfaAuthApp        bool             `db:"has_mfa_auth_app"`
 	HasMfaEmail          bool             `db:"has_mfa_email"`
 	HasMfaWebauthn       bool             `db:"has_mfa_webauthn"`
-	PasswordHashSecret   string           `db:"password_hash_secret"`
 	Badges               *string          `db:"badges"`
 	CreatedAt            pgtype.Timestamp `db:"created_at"`
 	UpdatedAt            *time.Time       `db:"updated_at"`
@@ -252,11 +251,12 @@ type StepUpToken struct {
 }
 
 type Tenant struct {
-	ID          uuid.UUID        `db:"id"`
-	Name        string           `db:"name"`
-	Description *string          `db:"description"`
-	CreatedAt   pgtype.Timestamp `db:"created_at"`
-	UpdatedAt   *time.Time       `db:"updated_at"`
+	ID                 uuid.UUID        `db:"id"`
+	Name               string           `db:"name"`
+	Description        *string          `db:"description"`
+	PasswordHashSecret string           `db:"password_hash_secret"`
+	CreatedAt          pgtype.Timestamp `db:"created_at"`
+	UpdatedAt          *time.Time       `db:"updated_at"`
 }
 
 type TenantUser struct {

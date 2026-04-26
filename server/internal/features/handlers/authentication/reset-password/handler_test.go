@@ -70,6 +70,14 @@ func (m *mockResetPasswordRepo) UpdateUserCredentials(ctx context.Context, userC
 	return m.Called(ctx, userCredentials).Error(0)
 }
 
+func (m *mockResetPasswordRepo) GetTenantByID(ctx context.Context, id uuid.UUID) (*entities.Tenant, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.Tenant), args.Error(1)
+}
+
 // Compile-time check
 var _ IRepository = (*mockResetPasswordRepo)(nil)
 
@@ -102,10 +110,17 @@ func newResetUser(appID uuid.UUID) *entities.TenantUser {
 
 func newResetApp(orgID uuid.UUID) *entities.Application {
 	return &entities.Application{
-		ID:                 uuid.New(),
-		TenantID:           orgID,
-		Name:               "Test App",
-		IsActive:           true,
+		ID:       uuid.New(),
+		TenantID: orgID,
+		Name:     "Test App",
+		IsActive: true,
+	}
+}
+
+func newResetTenant(tenantID uuid.UUID) *entities.Tenant {
+	return &entities.Tenant{
+		ID:                 tenantID,
+		Name:               "Test Tenant",
 		PasswordHashSecret: "test-salt-key-for-password-hashing",
 	}
 }
@@ -245,6 +260,7 @@ func TestHandler_ResetPassword_Success(t *testing.T) {
 	repo.On("GetPasswordResetByTokenID", mock.Anything, resetToken.ID).Return(resetToken, nil)
 	repo.On("GetUserByID", mock.Anything, user.ID).Return(user, nil)
 	repo.On("GetApplicationByID", mock.Anything, app.ID).Return(app, nil)
+	repo.On("GetTenantByID", mock.Anything, app.TenantID).Return(newResetTenant(app.TenantID), nil)
 	repo.On("GetUserCredentialsByUserID", mock.Anything, user.ID).Return(creds, nil)
 	repo.On("UpdateUser", mock.Anything, mock.AnythingOfType("*entities.TenantUser")).Return(user, nil)
 	repo.On("UpdateUserCredentials", mock.Anything, mock.AnythingOfType("*entities.UserCredentials")).Return(nil)

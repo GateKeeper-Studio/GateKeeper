@@ -47,7 +47,13 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		return err
 	}
 
-	hashedPassword, err := application_utils.HashPassword(command.Password, application.PasswordHashSecret)
+	tenant, err := s.repository.GetTenantByID(ctx, application.TenantID)
+
+	if err != nil {
+		return err
+	}
+
+	hashedPassword, err := application_utils.HashPassword(command.Password, tenant.PasswordHashSecret)
 
 	if err != nil {
 		return err

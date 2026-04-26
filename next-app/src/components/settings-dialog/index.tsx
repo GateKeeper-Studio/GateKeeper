@@ -15,7 +15,6 @@ import { SidebarProvider } from "../ui/sidebar";
 import { SettingsSidebar } from "./settings-sidebar";
 
 import { AppearanceSection } from "./appearance-section";
-import { OrganizationsSection } from "./organizations-section";
 
 type Props = {
   isOpened: boolean;
@@ -31,11 +30,10 @@ export type NavProps = {
 export function SettingsDialog({ isOpened, onOpenChange }: Props) {
   const nav: NavProps[] = [
     { name: "Appearance", icon: Paintbrush, component: AppearanceSection },
-    { name: "Organizations", icon: Building, component: OrganizationsSection },
   ];
 
   const [selectedSection, setSelectedSection] = useState<NavProps | null>(
-    nav[0]
+    nav[0],
   );
 
   const router = useRouter();

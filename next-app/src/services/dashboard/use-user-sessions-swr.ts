@@ -5,7 +5,7 @@ import { api } from "../base/gatekeeper-api";
 import type { IServiceOptions } from "@/types/service-options";
 
 type Request = {
-  organizationId: string;
+  tenantId: string;
   userId: string;
 };
 
@@ -32,8 +32,8 @@ const fetcher = (url: string, options: IServiceOptions) =>
 
 export function useUserSessionsSWR(request: Request, options: IServiceOptions) {
   return useSWR(
-    request?.organizationId && request?.userId
-      ? `/v1/organizations/${request.organizationId}/users/${request.userId}/sessions`
+    request?.tenantId && request?.userId
+      ? `/v1/tenants/${request.tenantId}/users/${request.userId}/sessions`
       : null,
     (url) => fetcher(url, options),
     {

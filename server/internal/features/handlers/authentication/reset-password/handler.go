@@ -59,7 +59,13 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 		return &errors.ErrApplicationNotFound
 	}
 
-	hashedPassword, err := application_utils.HashPassword(command.NewPassword, application.PasswordHashSecret)
+	tenant, err := s.repository.GetTenantByID(ctx, application.TenantID)
+
+	if err != nil {
+		return err
+	}
+
+	hashedPassword, err := application_utils.HashPassword(command.NewPassword, tenant.PasswordHashSecret)
 
 	if err != nil {
 		return err

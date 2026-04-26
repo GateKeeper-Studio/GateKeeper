@@ -57,7 +57,7 @@ export interface IApplication {
 
 type Request = {
   applicationId: string;
-  organizationId?: string;
+  tenantId?: string;
 };
 
 type Response = IApplication;
@@ -75,8 +75,8 @@ export function useApplicationByIdSWR(
   options: IServiceOptions,
 ) {
   return useSWR(
-    request?.organizationId
-      ? `/v1/organizations/${request?.organizationId}/applications/${request?.applicationId}`
+    request?.tenantId
+      ? `/v1/tenants/${request?.tenantId}/applications/${request?.applicationId}`
       : null,
     (url) => fetcher(url, options),
     {

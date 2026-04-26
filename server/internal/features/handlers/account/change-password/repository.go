@@ -14,6 +14,7 @@ type IRepository interface {
 	GetUserCredentialsByUserID(ctx context.Context, userID uuid.UUID) (*entities.UserCredentials, error)
 	UpdateUserCredentials(ctx context.Context, userCredentials *entities.UserCredentials) error
 	GetApplicationByID(ctx context.Context, applicationID uuid.UUID) (*entities.Application, error)
+	GetTenantByID(ctx context.Context, id uuid.UUID) (*entities.Tenant, error)
 	RevokeRefreshTokenFromUser(ctx context.Context, userID uuid.UUID) error
 	RevokeAllUserSessions(ctx context.Context, userID uuid.UUID) error
 	AddAuditLog(ctx context.Context, auditLog *entities.AuditLog) error
@@ -23,6 +24,7 @@ type Repository struct {
 	repositories.UserRepository
 	repositories.UserCredentialsRepository
 	repositories.ApplicationRepository
+	repositories.TenantRepository
 	repositories.RefreshTokenRepository
 	repositories.UserSessionRepository
 	repositories.AuditLogRepository
@@ -33,6 +35,7 @@ func NewRepository(q *pgstore.Queries) Repository {
 		UserRepository:            repositories.UserRepository{Store: q},
 		UserCredentialsRepository: repositories.UserCredentialsRepository{Store: q},
 		ApplicationRepository:     repositories.ApplicationRepository{Store: q},
+		TenantRepository:          repositories.TenantRepository{Store: q},
 		RefreshTokenRepository:    repositories.RefreshTokenRepository{Store: q},
 		UserSessionRepository:     repositories.UserSessionRepository{Store: q},
 		AuditLogRepository:        repositories.AuditLogRepository{Store: q},

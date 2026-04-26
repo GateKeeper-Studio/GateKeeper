@@ -8,16 +8,16 @@ import { api } from "../base/gatekeeper-api";
 type Request = {
   secretId: string;
   applicationId: string;
-  organizationId?: string;
+  tenantId?: string;
 };
 
 export async function deleteApplicationSecretApi(
-  { secretId, applicationId, organizationId }: Request,
+  { secretId, applicationId, tenantId }: Request,
   { accessToken }: IServiceOptions
 ): Promise<ResultWithoutResponse<APIError>> {
   try {
     await api.delete(
-      `/v1/organizations/${organizationId}/applications/${applicationId}/secrets/${secretId}`,
+      `/v1/tenants/${tenantId}/applications/${applicationId}/secrets/${secretId}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,

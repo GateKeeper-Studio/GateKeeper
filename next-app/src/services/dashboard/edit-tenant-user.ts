@@ -4,7 +4,7 @@ import { APIError, IServiceOptions, Result } from "@/types/service-options";
 type Request = {
   userId: string;
   applicationId: string;
-  organizationId: string;
+  tenantId: string;
   displayName: string;
   firstName: string;
   lastName: string;
@@ -30,7 +30,7 @@ type Response = {
   isMfaEmailEnabled: boolean;
   roles: string[];
   applicationId: string;
-  organizationId: string;
+  tenantId: string;
 };
 
 export async function editTenantUserApi(
@@ -47,14 +47,14 @@ export async function editTenantUserApi(
     // isMfaEmailEnabled,
     temporaryPasswordHash,
     roles,
-    organizationId,
+    tenantId,
     isActive,
   }: Request,
   { accessToken }: IServiceOptions,
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.put<Response>(
-      `/v1/organizations/${organizationId}/users/${userId}`,
+      `/v1/tenants/${tenantId}/users/${userId}`,
       {
         displayName,
         firstName,

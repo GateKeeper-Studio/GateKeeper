@@ -3,14 +3,14 @@ import { PropsWithChildren } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
-import { OrganizationsContextProvider } from "./(contexts)/organizations-context-provider";
+import { TenantsContextProvider } from "./(contexts)/tenants-context-provider";
 
 type Props = PropsWithChildren<object>;
 
 export default function Layout({ children }: Props) {
   return (
     <div className="flex h-screen w-screen">
-      <OrganizationsContextProvider>
+      <TenantsContextProvider>
         <SidebarProvider>
           <DashboardSidebar />
 
@@ -20,7 +20,7 @@ export default function Layout({ children }: Props) {
             {children}
           </div>
         </SidebarProvider>
-      </OrganizationsContextProvider>
+      </TenantsContextProvider>
     </div>
   );
 }

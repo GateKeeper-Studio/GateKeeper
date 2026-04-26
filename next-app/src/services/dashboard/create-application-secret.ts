@@ -5,7 +5,7 @@ type Request = {
   name: string;
   expiresAt: Date | null;
   applicationId: string;
-  organizationId?: string;
+  tenantId?: string;
 };
 
 type Response = {
@@ -17,12 +17,12 @@ type Response = {
 };
 
 export async function createApplicationSecretApi(
-  { name, expiresAt, applicationId, organizationId }: Request,
+  { name, expiresAt, applicationId, tenantId }: Request,
   { accessToken }: IServiceOptions
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.post<Response>(
-      `/v1/organizations/${organizationId}/applications/${applicationId}/secrets`,
+      `/v1/tenants/${tenantId}/applications/${applicationId}/secrets`,
       {
         name,
         expiresAt,

@@ -55,18 +55,18 @@ export interface IApplication {
 
 type Request = {
   applicationId: string;
-  organizationId?: string;
+  tenantId?: string;
 };
 
 type Response = IApplication;
 
 export async function getApplicationByIdService(
-  { applicationId, organizationId }: Request,
+  { applicationId, tenantId }: Request,
   { accessToken }: IServiceOptions,
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.get<Response>(
-      `/v1/organizations/${organizationId}/applications/${applicationId}`,
+      `/v1/tenants/${tenantId}/applications/${applicationId}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,

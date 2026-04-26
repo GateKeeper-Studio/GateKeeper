@@ -2,7 +2,7 @@ import { api } from "../base/gatekeeper-api";
 import { APIError, IServiceOptions, Result } from "@/types/service-options";
 
 type Request = {
-  organizationId: string;
+  tenantId: string;
   applicationId: string;
   name: string;
   clientId: string;
@@ -18,14 +18,14 @@ export async function configureApplicationOauthProviderApi(
     clientSecret,
     enabled,
     name,
-    organizationId,
+    tenantId,
     redirectUri,
   }: Request,
   { accessToken }: IServiceOptions
 ): Promise<Result<Response, APIError>> {
   try {
     const { data } = await api.put<Response>(
-      `/v1/organizations/${organizationId}/applications/${applicationId}/oauth-provider`,
+      `/v1/tenants/${tenantId}/applications/${applicationId}/oauth-provider`,
       {
         name,
         clientId,

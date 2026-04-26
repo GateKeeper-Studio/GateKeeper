@@ -6,17 +6,17 @@ import {
 } from "@/types/service-options";
 
 type Request = {
-  organizationId: string;
+  tenantId: string;
   userId: string;
 };
 
 export async function deleteTenantUserApi(
-  { organizationId, userId }: Request,
+  { tenantId, userId }: Request,
   { accessToken }: IServiceOptions,
 ): Promise<ResultWithoutResponse<APIError>> {
   try {
     await api.delete<Response>(
-      `/v1/organizations/${organizationId}/users/${userId}`,
+      `/v1/tenants/${tenantId}/users/${userId}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,

@@ -23,7 +23,6 @@ func (s *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		command.Name,
 		command.Description,
 		command.TenantID,
-		command.PasswordHashSecret,
 		command.Badges,
 		command.HasMfaEmail,
 		command.HasMfaAuthApp,

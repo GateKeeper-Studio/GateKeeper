@@ -6,18 +6,18 @@ import {
 } from "@/types/service-options";
 
 type Request = {
-  organizationId: string;
+  tenantId: string;
   userId: string;
   sessionId: string;
 };
 
 export async function revokeUserSessionApi(
-  { organizationId, userId, sessionId }: Request,
+  { tenantId, userId, sessionId }: Request,
   { accessToken }: IServiceOptions,
 ): Promise<ResultWithoutResponse<APIError>> {
   try {
     await api.delete(
-      `/v1/organizations/${organizationId}/users/${userId}/sessions/${sessionId}`,
+      `/v1/tenants/${tenantId}/users/${userId}/sessions/${sessionId}`,
       {
         headers: {
           Authorization: `Bearer ${accessToken}`,

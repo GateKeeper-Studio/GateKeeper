@@ -7,20 +7,25 @@ import (
 )
 
 type Tenant struct {
-	ID          uuid.UUID
-	Name        string
-	Description *string
-	CreatedAt   time.Time
-	UpdatedAt   *time.Time
+	ID                 uuid.UUID
+	Name               string
+	Description        *string
+	CanSelfSignUp      bool
+	CanSelfForgotPass  bool
+	IsActive           bool
+	PasswordHashSecret string
+	CreatedAt          time.Time
+	UpdatedAt          *time.Time
 }
 
-func NewTenant(name string, description *string) *Tenant {
+func NewTenant(name string, description *string, passwordHashSecret string) *Tenant {
 	newId := uuid.New()
 
 	return &Tenant{
-		ID:          newId,
-		Name:        name,
-		Description: description,
-		CreatedAt:   time.Now().UTC(),
+		ID:                 newId,
+		Name:               name,
+		Description:        description,
+		PasswordHashSecret: passwordHashSecret,
+		CreatedAt:          time.Now().UTC(),
 	}
 }

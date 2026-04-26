@@ -2,11 +2,11 @@ import { Metadata } from "next";
 
 import { Separator } from "@/components/ui/separator";
 
-import { OrganizationsList } from "./(components)/organizations-list";
+import { TenantsList } from "./(components)/tenants-list";
 import { DashboardHeader } from "@/components/dashboard-header";
 
 export const metadata: Metadata = {
-  title: "Organizations - GateKeeper",
+  title: "Tenants - GateKeeper",
 };
 
 export default function DashboardPage() {
@@ -28,10 +28,10 @@ export default function DashboardPage() {
         <Separator className="my-4" />
 
         <section className="flex flex-col gap-4">
-          <h3 className="text-2xl font-bold tracking-tight">Organizations</h3>
+          <h3 className="text-2xl font-bold tracking-tight">Tenants</h3>
 
           <div className="flex flex-1 flex-wrap gap-3 w-full">
-            <OrganizationsList />
+            <TenantsList />
           </div>
         </section>
       </main>

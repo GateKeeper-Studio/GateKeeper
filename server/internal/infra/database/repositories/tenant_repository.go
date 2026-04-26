@@ -31,29 +31,32 @@ func (r TenantRepository) GetTenantByID(ctx context.Context, id uuid.UUID) (*ent
 	}
 
 	return &entities.Tenant{
-		ID:          tenant.ID,
-		Name:        tenant.Name,
-		CreatedAt:   tenant.CreatedAt.Time,
-		UpdatedAt:   tenant.UpdatedAt,
-		Description: tenant.Description,
+		ID:                 tenant.ID,
+		Name:               tenant.Name,
+		CreatedAt:          tenant.CreatedAt.Time,
+		UpdatedAt:          tenant.UpdatedAt,
+		Description:        tenant.Description,
+		PasswordHashSecret: tenant.PasswordHashSecret,
 	}, nil
 }
 
 func (r TenantRepository) AddTenant(ctx context.Context, tenant *entities.Tenant) error {
 	return r.Store.AddTenant(ctx, pgstore.AddTenantParams{
-		ID:          tenant.ID,
-		Name:        tenant.Name,
-		Description: tenant.Description,
-		CreatedAt:   pgtype.Timestamp{Time: tenant.CreatedAt, Valid: true},
+		ID:                 tenant.ID,
+		Name:               tenant.Name,
+		Description:        tenant.Description,
+		PasswordHashSecret: tenant.PasswordHashSecret,
+		CreatedAt:          pgtype.Timestamp{Time: tenant.CreatedAt, Valid: true},
 	})
 }
 
 func (r TenantRepository) UpdateTenant(ctx context.Context, tenant *entities.Tenant) error {
 	return r.Store.UpdateTenant(ctx, pgstore.UpdateTenantParams{
-		ID:          tenant.ID,
-		Name:        tenant.Name,
-		Description: tenant.Description,
-		UpdatedAt:   tenant.UpdatedAt,
+		ID:                 tenant.ID,
+		Name:               tenant.Name,
+		Description:        tenant.Description,
+		PasswordHashSecret: tenant.PasswordHashSecret,
+		UpdatedAt:          tenant.UpdatedAt,
 	})
 }
 
@@ -71,11 +74,12 @@ func (r TenantRepository) ListTenants(ctx context.Context) (*[]entities.Tenant, 
 	var tenantList []entities.Tenant
 	for _, tenant := range tenants {
 		tenantList = append(tenantList, entities.Tenant{
-			ID:          tenant.ID,
-			Name:        tenant.Name,
-			CreatedAt:   tenant.CreatedAt.Time,
-			UpdatedAt:   tenant.UpdatedAt,
-			Description: tenant.Description,
+			ID:                 tenant.ID,
+			Name:               tenant.Name,
+			CreatedAt:          tenant.CreatedAt.Time,
+			UpdatedAt:          tenant.UpdatedAt,
+			Description:        tenant.Description,
+			PasswordHashSecret: tenant.PasswordHashSecret,
 		})
 	}
 

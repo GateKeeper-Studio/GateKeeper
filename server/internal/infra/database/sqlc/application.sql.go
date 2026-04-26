@@ -23,7 +23,6 @@ INSERT INTO
         has_mfa_auth_app,
         has_mfa_email,
         has_mfa_webauthn,
-        password_hash_secret,
         badges,
         description,
         created_at,
@@ -45,26 +44,24 @@ VALUES
         $10,
         $11,
         $12,
-        $13,
-        $14
+        $13
     )
 `
 
 type AddApplicationParams struct {
-	ID                 uuid.UUID        `db:"id"`
-	TenantID           uuid.UUID        `db:"tenant_id"`
-	Name               string           `db:"name"`
-	IsActive           bool             `db:"is_active"`
-	HasMfaAuthApp      bool             `db:"has_mfa_auth_app"`
-	HasMfaEmail        bool             `db:"has_mfa_email"`
-	HasMfaWebauthn     bool             `db:"has_mfa_webauthn"`
-	PasswordHashSecret string           `db:"password_hash_secret"`
-	Badges             *string          `db:"badges"`
-	Description        *string          `db:"description"`
-	CreatedAt          pgtype.Timestamp `db:"created_at"`
-	UpdatedAt          *time.Time       `db:"updated_at"`
-	CanSelfSignUp      bool             `db:"can_self_sign_up"`
-	CanSelfForgotPass  bool             `db:"can_self_forgot_pass"`
+	ID                uuid.UUID        `db:"id"`
+	TenantID          uuid.UUID        `db:"tenant_id"`
+	Name              string           `db:"name"`
+	IsActive          bool             `db:"is_active"`
+	HasMfaAuthApp     bool             `db:"has_mfa_auth_app"`
+	HasMfaEmail       bool             `db:"has_mfa_email"`
+	HasMfaWebauthn    bool             `db:"has_mfa_webauthn"`
+	Badges            *string          `db:"badges"`
+	Description       *string          `db:"description"`
+	CreatedAt         pgtype.Timestamp `db:"created_at"`
+	UpdatedAt         *time.Time       `db:"updated_at"`
+	CanSelfSignUp     bool             `db:"can_self_sign_up"`
+	CanSelfForgotPass bool             `db:"can_self_forgot_pass"`
 }
 
 // ----------------------------------COMMANDS--------------------------------------
@@ -77,7 +74,6 @@ func (q *Queries) AddApplication(ctx context.Context, arg AddApplicationParams) 
 		arg.HasMfaAuthApp,
 		arg.HasMfaEmail,
 		arg.HasMfaWebauthn,
-		arg.PasswordHashSecret,
 		arg.Badges,
 		arg.Description,
 		arg.CreatedAt,
@@ -131,7 +127,6 @@ SELECT
     has_mfa_auth_app,
     has_mfa_email,
     has_mfa_webauthn,
-    password_hash_secret,
     created_at,
     updated_at,
     can_self_sign_up,
@@ -154,7 +149,6 @@ type GetApplicationByIDRow struct {
 	HasMfaAuthApp        bool             `db:"has_mfa_auth_app"`
 	HasMfaEmail          bool             `db:"has_mfa_email"`
 	HasMfaWebauthn       bool             `db:"has_mfa_webauthn"`
-	PasswordHashSecret   string           `db:"password_hash_secret"`
 	CreatedAt            pgtype.Timestamp `db:"created_at"`
 	UpdatedAt            *time.Time       `db:"updated_at"`
 	CanSelfSignUp        bool             `db:"can_self_sign_up"`
@@ -176,7 +170,6 @@ func (q *Queries) GetApplicationByID(ctx context.Context, id uuid.UUID) (GetAppl
 		&i.HasMfaAuthApp,
 		&i.HasMfaEmail,
 		&i.HasMfaWebauthn,
-		&i.PasswordHashSecret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CanSelfSignUp,

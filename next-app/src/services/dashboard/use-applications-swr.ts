@@ -5,7 +5,7 @@ import { api } from "../base/gatekeeper-api";
 import type { IServiceOptions } from "@/types/service-options";
 
 type Request = {
-  organizationId?: string;
+  tenantId?: string;
 };
 
 export type ApplicationsResponse = {
@@ -29,8 +29,8 @@ const fetcher = (url: string, options: IServiceOptions) =>
 
 export function useApplicationsSWR(request: Request, options: IServiceOptions) {
   return useSWR(
-    request?.organizationId
-      ? `/v1/organizations/${request?.organizationId}/applications`
+    request?.tenantId
+      ? `/v1/tenants/${request?.tenantId}/applications`
       : null,
     (url) => fetcher(url, options),
     {

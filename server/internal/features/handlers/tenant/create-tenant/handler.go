@@ -19,7 +19,7 @@ func New(q *pgstore.Queries) repositories.ServiceHandlerRs[Command, *Response] {
 }
 
 func (s *Handler) Handler(ctx context.Context, command Command) (*Response, error) {
-	newTenant := entities.NewTenant(command.Name, command.Description)
+	newTenant := entities.NewTenant(command.Name, command.Description, command.PasswordHashSecret)
 
 	if err := s.repository.AddTenant(ctx, newTenant); err != nil {
 		return nil, err

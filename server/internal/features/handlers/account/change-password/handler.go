@@ -84,7 +84,7 @@ func (h *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrPasswordSameAsCurrent
 	}
 
-	// 6. Fetch application for hashing secret
+	// 6. Fetch application for tenant lookup
 	application, err := h.repository.GetApplicationByID(ctx, command.ApplicationID)
 	if err != nil {
 		return nil, err
@@ -93,8 +93,14 @@ func (h *Handler) Handler(ctx context.Context, command Command) (*Response, erro
 		return nil, &errors.ErrApplicationNotFound
 	}
 
-	// 7. Hash new password using Argon2
-	newHashedPassword, err := application_utils.HashPassword(command.NewPassword, application.PasswordHashSecret)
+	// 7. Fetch tenant for hashing secret
+	tenant, err := h.repository.GetTenantByID(ctx, application.TenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 8. Hash new password using Argon2
+	newHashedPassword, err := application_utils.HashPassword(command.NewPassword, tenant.PasswordHashSecret)
 	if err != nil {
 		return nil, err
 	}

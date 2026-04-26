@@ -34,6 +34,14 @@ func (m *mockGetAppRepo) ListSecretsFromApplication(ctx context.Context, applica
 	return args.Get(0).(*[]entities.ApplicationSecret), args.Error(1)
 }
 
+func (m *mockGetAppRepo) GetTenantByID(ctx context.Context, id uuid.UUID) (*entities.Tenant, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.Tenant), args.Error(1)
+}
+
 var _ IRepository = (*mockGetAppRepo)(nil)
 
 // ---------------------------------------------------------------------------
@@ -47,10 +55,17 @@ func newTestApp(appID uuid.UUID) *entities.Application {
 		TenantID:            orgID,
 		Name:                "Test App",
 		IsActive:            true,
-		PasswordHashSecret:  "secret-key-for-hashing",
 		Badges:              []string{"badge1"},
 		RefreshTokenTTLDays: 7,
 		CreatedAt:           time.Now().UTC(),
+	}
+}
+
+func newTestTenant(tenantID uuid.UUID) *entities.Tenant {
+	return &entities.Tenant{
+		ID:                 tenantID,
+		Name:               "Test Tenant",
+		PasswordHashSecret: "secret-key-for-hashing",
 	}
 }
 
@@ -88,6 +103,7 @@ func TestHandler_GetApplicationByID_Success(t *testing.T) {
 	}
 
 	repo.On("GetApplicationByID", mock.Anything, appID).Return(app, nil)
+	repo.On("GetTenantByID", mock.Anything, app.TenantID).Return(newTestTenant(app.TenantID), nil)
 	repo.On("ListSecretsFromApplication", mock.Anything, appID).Return(&secrets, nil)
 
 	h := &Handler{repository: repo}
@@ -110,6 +126,7 @@ func TestHandler_GetApplicationByID_NoSecrets(t *testing.T) {
 	app := newTestApp(appID)
 
 	repo.On("GetApplicationByID", mock.Anything, appID).Return(app, nil)
+	repo.On("GetTenantByID", mock.Anything, app.TenantID).Return(newTestTenant(app.TenantID), nil)
 	repo.On("ListSecretsFromApplication", mock.Anything, appID).
 		Return((*[]entities.ApplicationSecret)(nil), nil)
 

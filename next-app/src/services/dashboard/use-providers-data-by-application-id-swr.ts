@@ -6,7 +6,7 @@ import type { IServiceOptions } from "@/types/service-options";
 
 type Request = {
   applicationId: string;
-  organizationId?: string;
+  tenantId?: string;
 };
 
 type Response = {
@@ -32,8 +32,8 @@ export function useProvidersDataByApplicationIdSWR(
   options: IServiceOptions,
 ) {
   return useSWR(
-    request?.organizationId && request?.applicationId
-      ? `/v1/organizations/${request?.organizationId}/applications/${request?.applicationId}/oauth-provider`
+    request?.tenantId && request?.applicationId
+      ? `/v1/tenants/${request?.tenantId}/applications/${request?.applicationId}/oauth-provider`
       : null,
     (url) => fetcher(url, options),
     {

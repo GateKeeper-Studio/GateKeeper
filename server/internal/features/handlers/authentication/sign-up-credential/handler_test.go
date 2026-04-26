@@ -49,6 +49,14 @@ func (m *mockSignUpRepo) AddUserCredentials(ctx context.Context, userCredentials
 	return m.Called(ctx, userCredentials).Error(0)
 }
 
+func (m *mockSignUpRepo) GetTenantByID(ctx context.Context, id uuid.UUID) (*entities.Tenant, error) {
+	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*entities.Tenant), args.Error(1)
+}
+
 // Compile-time check
 var _ IRepository = (*mockSignUpRepo)(nil)
 
@@ -84,9 +92,16 @@ func newTestApplication(appID uuid.UUID) *entities.Application {
 		TenantID:            orgID,
 		Name:                "Test App",
 		IsActive:            true,
-		PasswordHashSecret:  "test-secret-key",
 		RefreshTokenTTLDays: 7,
 		CreatedAt:           time.Now().UTC(),
+	}
+}
+
+func newSignUpTenant(tenantID uuid.UUID) *entities.Tenant {
+	return &entities.Tenant{
+		ID:                 tenantID,
+		Name:               "Test Tenant",
+		PasswordHashSecret: "test-secret-key",
 	}
 }
 
@@ -162,6 +177,8 @@ func TestHandler_SignUp_Success(t *testing.T) {
 		Return(false, nil)
 	repo.On("GetApplicationByID", mock.Anything, appID).
 		Return(app, nil)
+	repo.On("GetTenantByID", mock.Anything, app.TenantID).
+		Return(newSignUpTenant(app.TenantID), nil)
 	repo.On("AddUser", mock.Anything, mock.AnythingOfType("*entities.TenantUser")).
 		Return(nil)
 	repo.On("AddUserProfile", mock.Anything, mock.AnythingOfType("*entities.UserProfile")).

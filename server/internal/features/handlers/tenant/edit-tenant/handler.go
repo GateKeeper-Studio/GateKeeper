@@ -34,6 +34,9 @@ func (s *Handler) Handler(ctx context.Context, command Command) error {
 
 	tenant.Name = command.Name
 	tenant.Description = command.Description
+	if command.PasswordHashSecret != nil {
+		tenant.PasswordHashSecret = *command.PasswordHashSecret
+	}
 	tenant.UpdatedAt = &utcNow
 
 	if err := s.repository.UpdateTenant(ctx, tenant); err != nil {
