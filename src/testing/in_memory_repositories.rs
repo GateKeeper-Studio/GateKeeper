@@ -1,2 +1,8 @@
 pub mod in_memory_user_repository;
 pub mod in_memory_tenant_repository;
+pub mod in_memory_oauth_client_repository;
+pub mod in_memory_authorization_code_repository;
+pub mod in_memory_refresh_token_repository;
+pub mod in_memory_consent_grant_repository;
+pub mod in_memory_signing_key_repository;
+pub mod in_memory_auth_session_repository;

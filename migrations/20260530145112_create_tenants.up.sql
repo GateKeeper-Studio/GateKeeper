@@ -7,8 +7,9 @@ CREATE TABLE IF NOT EXISTS "tenants" (
     can_self_forgot_password BOOLEAN NOT NULL DEFAULT FALSE,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     password_hash_secret VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NULL
 );
 
-CREATE INDEX idx_tenants_name ON tenants (name);
+-- unique one so is_tenant_with_name_exists is race-safe.
+CREATE UNIQUE INDEX uq_tenants_name ON tenants (name);

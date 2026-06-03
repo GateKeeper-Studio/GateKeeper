@@ -29,7 +29,9 @@ impl UserRepository for DbUserRepository {
       self.executor,
       sqlx::query!(
         r#"
-          SELECT id as "id!", email, tenant_id, is_email_verified, created_at, updated_at
+          SELECT id as "id!", email as "email!", tenant_id as "tenant_id!", 
+            is_email_verified as "is_email_verified!", is_active as "is_active!", 
+            created_at as "created_at!", updated_at
           FROM users
           WHERE id = $1
         "#,
@@ -46,6 +48,7 @@ impl UserRepository for DbUserRepository {
       r.is_email_verified,
       None,
       None,
+      r.is_active,
       r.created_at,
       r.updated_at,
     )))
@@ -56,9 +59,9 @@ impl UserRepository for DbUserRepository {
       self.executor,
       sqlx::query!(
         r#"
-          SELECT u.id as "id!", u.email, u.tenant_id, u.is_email_verified,
-            p.first_name, p.last_name, p.display_name,
-            u.created_at, u.updated_at
+          SELECT u.id as "id!", u.email as "email!", u.tenant_id as "tenant_id!", u.is_email_verified as "is_email_verified!",
+            p.first_name as "first_name?", p.last_name as "last_name?", p.display_name as "display_name?",
+            u.created_at as "created_at!", u.updated_at, u.is_active as "is_active!"
           FROM users u
           LEFT JOIN user_profiles p ON p.user_id = u.id
           WHERE u.id = $1
@@ -81,6 +84,7 @@ impl UserRepository for DbUserRepository {
         r.is_email_verified,
         profile,
         None,
+        r.is_active,
         r.created_at,
         r.updated_at,
       )
@@ -92,8 +96,8 @@ impl UserRepository for DbUserRepository {
       self.executor,
       sqlx::query!(
         r#"
-          SELECT u.id as "id!", u.email, u.tenant_id, u.is_email_verified,
-            c.password_hash, c.password_algorithm, c.should_change_pass,
+          SELECT u.id as "id!", u.email as "email!", u.tenant_id as "tenant_id!", u.is_email_verified as "is_email_verified!",
+            c.password_hash, c.password_algorithm, c.should_change_pass, u.is_active,
             u.created_at, u.updated_at
           FROM users u
           LEFT JOIN user_credentials c ON c.user_id = u.id
@@ -117,6 +121,7 @@ impl UserRepository for DbUserRepository {
         r.is_email_verified,
         None,
         credentials,
+        r.is_active,
         r.created_at,
         r.updated_at,
       )
@@ -128,7 +133,9 @@ impl UserRepository for DbUserRepository {
       self.executor,
       sqlx::query!(
         r#"
-          SELECT id as "id!", email, tenant_id, is_email_verified, created_at, updated_at
+          SELECT id as "id!", email as "email!", tenant_id as "tenant_id!", 
+            is_email_verified as "is_email_verified!", is_active as "is_active!", 
+            created_at as "created_at!", updated_at
           FROM users
           WHERE tenant_id = $1 AND email = $2
         "#,
@@ -146,6 +153,7 @@ impl UserRepository for DbUserRepository {
       r.is_email_verified,
       None,
       None,
+      r.is_active,
       r.created_at,
       r.updated_at,
     )))
@@ -156,9 +164,10 @@ impl UserRepository for DbUserRepository {
       self.executor,
       sqlx::query!(
         r#"
-          SELECT u.id as "id!", u.email, u.tenant_id, u.is_email_verified,
-            p.first_name as "first_name?", p.last_name as "last_name?", p.display_name as "display_name?",
-            u.created_at, u.updated_at
+          SELECT u.id as "id!", u.email as "email!", u.tenant_id as "tenant_id!", 
+            u.is_email_verified as "is_email_verified!", p.first_name as "first_name?", 
+            p.last_name as "last_name?", p.display_name as "display_name?",
+            u.created_at, u.updated_at, u.is_active
           FROM users u
           LEFT JOIN user_profiles p ON p.user_id = u.id
           WHERE u.tenant_id = $1
@@ -186,6 +195,7 @@ impl UserRepository for DbUserRepository {
         r.is_email_verified,
         profile,
         None,
+        r.is_active,
         r.created_at,
         r.updated_at,
       )

@@ -14,6 +14,7 @@ pub struct User {
 
   profile: Option<UserProfile>,
   credentials: Option<UserCredentials>,
+  is_active: bool,
 
   created_at: DateTime<Utc>,
   updated_at: Option<DateTime<Utc>>,
@@ -28,6 +29,7 @@ impl User {
       is_email_verified: false,
       profile,
       credentials,
+      is_active: true,
       created_at: Utc::now(),
       updated_at: None,
     }
@@ -40,6 +42,7 @@ impl User {
     is_email_verified: bool,
     profile: Option<UserProfile>,
     credentials: Option<UserCredentials>,
+    is_active: bool,
     created_at: DateTime<Utc>,
     updated_at: Option<DateTime<Utc>>,
   ) -> Self {
@@ -50,6 +53,7 @@ impl User {
       is_email_verified,
       profile,
       credentials,
+      is_active,
       created_at,
       updated_at,
     }
@@ -86,4 +90,5 @@ impl User {
   pub fn credentials(&self) -> Option<&UserCredentials> { self.credentials.as_ref() }
   pub fn created_at(&self) -> DateTime<Utc> { self.created_at }
   pub fn updated_at(&self) -> Option<DateTime<Utc>> { self.updated_at }
+  pub fn is_active(&self) -> bool { self.is_active }
 }

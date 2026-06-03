@@ -48,6 +48,9 @@ impl From<JsonRejection> for ApiError {
 
 #[derive(Debug)]
 pub enum ApiError {
+  Forbidden(String),
+  Redirected(String),
+  Unauthorized(String),
   NotFound(String),
   Conflict(String),
   BadRequest(String),
@@ -61,6 +64,15 @@ pub enum ApiError {
 impl IntoResponse for ApiError {
   fn into_response(self) -> Response {
     match self {
+      ApiError::Forbidden(msg) => {
+        (StatusCode::FORBIDDEN, Json(json!({ "error": msg }))).into_response()
+      }
+      ApiError::Redirected(msg) => {
+        (StatusCode::FOUND, Json(json!({ "error": msg }))).into_response()
+      }
+      ApiError::Unauthorized(msg) => {
+        (StatusCode::UNAUTHORIZED, Json(json!({ "error": msg }))).into_response()
+      }
       ApiError::NotFound(msg) => {
         (StatusCode::NOT_FOUND, Json(json!({ "error": msg }))).into_response()
       }
@@ -110,6 +122,15 @@ impl IntoResponse for ApiError {
 impl From<DomainError> for ApiError {
   fn from(err: DomainError) -> Self {
     match err {
+      DomainError::LoginRequired(message) => ApiError::Redirected(message),
+      DomainError::AccessDenied(message) => ApiError::Forbidden(message),
+      DomainError::UnauthorizedClient(message) => ApiError::Unauthorized(message),
+      DomainError::InvalidClient(message) => ApiError::Unauthorized(message),
+      DomainError::OAuthClientNotFound(message) => ApiError::NotFound(message),
+      // OAuth protocol error codes that are client mistakes, not server faults.
+      DomainError::InvalidRequest(message) => ApiError::BadRequest(message),
+      DomainError::InvalidScope(message) => ApiError::BadRequest(message),
+      DomainError::InvalidGrant(message) => ApiError::BadRequest(message),
       DomainError::UserNotFound(message) => ApiError::NotFound(message),
       DomainError::UserAlreadyExists(message) => ApiError::Conflict(message),
       DomainError::TenantNotFound(message) => ApiError::NotFound(message),
@@ -117,6 +138,7 @@ impl From<DomainError> for ApiError {
       DomainError::InvalidEmail(message) => ApiError::BadRequest(message),
       DomainError::InvalidFirstName(message) => ApiError::BadRequest(message),
       DomainError::InvalidLastName(message) => ApiError::BadRequest(message),
+      DomainError::ConsentRequired(message) => ApiError::Redirected(message),
       _ => ApiError::Internal,
     }
   }

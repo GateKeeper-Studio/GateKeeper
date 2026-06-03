@@ -77,8 +77,21 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 # jsonwebtoken is a popular library for encoding and decoding JSON Web Tokens (JWTs).
-jsonwebtoken = "10.4.0"
+# v10 requires opting into exactly one crypto backend; `rust_crypto` is pure-Rust
+# (RSA/EC/Ed25519) with no C build deps. Without it, encode/decode panics at runtime
+# ("Could not automatically determine the process-level CryptoProvider").
+jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
 rand = "0.9"
+
+# ── OAuth crypto primitives ─────────────────────────────────────────────────────
+# sha2 hashes opaque tokens (codes, refresh tokens) before they touch the DB;
+# base64 (URL-safe) encodes random tokens and PKCE challenges; hex renders the
+# SHA-256 digests we persist; subtle gives constant-time comparison so token/PKCE
+# checks don't leak bytes through timing.
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+subtle = "2.6"
 
 [dev-dependencies]
 # axum-test provides a test client that drives Axum apps in-process (no socket).

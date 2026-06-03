@@ -52,6 +52,6 @@ async fn main() {
   let result = axum::serve(listener, app).await;
 
   if let Err(err) = result {
-      eprintln!("Server error: {}", err);
+    eprintln!("Server error: {}", err);
   }
 }
