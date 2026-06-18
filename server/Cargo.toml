@@ -1,0 +1,131 @@
+[package]
+name = "web-api"
+version = "0.1.0"
+edition = "2024"
+# The crate ships extra CLI binaries (e.g. create_admin) under src/bin/, which makes
+# bare `cargo run` ambiguous. Pin the default to the server so `cargo run` still
+# launches it; use `cargo run --bin create_admin` for the others.
+default-run = "web-api"
+
+[dependencies]
+# ── HTTP framework ─────────────────────────────────────────────────────────────
+# Axum is built on top of Tower (middleware) and Hyper (HTTP). It's ergonomic,
+# type-safe, and maintained by the Tokio team. The "macros" feature enables
+# route macros if desired.
+axum = "0.8.9"
+
+# ── Async runtime ──────────────────────────────────────────────────────────────
+# Tokio is the de-facto async runtime. "full" enables all features (timers,
+# fs, net, etc.). In prod you might pick only what you need to reduce compile
+# times, but "full" is fine while learning.
+tokio = { version = "1.52.3", features = ["full"] }
+
+# ── Async traits ─────────────────────────────────────────────────────────────
+# async-trait allows you to write async functions in traits, which is not natively supported in Rust yet.
+async-trait = "0.1.89"
+
+# ── Serialization ─────────────────────────────────────────────────────────────
+# Serde is the standard serialization framework. The "derive" feature lets you
+# annotate structs with #[derive(Serialize, Deserialize)].
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+
+# ── Middleware layer ───────────────────────────────────────────────────────────
+# Tower provides the Service/Layer abstraction. tower-http adds HTTP-specific
+# middleware (CORS, tracing, compression, auth headers...).
+tower = "0.5.3"
+tower-http = { version = "0.6.11", features = ["cors", "trace", "compression-gzip"] }
+
+# ── Database ──────────────────────────────────────────────────────────────────
+# sqlx is an async SQL library with compile-time query checking. "postgres"
+# enables the PostgreSQL driver; "runtime-tokio" wires it to our async runtime;
+# "macros" enables sqlx::query! which validates SQL at compile time (killer
+# feature). "uuid" and "chrono" add type mappings.
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "postgres", "chrono", "uuid", "json"] }
+
+# ── Date/time ─────────────────────────────────────────────────────────────────
+chrono = { version = "0.4.44", features = ["serde"] }
+
+# ── IDs ───────────────────────────────────────────────────────────────────────
+uuid = { version = "1.23.2", features = ["v4","v7", "serde"] }
+
+# ── Error handling ────────────────────────────────────────────────────────────
+# thiserror lets you derive the std::error::Error trait on your own error types
+# with minimal boilerplate. anyhow is great for application-level errors where
+# you don't need to pattern-match on the type.
+thiserror = "2.0.18"
+anyhow = "1.0.102"
+
+
+# ── Observability ─────────────────────────────────────────────────────────────
+# Tracing is the standard for structured logging and distributed tracing in Rust.
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+
+
+# ── Validation ────────────────────────────────────────────────────────────────
+# Validator provides a convenient way to validate struct fields using attributes.
+# The "derive" feature allows you to use #[derive(Validate)] on your structs.
+validator = { version = "0.20.0", features = ["derive"] }
+
+# ── Config ────────────────────────────────────────────────────────────────────
+# dotenvy loads .env files; config reads structured configuration.
+dotenvy = "0.15.7"
+config = "0.15.23"
+
+# ── Password hashing ──────────────────────────────────────────────────────────
+# Argon2 is a secure password hashing algorithm. The "password-hash" feature
+# provides a common interface for password hashing libraries.
+argon2 = { version = "0.5.3", features = ["password-hash"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+
+# ── JWT ───────────────────────────────────────────────────────────────────────
+# jsonwebtoken is a popular library for encoding and decoding JSON Web Tokens (JWTs).
+# v10 requires opting into exactly one crypto backend; `rust_crypto` is pure-Rust
+# (RSA/EC/Ed25519) with no C build deps. Without it, encode/decode panics at runtime
+# ("Could not automatically determine the process-level CryptoProvider").
+jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
+rand = "0.9"
+
+# ── Signing-key generation ──────────────────────────────────────────────────────
+# p256 generates the per-tenant ECDSA P-256 (ES256) keypairs the OAuth/OIDC
+# provider signs JWTs with: `pem` exports the PKCS#8 private key that jsonwebtoken
+# loads, `jwk` exports the public half as a JWK for the /jwks.json endpoint.
+p256 = { version = "0.13", features = ["pem", "jwk"] }
+
+# ── OAuth crypto primitives ─────────────────────────────────────────────────────
+# sha2 hashes opaque tokens (codes, refresh tokens) before they touch the DB;
+# base64 (URL-safe) encodes random tokens and PKCE challenges; hex renders the
+# SHA-256 digests we persist; subtle gives constant-time comparison so token/PKCE
+# checks don't leak bytes through timing.
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+subtle = "2.6"
+
+# ── Secrets at rest ──────────────────────────────────────────────────────────
+# AES-256-GCM (AEAD) encrypts SMTP provider passwords before they touch the DB;
+# the master key comes from config (EMAIL_ENCRYPTION_KEY) and decryption happens
+# only at send time.
+aes-gcm = "0.10"
+
+# ── Outbound email (SMTP) ────────────────────────────────────────────────────
+# lettre is the async SMTP client used to deliver verification codes / reset
+# links through a tenant's configured SMTP provider. rustls (no OpenSSL) for TLS.
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "pool", "hostname", "tokio1-rustls-tls"] }
+base32 = "0.5"
+hmac = "0.12"
+sha1 = "0.10"
+webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
+
+[dev-dependencies]
+# axum-test provides a test client that drives Axum apps in-process (no socket).
+axum-test = "16"
+# mockall generates mock implementations of your traits automatically.
+mockall = "0.13"
+# For async test helpers
+tokio-test = "0.4"
+# fake generates realistic random data (names, emails, etc.) for test factories.
+# rand is the underlying RNG engine it uses.
+fake = { version = "4", features = ["derive"] }
+rand = "0.9"

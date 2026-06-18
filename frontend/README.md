@@ -1,87 +1,120 @@
-# OAuth 2.1 / OIDC Test Client (SvelteKit)
+# OAuth 2.1 / OIDC Client — SvelteKit BFF
 
-A SvelteKit port of the vanilla `frontend/` client. Same interface, same
-validations — it exercises the Authorization Code + PKCE flow against the Rust
-provider in this repo as a **public client** (PKCE-only, no client secret, tokens
-held in memory).
+A SvelteKit relying-party (RP) for the Rust Identity Provider in this repo. It is a
+**Backend-for-Frontend (BFF)**, not a SPA: the Authorization Code + PKCE exchange
+runs **server-side**, and the resulting tokens live only inside an **AES-256-GCM
+encrypted, httpOnly cookie**. The browser never sees an access/refresh token.
 
-It runs as a real framework SPA on its own dev origin (`http://localhost:5173`),
-so it simulates a real relying-party application rather than a static `file://`
-page.
+A user clicks **Sign In**, is redirected to the dashboard's hosted login page
+(`/auth/[clientId]/sign-in`), authenticates, and is sent back to the exact page
+that requested sign-in — now with a session.
 
 ## Run it
 
 ```bash
-cd frontend-svelte
+cd frontend
 npm install
-npm run dev      # http://localhost:5173
+cp .env.example .env        # then fill in the OAUTH_* values (see below)
+npm run dev                 # http://localhost:5173
 ```
 
-Build a static bundle (SPA, hydrated client-side):
+Production build (Node server, `@sveltejs/adapter-node`):
 
 ```bash
 npm run build && npm run preview
 ```
 
-## What the flow does
+## Configuration
 
-1. **Configuration** — issuer, tenant, client, redirect URI, scopes, user id.
-   Non-secret fields persist in `localStorage`; the client secret never does.
-2. **Start login** — generates a PKCE `code_verifier`/`code_challenge` (S256), a
-   `state`, and a `nonce` (Web Crypto, CSPRNG); calls `GET /oauth/authorize` to
-   validate the request and fetch the client name + intersected scopes.
-3. **Consent** — Allow → `POST /oauth/authorize/consent` (with
-   `Accept: application/json`) → single-use code → `POST /oauth/token`
-   (form-encoded) → tokens.
-4. **Tokens** — decodes the access/ID tokens, **verifies the ID token's RS256
-   signature against `/.well-known/jwks.json`** using Web Crypto, and checks
-   `iss`, `aud`, `exp`, and `nonce`.
-5. **/userinfo** and **refresh** buttons exercise those endpoints.
+All config is **server-only** (read via `$env/dynamic/private`) — see `.env.example`:
 
-### Why `Accept: application/json` on consent
+| Variable             | Purpose                                                        |
+| -------------------- | ------------------------------------------------------------- |
+| `IDP_BASE_URL`       | Identity Provider base URL (server→server token/userinfo).    |
+| `AUTH_UI_BASE_URL`   | Dashboard hosted login UI (where the browser signs in).       |
+| `OAUTH_TENANT_ID`    | Tenant the client belongs to.                                 |
+| `OAUTH_CLIENT_ID`    | This app's registered client id.                              |
+| `OAUTH_CLIENT_SECRET`| This app's client secret (confidential client).              |
+| `OAUTH_REDIRECT_URI` | Must exactly match a registered redirect_uri (`…/auth/callback`). |
+| `OAUTH_SCOPE`        | Space-separated scopes (`openid profile email`).             |
+| `SESSION_SECRET`     | Key for the AES-256-GCM session cookie (`openssl rand -hex 32`). |
 
-The provider's `/oauth/authorize/consent` is content-negotiated:
+### MFA method hints
 
-- a **browser navigation** (`Accept: text/html`) gets the spec-compliant `302`
-  redirect to `redirect_uri?code=...&state=...`;
-- a **fetch/XHR** caller that sends `Accept: application/json` gets the code in a
-  JSON body.
+Apps can pass server-side MFA preference hints into the hosted login flow. These
+hints only affect the first method the login UI tries; the IdP still enforces the
+OAuth client's stored MFA policy and the user's enrolled factors.
 
-A SPA cannot follow a _cross-origin_ `302`: `fetch` auto-follows it into a GET on
-the redirect_uri's origin (the dev server), which sends no CORS headers and is
-blocked. So this client asks for JSON and drives the rest of the flow itself.
+```js
+import { configureMfaMethods } from '$lib/server';
+import { buildAuthorizeUrl } from '$lib/server/oauth.js';
+
+const mfa = configureMfaMethods({
+  methods: ['webauthn', 'totp', 'email'],
+  defaultMethod: 'webauthn'
+});
+
+const url = buildAuthorizeUrl({ state, nonce, codeChallenge, mfa });
+```
+
+### Register the client
+
+The confidential client must be created through the IdP's admin endpoint (its
+secret is Argon2-hashed with the tenant pepper and returned only once — it can't
+be SQL-seeded):
+
+```bash
+./scripts/register-client.sh <tenant_id> [admin_bearer_token]
+```
+
+It prints `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` to paste into `.env`.
+
+## The flow
+
+1. **Sign In** — a link to `GET /auth/sign-in?returnTo=/where/i/was`. The server
+   mints PKCE `code_verifier`/`code_challenge` (S256), `state`, and `nonce`, parks
+   them in short-lived httpOnly cookies, and redirects to the hosted login page.
+2. **Login** — the dashboard validates credentials and redirects the browser to
+   `OAUTH_REDIRECT_URI?code=…&state=…`.
+3. **Callback** — `GET /auth/callback` checks `state` (CSRF), exchanges the code at
+   `POST {IDP}/oauth/token` (PKCE + client secret), verifies the id_token `nonce`
+   (replay defense), seals the session into the `gk_session` cookie, and redirects
+   back to `returnTo`.
+4. **Silent refresh** — `hooks.server.js` refreshes the access token (with
+   refresh-token rotation) shortly before it expires, on the server, with no client
+   timers.
+5. **Sign Out** — `POST /auth/sign-out` clears the session cookie.
 
 ## Backend prerequisites
 
-Same as the vanilla client — you need seed data in the database:
-
-- a **tenant** (use its id for _Tenant ID_);
-- a **user** in that tenant (use its id for _User ID_ — `/oauth/login` is not
-  implemented yet, so the subject is passed directly);
-- an **oauth_client** whose `redirect_uris` contains _exactly_ this app's URL
-  (`http://localhost:5173/`) and whose `allowed_scopes` cover the requested
-  scopes; for a public client set `client_type = 'public'` and leave
-  `client_secret_hash` null;
-- an **active RSA signing key** (`signing_keys`, `status = 'active'`,
-  `algorithm = 'RS256'`) — `/oauth/token` cannot mint tokens without one.
-
-CORS: with `CORS_ALLOWED_ORIGINS` unset the provider is permissive (dev only);
-otherwise add `http://localhost:5173`.
+In the IdP/dashboard dev environment: a **tenant**, a **login user**, an **active
+RSA signing key** (`/oauth/token` can't mint tokens without one), and the
+**oauth_client** registered above (its `redirect_uris` must contain
+`http://localhost:5173/auth/callback`). No CORS is required — token/userinfo calls
+are server→server.
 
 ## Layout
 
 ```
-frontend-svelte/
+frontend/
   src/
-    app.html            # shell
-    app.css             # styling (ported from the vanilla client)
+    app.html               # shell
+    app.css                # styling
+    app.d.ts               # App.Locals.session type
+    hooks.server.js        # decrypt session + silent refresh + security headers
+    lib/server/
+      session.js           # AES-256-GCM encrypted session cookie
+      pkce.js              # PKCE verifier/challenge + state + nonce
+      oauth.js             # authorize URL, token exchange, refresh, userinfo
     routes/
-      +layout.js        # ssr = false (client-only public client)
-      +layout.svelte    # imports global CSS
-      +page.svelte      # flow orchestration + UI
-    lib/
-      config.js         # config load/save (secret never persisted)
-      pkce.js           # PKCE + CSPRNG randomness (Web Crypto)
-      jwt.js            # JWT decode + RS256 JWKS verification + claim checks
-      api.js            # fetch wrappers for the provider endpoints
+      +layout.svelte       # imports global CSS
+      +layout.server.js    # exposes only the safe user profile to the client
+      +page.svelte         # home: Sign In / signed-in view
+      protected/           # example guarded route (redirects with returnTo)
+      auth/
+        sign-in/+server.js # start the flow
+        callback/+server.js# finish the flow
+        sign-out/+server.js# clear the session
+  scripts/
+    register-client.sh     # provision the confidential client on the IdP
 ```

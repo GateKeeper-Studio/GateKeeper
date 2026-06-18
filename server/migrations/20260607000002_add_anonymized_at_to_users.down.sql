@@ -1,0 +1,2 @@
+ALTER TABLE "users" DROP COLUMN IF EXISTS legal_hold;
+ALTER TABLE "users" DROP COLUMN IF EXISTS anonymized_at;

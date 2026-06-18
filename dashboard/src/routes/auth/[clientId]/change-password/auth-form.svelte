@@ -1,0 +1,128 @@
+<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	import { toast } from 'svelte-sonner';
+	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
+
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import * as Alert from '$lib/components/ui/alert/index.js';
+	import LoadingSpinner from '$lib/components/loading-spinner.svelte';
+
+	import { validate } from '$lib/utils/form';
+	import { formSchema } from './schema';
+	import { resetPasswordApi } from '$lib/services/auth/reset-password';
+
+	const clientId = page.params.clientId as string;
+
+	const passwordResetToken = page.url.searchParams.get('token');
+	const passwordResetId = page.url.searchParams.get('id');
+	const alreadyChanged = $derived(page.url.searchParams.get('changed') === 'true');
+
+	let password = $state('');
+	let confirmPassword = $state('');
+	let errors = $state<Record<string, string>>({});
+	let isLoading = $state(false);
+
+	async function onSubmit(event: SubmitEvent) {
+		event.preventDefault();
+
+		const result = validate(formSchema, { password, confirmPassword });
+		if (!result.success) {
+			errors = result.errors;
+			return;
+		}
+		errors = {};
+
+		if (!clientId) {
+			toast.error('Application ID is required');
+			return;
+		}
+		if (!passwordResetToken) {
+			toast.error('Password reset token is required');
+			return;
+		}
+		if (!passwordResetId) {
+			toast.error('Password reset ID is required');
+			return;
+		}
+
+		isLoading = true;
+
+		const [err] = await resetPasswordApi({
+			clientId,
+			newPassword: result.data.password,
+			passwordResetToken,
+			passwordResetId
+		});
+
+		if (err) {
+			console.error(err);
+			toast.error(err.data?.message || err.message);
+			isLoading = false;
+			return;
+		}
+
+		isLoading = false;
+		toast.success('Password reset successfully');
+
+		await goto(resolve(`/auth/[clientId]/change-password?changed=true`, { clientId }));
+	}
+</script>
+
+{#if alreadyChanged}
+	<div class="grid gap-4">
+		<Alert.Root variant="default" class="bg-green-100 dark:bg-green-700">
+			<CheckCircleIcon class="h-5 w-5 text-green-500 dark:text-green-400" />
+			<Alert.Title>Success</Alert.Title>
+			<Alert.Description>
+				Your password has been changed successfully <br />
+			</Alert.Description>
+		</Alert.Root>
+
+		<span class="mt-1 text-center font-semibold">
+			You can close this page and try logging in with your new password!
+		</span>
+	</div>
+{:else}
+	<div class="grid gap-4">
+		<form onsubmit={onSubmit} class="space-y-3">
+			<div class="space-y-2">
+				<Label for="password">Password</Label>
+				<Input
+					id="password"
+					type="password"
+					autocomplete="new-password"
+					placeholder="********"
+					bind:value={password}
+				/>
+				{#if errors.password}
+					<p class="text-sm font-medium text-destructive">{errors.password}</p>
+				{/if}
+			</div>
+
+			<div class="space-y-2">
+				<Label for="confirmPassword">Confirm Password</Label>
+				<Input
+					id="confirmPassword"
+					type="password"
+					autocomplete="new-password"
+					placeholder="********"
+					bind:value={confirmPassword}
+				/>
+				{#if errors.confirmPassword}
+					<p class="text-sm font-medium text-destructive">{errors.confirmPassword}</p>
+				{/if}
+			</div>
+
+			<Button type="submit" disabled={isLoading} class="relative w-full">
+				{#if isLoading}
+					<LoadingSpinner class="absolute left-4" />
+				{/if}
+				Save Password
+			</Button>
+		</form>
+	</div>
+{/if}
