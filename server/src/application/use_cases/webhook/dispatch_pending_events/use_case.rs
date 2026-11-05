@@ -4,6 +4,7 @@ use chrono::Utc;
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
 use crate::{
     application::ports::{
         secret_cipher::SecretCipher,
@@ -172,7 +173,10 @@ impl UseCase {
 
             // Decrypt at the last possible moment, and never hold the plaintext
             // beyond this iteration.
-            let secret = match self.secret_cipher.decrypt(subscription.secret_encrypted()) {
+            let secret = match self.secret_cipher.decrypt(
+                subscription.secret_encrypted(),
+                SecretContext::new(SecretPurpose::WebhookSecret, subscription.tenant_id()),
+            ) {
                 Ok(secret) => secret,
                 Err(e) => {
                     // A key rotation or corrupted ciphertext. Record it as a failure so

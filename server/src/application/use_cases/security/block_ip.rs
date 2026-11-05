@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory, use_cases::security::views::SecurityBlockView,
@@ -31,7 +32,11 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<SecurityBlockView, DomainError> {
+    pub async fn execute(
+        &self,
+        actor: &Actor,
+        command: Command,
+    ) -> Result<SecurityBlockView, DomainError> {
         let ip = command.ip_address.trim();
         if ip.is_empty() {
             return Err(DomainError::InvalidRequest(
@@ -52,6 +57,10 @@ impl UseCase {
         );
 
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
         uow.security_block_repository().add(&block).await?;
         uow.commit().await?;
 

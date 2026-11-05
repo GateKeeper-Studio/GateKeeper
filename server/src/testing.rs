@@ -9,6 +9,7 @@ pub mod fake_webhook_sender;
 pub mod in_memory_repositories;
 pub mod in_memory_unit_of_work;
 pub mod oauth_fakes;
+pub mod password_hasher;
 pub mod recording_email_sender;
 pub mod stub_secret_cipher;
 pub mod templated_email_support;

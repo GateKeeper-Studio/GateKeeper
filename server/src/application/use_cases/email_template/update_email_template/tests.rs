@@ -13,7 +13,7 @@ use crate::testing::{
 
 fn use_case() -> (UseCase, Arc<InMemoryEmailTemplateRepository>) {
     let repo = Arc::new(InMemoryEmailTemplateRepository::new());
-    let uc = UseCase::new(repo.clone(), Arc::new(FakeEmailRenderer::new()));
+    let uc = UseCase::new(repo.clone(), Arc::new(FakeEmailRenderer::new()), Arc::new(crate::testing::in_memory_repositories::in_memory_tenant_repository::InMemoryTenantRepository::new()));
     (uc, repo)
 }
 
@@ -30,10 +30,13 @@ fn command(template_type: EmailTemplateType, body: &str) -> Command {
 async fn stores_a_valid_template() {
     let (uc, _repo) = use_case();
     let response = uc
-        .execute(command(
-            EmailTemplateType::EmailVerification,
-            "<mjml><mj-body>{{code}} {{app_name}}</mj-body></mjml>",
-        ))
+        .execute(
+            &crate::application::shared::actor::Actor::System,
+            command(
+                EmailTemplateType::EmailVerification,
+                "<mjml><mj-body>{{code}} {{app_name}}</mj-body></mjml>",
+            ),
+        )
         .await
         .unwrap();
 
@@ -45,16 +48,19 @@ async fn stores_a_valid_template() {
 async fn rejects_unknown_placeholder() {
     let (uc, _repo) = use_case();
     let err = uc
-        .execute(command(
-            EmailTemplateType::EmailVerification,
-            "<mjml><mj-body>{{password}}</mj-body></mjml>",
-        ))
+        .execute(
+            &crate::application::shared::actor::Actor::System,
+            command(
+                EmailTemplateType::EmailVerification,
+                "<mjml><mj-body>{{password}}</mj-body></mjml>",
+            ),
+        )
         .await
         .unwrap_err();
 
     assert!(matches!(
         err,
-        crate::domain::errors::DomainError::EmailTemplateError(_)
+        crate::domain::errors::DomainError::Validation(_)
     ));
 }
 
@@ -62,15 +68,18 @@ async fn rejects_unknown_placeholder() {
 async fn rejects_inline_script() {
     let (uc, _repo) = use_case();
     let err = uc
-        .execute(command(
-            EmailTemplateType::EmailVerification,
-            "<mjml><mj-body><script>alert(1)</script>{{code}}</mj-body></mjml>",
-        ))
+        .execute(
+            &crate::application::shared::actor::Actor::System,
+            command(
+                EmailTemplateType::EmailVerification,
+                "<mjml><mj-body><script>alert(1)</script>{{code}}</mj-body></mjml>",
+            ),
+        )
         .await
         .unwrap_err();
 
     assert!(matches!(
         err,
-        crate::domain::errors::DomainError::EmailTemplateError(_)
+        crate::domain::errors::DomainError::Validation(_)
     ));
 }

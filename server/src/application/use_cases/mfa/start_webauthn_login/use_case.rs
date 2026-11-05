@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::shared::token_policy::WEBAUTHN_CHALLENGE_TTL_MINUTES;
 use crate::{
     application::{
         ports::{unit_of_work::UnitOfWorkFactory, webauthn::WebauthnService},
@@ -16,8 +17,6 @@ use crate::{
     },
     utils::oauth_crypto::sha256_hex,
 };
-
-const MFA_CHALLENGE_TTL_MINUTES: i64 = 5;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -86,7 +85,7 @@ impl UseCase {
             Some(session.id()),
             MfaChallengePurpose::Login,
             ceremony.state,
-            now + Duration::minutes(MFA_CHALLENGE_TTL_MINUTES),
+            now + Duration::minutes(WEBAUTHN_CHALLENGE_TTL_MINUTES),
         );
         let mfa_id = challenge.id().to_string();
         uow.mfa_challenge_repository().add(&challenge).await?;

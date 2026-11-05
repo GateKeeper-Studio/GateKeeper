@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::shared::token_policy::MFA_CODE_TTL_MINUTES;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -17,8 +18,6 @@ use crate::{
     },
     utils::oauth_crypto::{generate_numeric_code, sha256_hex},
 };
-
-const MFA_CODE_TTL_MINUTES: i64 = 10;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,

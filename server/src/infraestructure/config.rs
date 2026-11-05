@@ -37,20 +37,70 @@ fn resolve_app_env_from(raw: Option<&str>) -> AppEnv {
     }
 }
 
+// Every setting the server reads, resolved and validated ONCE at startup.
+//
+// Nothing outside this module calls `std::env::var`: the composition root
+// (`crate::bootstrap`) and the background tasks receive this struct. One place to
+// read means one place to validate, and a test can build a config without touching
+// the process environment.
+#[derive(Clone)]
 pub struct AppConfig {
     pub app_env: AppEnv,
     pub database_url: String,
+    /// Optional separate connection string used ONLY to run migrations, so the
+    /// runtime role can be a DML-only user (see docs/ARCHITECTURE-REVIEW.md S8).
+    /// Falls back to `database_url`.
+    pub database_migration_url: Option<String>,
+    /// Run pending migrations at startup. Turn off when a separate job (with the
+    /// migration role) owns schema changes.
+    pub run_migrations: bool,
+    pub database: DatabasePoolConfig,
     pub port: u16,
-    pub jwt_secret: String,
+    /// Separate listener for `/metrics`. `None` disables it. The main API port no
+    /// longer serves metrics, so a public API does not expose the registry.
+    pub metrics_port: Option<u16>,
+    pub log_json: bool,
+
+    /// Public issuer URL pinned as `iss` in every token.
+    pub oauth_issuer: String,
+    /// Base URL of the hosted login UI (reset links, WebAuthn origin default).
+    pub auth_ui_base_url: String,
+    pub webauthn: WebauthnConfig,
+    pub geoip: Option<GeoIpConfig>,
+    /// (document_type, current_version) pairs whose acceptance is required.
+    pub required_policy_versions: Vec<(String, String)>,
+    /// Maximum Argon2id hashes in flight (64 MiB each). Default: one per CPU core.
+    pub password_hash_concurrency: usize,
+    /// Grace window after a refresh-token rotation in which presenting the old token
+    /// again is a concurrent refresh (reissue), not reuse (revoke the family).
+    pub refresh_reuse_leeway_seconds: i64,
+    /// How long published signing keys stay cached in process.
+    pub signing_key_cache_ttl_seconds: u64,
+
+    /// HS256 key for platform-admin access tokens. Independent of the password
+    /// pepper so it can be rotated without invalidating admin password hashes.
+    pub admin_token_signing_key: String,
+    /// Previous admin-token signing key, still accepted for verification during a
+    /// rotation (tokens live 15 minutes, so it can be removed shortly after).
+    pub admin_token_previous_signing_key: Option<String>,
+    /// Argon2 pepper for platform-admin passwords. Changing it invalidates every
+    /// admin password hash, so it is NOT rotated with the signing key.
+    pub admin_password_pepper: String,
+
     /// Allowed CORS origins. Empty means "permissive" (any origin) — intended for
     /// local development only. Set CORS_ALLOWED_ORIGINS (comma-separated) in any
     /// shared/production environment to restrict it.
     pub cors_allowed_origins: Vec<String>,
-    /// 32-byte AES-256-GCM master key used to encrypt stored SMTP provider
-    /// passwords. Sourced from EMAIL_ENCRYPTION_KEY (base64 or hex of 32 bytes).
-    /// Required outside development; in development an unset value falls back to
-    /// a fixed dev constant that is deliberately NOT derived from JWT_SECRET.
-    pub email_encryption_key: [u8; 32],
+    /// Reverse proxies whose `X-Forwarded-For` / `X-Real-IP` are believed (CIDR
+    /// blocks or single addresses). Empty means the TCP peer is always the client.
+    pub trusted_proxies: Vec<String>,
+
+    /// 32-byte AES-256-GCM key sealing every secret at rest (SMTP passwords,
+    /// webhook secrets, TOTP seeds, tenant signing keys, tenant password peppers).
+    /// Sourced from SECRETS_ENCRYPTION_KEY (legacy name: EMAIL_ENCRYPTION_KEY).
+    pub secrets_encryption_key: [u8; 32],
+    /// Retired keys, used only to decrypt values sealed before a rotation.
+    pub secrets_previous_keys: Vec<[u8; 32]>,
 
     // ── Outbound webhooks ────────────────────────────────────────────────────
     /// Master switch for the background dispatcher. When false the outbox still
@@ -79,36 +129,147 @@ pub struct AppConfig {
     pub webhook_allow_private_targets: bool,
 }
 
+// Connection-pool sizing. The default of 10 is conservative; a deployment serving
+// real traffic should raise it toward what Postgres itself allows, divided by the
+// number of replicas.
+#[derive(Debug, Clone, Copy)]
+pub struct DatabasePoolConfig {
+    pub max_connections: u32,
+    pub min_connections: u32,
+    pub acquire_timeout_seconds: u64,
+}
+
+// WebAuthn relying party identity. The rp_id/origin MUST match the host the
+// browser shows while running the ceremony (the auth UI), or registrations and
+// assertions fail client-side. Defaults derive from AUTH_UI_BASE_URL so local
+// dev works out of the box; set WEBAUTHN_RP_ID / WEBAUTHN_RP_ORIGIN explicitly
+// when the auth UI moves to its own domain.
+//
+// Ceremonies can also run from other first-party apps (e.g. a BFF client's
+// /account/security page enrolling a passkey). Every such browser origin must
+// be allow-listed via WEBAUTHN_ADDITIONAL_ORIGINS (comma-separated), and all
+// origins must share the rp_id's effective domain.
+#[derive(Debug, Clone)]
+pub struct WebauthnConfig {
+    pub rp_id: String,
+    pub origin: String,
+    pub additional_origins: Vec<String>,
+}
+
+// MaxMind GeoLite2/GeoIP2 database paths for IP enrichment. Optional: when
+// GEOIP_CITY_DB_PATH is unset the composition root wires a no-op resolver, so geo
+// rules (new country, impossible travel) simply never fire and the login flow keeps
+// working.
+#[derive(Debug, Clone)]
+pub struct GeoIpConfig {
+    pub city_db_path: String,
+    pub asn_db_path: Option<String>,
+}
+
+const DEFAULT_ISSUER: &str = "http://localhost:8080";
+const DEFAULT_AUTH_UI_BASE_URL: &str = "http://localhost:5173";
+const DEFAULT_METRICS_PORT: u16 = 9090;
+
 impl AppConfig {
+    /// Loads `.env` (if present), resolves `APP_ENV`, validates the strict-mode
+    /// contract and reads every setting. Panics with a list of problems on a
+    /// misconfigured strict deployment — refusing to start beats serving traffic on
+    /// development defaults.
     pub fn from_env() -> Self {
-        dotenvy::dotenv().ok();
+        load_dotenv();
 
         let app_env = resolve_app_env();
         // Runs before anything is read so a misconfigured deploy dies at boot with a
         // list of what is missing, rather than serving traffic on dev defaults.
         validate_environment(app_env);
 
+        let auth_ui_base_url =
+            env_string("AUTH_UI_BASE_URL").unwrap_or_else(|| DEFAULT_AUTH_UI_BASE_URL.to_string());
+        let legacy_jwt_secret = env_string("JWT_SECRET");
+        let admin_password_pepper = env_string("ADMIN_PASSWORD_PEPPER")
+            .or_else(|| legacy_jwt_secret.clone())
+            .expect("ADMIN_PASSWORD_PEPPER (or the legacy JWT_SECRET) must be set");
+        let admin_token_signing_key = match env_string("ADMIN_TOKEN_SIGNING_KEY") {
+            Some(key) => key,
+            None => {
+                // Development only: strict mode refuses this (validate_environment).
+                tracing::warn!(
+                    "ADMIN_TOKEN_SIGNING_KEY unset — signing admin tokens with the password \
+                     pepper. Development only; set an independent key."
+                );
+                admin_password_pepper.clone()
+            }
+        };
+
+        let secrets_encryption_key = resolve_secrets_encryption_key();
+        let secrets_previous_keys = env_list("SECRETS_ENCRYPTION_PREVIOUS_KEYS")
+            .iter()
+            .map(|raw| {
+                parse_key(raw).unwrap_or_else(|| {
+                    panic!(
+                        "SECRETS_ENCRYPTION_PREVIOUS_KEYS entries must be base64 or hex of \
+                         exactly 32 bytes"
+                    )
+                })
+            })
+            .collect();
+
         Self {
             app_env,
-            database_url: std::env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
+            database_url: env_string("DATABASE_URL").expect("DATABASE_URL must be set"),
+            database_migration_url: env_string("DATABASE_MIGRATION_URL"),
+            run_migrations: env_flag("RUN_MIGRATIONS", true),
+            database: DatabasePoolConfig {
+                max_connections: env_parsed("DATABASE_MAX_CONNECTIONS", 10),
+                min_connections: env_parsed("DATABASE_MIN_CONNECTIONS", 0),
+                acquire_timeout_seconds: env_parsed("DATABASE_ACQUIRE_TIMEOUT_SECONDS", 5),
+            },
 
             port: std::env::var("PORT")
                 .unwrap_or_else(|_| "8080".to_string())
                 .parse()
                 .expect("PORT must be a valid number"),
+            metrics_port: resolve_metrics_port(),
+            log_json: resolve_log_json(app_env),
 
-            jwt_secret: std::env::var("JWT_SECRET").expect("JWT_SECRET must be set"),
+            oauth_issuer: env_string("OAUTH_ISSUER").unwrap_or_else(|| DEFAULT_ISSUER.to_string()),
+            webauthn: resolve_webauthn(&auth_ui_base_url),
+            auth_ui_base_url,
+            geoip: resolve_geoip_config(),
+            required_policy_versions: vec![
+                (
+                    "terms_of_service".to_string(),
+                    env_string("POLICY_TERMS_VERSION").unwrap_or_else(|| "1".to_string()),
+                ),
+                (
+                    "privacy_policy".to_string(),
+                    env_string("POLICY_PRIVACY_VERSION").unwrap_or_else(|| "1".to_string()),
+                ),
+            ],
+            password_hash_concurrency: env_parsed(
+                "PASSWORD_HASH_CONCURRENCY",
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4),
+            ),
+            refresh_reuse_leeway_seconds: env_parsed(
+                "REFRESH_REUSE_LEEWAY_SECONDS",
+                crate::application::use_cases::oauth::token_refresh::use_case::DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS,
+            ),
+            // This is the window in which a RETIRED key could still be accepted, so it
+            // wants to stay short. A newly published key is not bounded by it: the auth
+            // middleware invalidates and refetches when a token fails to verify.
+            signing_key_cache_ttl_seconds: env_parsed("SIGNING_KEY_CACHE_TTL_SECONDS", 60),
 
-            cors_allowed_origins: std::env::var("CORS_ALLOWED_ORIGINS")
-                .map(|raw| {
-                    raw.split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect()
-                })
-                .unwrap_or_default(),
+            admin_token_signing_key,
+            admin_token_previous_signing_key: env_string("ADMIN_TOKEN_PREVIOUS_SIGNING_KEY"),
+            admin_password_pepper,
 
-            email_encryption_key: resolve_email_encryption_key(),
+            cors_allowed_origins: env_list("CORS_ALLOWED_ORIGINS"),
+            trusted_proxies: env_list("TRUSTED_PROXIES"),
+
+            secrets_encryption_key,
+            secrets_previous_keys,
 
             retention_purge_enabled: env_flag("RETENTION_PURGE_ENABLED", true),
             retention_purge_interval_seconds: env_parsed("RETENTION_PURGE_INTERVAL_SECONDS", 3600),
@@ -122,43 +283,96 @@ impl AppConfig {
             webhook_allow_private_targets: env_flag("WEBHOOK_ALLOW_PRIVATE_TARGETS", false),
         }
     }
+
+    /// The connection string migrations run with.
+    pub fn migration_database_url(&self) -> &str {
+        self.database_migration_url
+            .as_deref()
+            .unwrap_or(&self.database_url)
+    }
 }
 
-// `create_router` builds the composition root from a pool alone (it does not take
-// AppConfig), so these are exposed as standalone resolvers — the same shape as
-// `resolve_email_encryption_key`.
-pub fn resolve_webhook_allow_private_targets() -> bool {
-    env_flag("WEBHOOK_ALLOW_PRIVATE_TARGETS", false)
+/// Loads `.env` from the working directory if one exists. Idempotent; call it
+/// before reading `APP_ENV` so a value set only in `.env` is honoured.
+pub fn load_dotenv() {
+    dotenvy::dotenv().ok();
 }
 
-pub fn resolve_webhook_timeout_seconds() -> u64 {
-    env_parsed("WEBHOOK_TIMEOUT_SECONDS", 10)
+// JSON logs unless LOG_FORMAT says otherwise; JSON is the default outside
+// development so a production deployment is searchable without anyone remembering
+// to set it.
+pub fn resolve_log_json(app_env: AppEnv) -> bool {
+    match env_string("LOG_FORMAT") {
+        Some(value) => value.eq_ignore_ascii_case("json"),
+        None => !app_env.is_development(),
+    }
 }
 
-// How long a tenant's published signing keys stay cached in process.
-//
-// This is the window in which a RETIRED key could still be accepted, so it wants to
-// stay short. The opposite case — a newly published key not yet cached — is not
-// bounded by this at all: the auth middleware invalidates and refetches when a token
-// fails to verify, so rotation takes effect immediately.
-pub fn resolve_signing_key_cache_ttl_seconds() -> u64 {
-    env_parsed("SIGNING_KEY_CACHE_TTL_SECONDS", 60)
+// `METRICS_PORT` unset ⇒ 9090; `off` / `disabled` / `0` ⇒ no metrics listener.
+fn resolve_metrics_port() -> Option<u16> {
+    match env_string("METRICS_PORT") {
+        None => Some(DEFAULT_METRICS_PORT),
+        Some(raw) if matches!(raw.to_ascii_lowercase().as_str(), "off" | "disabled" | "0") => None,
+        Some(raw) => Some(
+            raw.parse()
+                .expect("METRICS_PORT must be a port number or `off`"),
+        ),
+    }
 }
 
-// Connection-pool sizing. The default of 10 is conservative; a deployment serving
-// real traffic should raise it toward what Postgres itself allows, divided by the
-// number of replicas. Exposed as env because the right number depends entirely on
-// the deployment, not on the code.
-pub fn resolve_db_max_connections() -> u32 {
-    env_parsed("DATABASE_MAX_CONNECTIONS", 10)
+// Returns None when GEOIP_CITY_DB_PATH is absent (geo enrichment disabled).
+fn resolve_geoip_config() -> Option<GeoIpConfig> {
+    let city_db_path = env_string("GEOIP_CITY_DB_PATH")?;
+    Some(GeoIpConfig {
+        city_db_path,
+        asn_db_path: env_string("GEOIP_ASN_DB_PATH"),
+    })
 }
 
-pub fn resolve_db_min_connections() -> u32 {
-    env_parsed("DATABASE_MIN_CONNECTIONS", 0)
+fn resolve_webauthn(auth_ui_base_url: &str) -> WebauthnConfig {
+    let origin = env_string("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|| auth_ui_base_url.to_string());
+
+    let rp_id = env_string("WEBAUTHN_RP_ID").unwrap_or_else(|| {
+        // Effective domain of the origin: strip scheme, port and path.
+        origin
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .split([':', '/'])
+            .next()
+            .unwrap_or("localhost")
+            .to_string()
+    });
+
+    let additional_origins = env_list("WEBAUTHN_ADDITIONAL_ORIGINS")
+        .into_iter()
+        .filter(|o| *o != origin)
+        .collect();
+
+    WebauthnConfig {
+        rp_id,
+        origin,
+        additional_origins,
+    }
 }
 
-pub fn resolve_db_acquire_timeout_seconds() -> u64 {
-    env_parsed("DATABASE_ACQUIRE_TIMEOUT_SECONDS", 5)
+// A non-empty, trimmed env var.
+fn env_string(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+// A comma-separated env var, trimmed, empties dropped.
+fn env_list(key: &str) -> Vec<String> {
+    std::env::var(key)
+        .map(|raw| {
+            raw.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 // A boolean env var. Anything other than an explicit "false"/"0" reads as true when
@@ -180,57 +394,61 @@ fn env_parsed<T: std::str::FromStr>(key: &str, default: T) -> T {
 }
 
 // A fixed, publicly-known key used ONLY when APP_ENV selects development and
-// EMAIL_ENCRYPTION_KEY is unset, so a fresh clone runs without ceremony.
+// SECRETS_ENCRYPTION_KEY is unset, so a fresh clone runs without ceremony.
 //
-// It is deliberately a constant rather than something derived from JWT_SECRET.
-// The previous derivation (SHA-256 of JWT_SECRET) collapsed three separate
-// trust domains into one variable: leaking JWT_SECRET meant an attacker could
-// forge platform-admin tokens, crack admin passwords offline (it is also the
-// admin Argon2 pepper), AND decrypt every stored SMTP password, webhook signing
-// secret, TOTP seed and tenant signing key. Those key roles are now independent
-// and can be rotated separately.
-const DEV_EMAIL_ENCRYPTION_KEY: [u8; 32] = *b"gatekeeper-development-key-32byt";
+// It is deliberately a constant rather than something derived from another
+// secret: leaking the admin-token key must not also decrypt every stored SMTP
+// password, webhook signing secret, TOTP seed, tenant pepper and signing key.
+const DEV_SECRETS_ENCRYPTION_KEY: [u8; 32] = *b"gatekeeper-development-key-32byt";
 
-// EMAIL_ENCRYPTION_KEY must decode (base64 or hex) to exactly 32 bytes. Required
-// outside development (enforced up-front by `validate_environment`); in
-// development an unset value falls back to a well-known constant.
-pub fn resolve_email_encryption_key() -> [u8; 32] {
-    if let Ok(raw) = std::env::var("EMAIL_ENCRYPTION_KEY")
-        && !raw.trim().is_empty()
-    {
-        return match decode_key_material(raw.trim()) {
-            Some(bytes) if bytes.len() == 32 => {
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&bytes);
-                key
-            }
-            _ => panic!("EMAIL_ENCRYPTION_KEY must be base64 or hex encoding exactly 32 bytes"),
-        };
+fn parse_key(raw: &str) -> Option<[u8; 32]> {
+    let bytes = decode_key_material(raw.trim())?;
+    <[u8; 32]>::try_from(bytes.as_slice()).ok()
+}
+
+// The current secrets key: SECRETS_ENCRYPTION_KEY, or the legacy name
+// EMAIL_ENCRYPTION_KEY (the key never protected only email — the name was
+// misleading). Required outside development (enforced up-front by
+// `validate_environment`); in development an unset value falls back to a
+// well-known constant.
+pub fn resolve_secrets_encryption_key() -> [u8; 32] {
+    let raw = env_string("SECRETS_ENCRYPTION_KEY").or_else(|| {
+        let legacy = env_string("EMAIL_ENCRYPTION_KEY");
+        if legacy.is_some() {
+            tracing::warn!(
+                "EMAIL_ENCRYPTION_KEY is deprecated — rename it to SECRETS_ENCRYPTION_KEY"
+            );
+        }
+        legacy
+    });
+
+    if let Some(raw) = raw {
+        return parse_key(&raw).unwrap_or_else(|| {
+            panic!("SECRETS_ENCRYPTION_KEY must be base64 or hex encoding exactly 32 bytes")
+        });
     }
 
     if !resolve_app_env().is_development() {
         panic!(
-            "EMAIL_ENCRYPTION_KEY must be set when APP_ENV is not `development` \
+            "SECRETS_ENCRYPTION_KEY must be set when APP_ENV is not `development` \
              (generate one with: openssl rand -base64 32)"
         );
     }
 
     tracing::warn!(
-        "EMAIL_ENCRYPTION_KEY unset — using the built-in development key. \
+        "SECRETS_ENCRYPTION_KEY unset — using the built-in development key. \
          Stored secrets are NOT confidential. Never run this way outside development."
     );
-    DEV_EMAIL_ENCRYPTION_KEY
+    DEV_SECRETS_ENCRYPTION_KEY
 }
 
-// Minimum JWT_SECRET length outside development. It is the HS256 signing key for
-// platform-admin tokens and the Argon2 pepper for their passwords, so a short or
-// guessable value is directly forgeable.
-const MIN_JWT_SECRET_LEN: usize = 32;
+// Minimum length of the admin-token signing key and the admin password pepper
+// outside development. A short or guessable signing key is directly forgeable.
+const MIN_ADMIN_SECRET_LEN: usize = 32;
 
 /// Fail-fast validation of the deployment environment.
 ///
-/// Every variable checked here has a localhost-friendly fallback somewhere in
-/// this module or in `routes.rs`. Those fallbacks are correct for development and
+/// Every variable checked here has a localhost-friendly fallback in this module. Those fallbacks are correct for development and
 /// dangerous in production — a wrong `OAUTH_ISSUER` puts a bogus `iss` in every
 /// token issued and breaks discovery for every relying party, with no error
 /// anywhere. Collecting the checks in one place (rather than at each read site)
@@ -298,13 +516,21 @@ fn production_config_problems(get: &dyn Fn(&str) -> Option<String>) -> Vec<Strin
             "base URL of the hosted login UI; password-reset emails link to it",
         ),
         (
-            "EMAIL_ENCRYPTION_KEY",
-            "32-byte AES-256-GCM key protecting stored secrets; must be independent of JWT_SECRET",
+            "ADMIN_TOKEN_SIGNING_KEY",
+            "HS256 key for platform-admin tokens; must be independent of the admin password pepper",
         ),
     ] {
         if missing(key) {
             problems.push(format!("{key} must be set — {why}"));
         }
+    }
+
+    if missing("SECRETS_ENCRYPTION_KEY") && missing("EMAIL_ENCRYPTION_KEY") {
+        problems.push(
+            "SECRETS_ENCRYPTION_KEY must be set — 32-byte AES-256-GCM key protecting stored \
+             secrets (the legacy name EMAIL_ENCRYPTION_KEY is still accepted)"
+                .to_string(),
+        );
     }
 
     // WebAuthn needs an explicit origin; it otherwise inherits AUTH_UI_BASE_URL and
@@ -329,111 +555,48 @@ fn production_config_problems(get: &dyn Fn(&str) -> Option<String>) -> Vec<Strin
         }
     }
 
-    if let Some(secret) = get("JWT_SECRET")
-        && secret.trim().len() < MIN_JWT_SECRET_LEN
-    {
-        problems.push(format!(
-            "JWT_SECRET is {} characters — at least {MIN_JWT_SECRET_LEN} required \
-             (generate one with: openssl rand -base64 48)",
-            secret.trim().len()
-        ));
+    // The admin password pepper: ADMIN_PASSWORD_PEPPER, or JWT_SECRET for
+    // deployments created before the two roles were split (existing admin hashes
+    // were made with it, so it must keep its value).
+    let pepper = get("ADMIN_PASSWORD_PEPPER")
+        .filter(|v| !v.trim().is_empty())
+        .or_else(|| get("JWT_SECRET").filter(|v| !v.trim().is_empty()));
+    match pepper.as_deref().map(str::trim) {
+        None => problems.push(
+            "ADMIN_PASSWORD_PEPPER must be set (or keep the legacy JWT_SECRET) — the Argon2 \
+             pepper for platform-admin passwords"
+                .to_string(),
+        ),
+        Some(p) if p.len() < MIN_ADMIN_SECRET_LEN => problems.push(format!(
+            "ADMIN_PASSWORD_PEPPER/JWT_SECRET is {} characters — at least {MIN_ADMIN_SECRET_LEN} \
+             required (generate one with: openssl rand -base64 48)",
+            p.len()
+        )),
+        Some(_) => {}
     }
 
-    // `REQUIRE_ADMIN_AUTH=false` degrades the entire admin guard to best-effort:
-    // tokens are parsed for audit attribution but a missing or non-admin token no
-    // longer blocks the request. It exists as a migration aid only. Mirrors
-    // `env_flag`'s parsing so the check and the runtime read agree.
-    let admin_auth_enforced = match get("REQUIRE_ADMIN_AUTH") {
-        Some(raw) => !matches!(raw.trim().to_ascii_lowercase().as_str(), "false" | "0" | ""),
-        None => true,
-    };
-    if !admin_auth_enforced {
-        problems.push(
-            "REQUIRE_ADMIN_AUTH=false disables enforcement of the admin guard and is refused \
-             outside development"
-                .to_string(),
-        );
+    if let Some(key) = get("ADMIN_TOKEN_SIGNING_KEY").map(|v| v.trim().to_string())
+        && !key.is_empty()
+    {
+        if key.len() < MIN_ADMIN_SECRET_LEN {
+            problems.push(format!(
+                "ADMIN_TOKEN_SIGNING_KEY is {} characters — at least {MIN_ADMIN_SECRET_LEN} \
+                 required (generate one with: openssl rand -base64 48)",
+                key.len()
+            ));
+        }
+        // One secret in two roles is what made the old JWT_SECRET impossible to
+        // rotate: changing it locked every admin out.
+        if pepper.as_deref().map(str::trim) == Some(key.as_str()) {
+            problems.push(
+                "ADMIN_TOKEN_SIGNING_KEY must differ from the admin password pepper \
+                 (ADMIN_PASSWORD_PEPPER/JWT_SECRET) so the signing key can be rotated"
+                    .to_string(),
+            );
+        }
     }
 
     problems
-}
-
-// MaxMind GeoLite2/GeoIP2 database paths for IP enrichment. Optional: when
-// GEOIP_CITY_DB_PATH is unset the composition root wires a no-op resolver, so geo
-// rules (new country, impossible travel) simply never fire and the login flow keeps
-// working. Download GeoLite2-City.mmdb (and optionally GeoLite2-ASN.mmdb) from
-// MaxMind and point these at them to enable enrichment.
-#[derive(Debug, Clone)]
-pub struct GeoIpConfig {
-    pub city_db_path: String,
-    pub asn_db_path: Option<String>,
-}
-
-// Returns None when GEOIP_CITY_DB_PATH is absent (geo enrichment disabled).
-pub fn resolve_geoip_config() -> Option<GeoIpConfig> {
-    let city_db_path = std::env::var("GEOIP_CITY_DB_PATH").ok()?;
-    if city_db_path.trim().is_empty() {
-        return None;
-    }
-    Some(GeoIpConfig {
-        city_db_path,
-        asn_db_path: std::env::var("GEOIP_ASN_DB_PATH")
-            .ok()
-            .filter(|p| !p.trim().is_empty()),
-    })
-}
-
-// WebAuthn relying party identity. The rp_id/origin MUST match the host the
-// browser shows while running the ceremony (the auth UI), or registrations and
-// assertions fail client-side. Defaults derive from AUTH_UI_BASE_URL so local
-// dev works out of the box; set WEBAUTHN_RP_ID / WEBAUTHN_RP_ORIGIN explicitly
-// when the auth UI moves to its own domain.
-//
-// Ceremonies can also run from other first-party apps (e.g. a BFF client's
-// /account/security page enrolling a passkey). Every such browser origin must
-// be allow-listed via WEBAUTHN_ADDITIONAL_ORIGINS (comma-separated), and all
-// origins must share the rp_id's effective domain.
-//
-// Returns (rp_id, rp_origin, additional_origins).
-pub fn resolve_webauthn_rp() -> (String, String, Vec<String>) {
-    let origin = std::env::var("WEBAUTHN_RP_ORIGIN")
-        .or_else(|_| std::env::var("AUTH_UI_BASE_URL"))
-        .unwrap_or_else(|_| "http://localhost:5173".to_string());
-
-    let rp_id = std::env::var("WEBAUTHN_RP_ID").unwrap_or_else(|_| {
-        // Effective domain of the origin: strip scheme, port and path.
-        origin
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .split([':', '/'])
-            .next()
-            .unwrap_or("localhost")
-            .to_string()
-    });
-
-    let additional_origins = std::env::var("WEBAUTHN_ADDITIONAL_ORIGINS")
-        .unwrap_or_default()
-        .split(',')
-        .map(str::trim)
-        .filter(|o| !o.is_empty() && *o != origin)
-        .map(str::to_string)
-        .collect();
-
-    (rp_id, origin, additional_origins)
-}
-
-// The legal documents whose acceptance is required, and the version currently in
-// force (WI-04). A version bump forces re-acceptance. Sourced from env so it can be
-// rolled without a deploy; defaults to "1" for local dev.
-//
-// Returns (document_type, current_version) pairs.
-pub fn resolve_required_policy_versions() -> Vec<(String, String)> {
-    let tos = std::env::var("POLICY_TERMS_VERSION").unwrap_or_else(|_| "1".to_string());
-    let privacy = std::env::var("POLICY_PRIVACY_VERSION").unwrap_or_else(|_| "1".to_string());
-    vec![
-        ("terms_of_service".to_string(), tos),
-        ("privacy_policy".to_string(), privacy),
-    ]
 }
 
 // Accepts either base64 (standard) or hex; returns the raw bytes if either decodes.
@@ -459,12 +622,15 @@ mod tests {
             ("CORS_ALLOWED_ORIGINS", "https://dash.example.com"),
             ("AUTH_UI_BASE_URL", "https://login.example.com"),
             (
-                "EMAIL_ENCRYPTION_KEY",
+                "SECRETS_ENCRYPTION_KEY",
                 "aGVsbG8td29ybGQtdGhpcy1pcy0zMi1ieXQ=",
             ),
             ("WEBAUTHN_RP_ORIGIN", "https://login.example.com"),
-            ("JWT_SECRET", "0123456789abcdef0123456789abcdef"),
-            ("REQUIRE_ADMIN_AUTH", "true"),
+            ("ADMIN_PASSWORD_PEPPER", "0123456789abcdef0123456789abcdef"),
+            (
+                "ADMIN_TOKEN_SIGNING_KEY",
+                "fedcba9876543210fedcba9876543210",
+            ),
         ])
     }
 
@@ -483,7 +649,8 @@ mod tests {
             "OAUTH_ISSUER",
             "CORS_ALLOWED_ORIGINS",
             "AUTH_UI_BASE_URL",
-            "EMAIL_ENCRYPTION_KEY",
+            "SECRETS_ENCRYPTION_KEY",
+            "ADMIN_TOKEN_SIGNING_KEY",
         ] {
             let mut env = valid_env();
             env.remove(key);
@@ -521,28 +688,58 @@ mod tests {
     }
 
     #[test]
-    fn a_short_jwt_secret_is_rejected() {
+    fn a_short_pepper_is_rejected() {
         let mut env = valid_env();
-        env.insert("JWT_SECRET", "my-ultimate-jwt-secret");
+        env.insert("ADMIN_PASSWORD_PEPPER", "my-ultimate-jwt-secret");
         assert!(
             problems_for(&env)
                 .iter()
-                .any(|p| p.starts_with("JWT_SECRET"))
+                .any(|p| p.starts_with("ADMIN_PASSWORD_PEPPER"))
         );
     }
 
     #[test]
-    fn disabling_the_admin_guard_is_refused() {
-        for raw in ["false", "0", ""] {
-            let mut env = valid_env();
-            env.insert("REQUIRE_ADMIN_AUTH", raw);
-            assert!(
-                problems_for(&env)
-                    .iter()
-                    .any(|p| p.starts_with("REQUIRE_ADMIN_AUTH")),
-                "REQUIRE_ADMIN_AUTH={raw:?} should be refused"
-            );
-        }
+    fn the_legacy_jwt_secret_still_serves_as_the_pepper() {
+        let mut env = valid_env();
+        env.remove("ADMIN_PASSWORD_PEPPER");
+        env.insert("JWT_SECRET", "0123456789abcdef0123456789abcdef");
+        assert!(problems_for(&env).is_empty());
+
+        env.remove("JWT_SECRET");
+        assert!(
+            problems_for(&env)
+                .iter()
+                .any(|p| p.starts_with("ADMIN_PASSWORD_PEPPER"))
+        );
+    }
+
+    #[test]
+    fn the_legacy_encryption_key_name_is_accepted() {
+        let mut env = valid_env();
+        let key = env.remove("SECRETS_ENCRYPTION_KEY").unwrap();
+        env.insert("EMAIL_ENCRYPTION_KEY", key);
+        assert!(problems_for(&env).is_empty());
+    }
+
+    #[test]
+    fn the_signing_key_must_not_reuse_the_pepper() {
+        let mut env = valid_env();
+        env.insert(
+            "ADMIN_TOKEN_SIGNING_KEY",
+            "0123456789abcdef0123456789abcdef",
+        );
+        assert!(problems_for(&env).iter().any(|p| p.contains("must differ")));
+    }
+
+    #[test]
+    fn a_short_signing_key_is_rejected() {
+        let mut env = valid_env();
+        env.insert("ADMIN_TOKEN_SIGNING_KEY", "short");
+        assert!(
+            problems_for(&env)
+                .iter()
+                .any(|p| p.starts_with("ADMIN_TOKEN_SIGNING_KEY"))
+        );
     }
 
     #[test]

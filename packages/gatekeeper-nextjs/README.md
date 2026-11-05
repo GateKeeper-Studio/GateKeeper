@@ -23,7 +23,7 @@ export const gatekeeper = createNextGateKeeper({
   clientId: process.env.OAUTH_CLIENT_ID!,
   clientSecret: process.env.OAUTH_CLIENT_SECRET!,
   redirectUri: process.env.OAUTH_REDIRECT_URI!, // http://localhost:5179/auth/callback
-  scope: process.env.OAUTH_SCOPE ?? 'openid profile email',
+  scope: process.env.OAUTH_SCOPE ?? 'openid profile email account',
   sessionSecret: process.env.SESSION_SECRET!,
   secureCookies: process.env.NODE_ENV === 'production'
 });

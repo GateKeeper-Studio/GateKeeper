@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
-use serde_json::json;
-use uuid::Uuid;
 
 use crate::{
     application::{
         ports::{
             audit_logger::AuditLogger,
+            password_hasher::PasswordHasher,
             risk_engine::{RiskEngine, RiskEvaluationInput},
             token_signer::TokenSigner,
             unit_of_work::UnitOfWorkFactory,
         },
+        shared::token_policy::REFRESH_TOKEN_TTL_DAYS,
         use_cases::oauth::{
             token_refresh::{command::Command, response::Response},
-            user_claims::resolve_user_claims,
+            token_service::{TokenGrant, TokenMinter, authenticate_client},
         },
     },
     domain::{
@@ -25,26 +25,20 @@ use crate::{
         },
         errors::DomainError,
     },
-    utils::{
-        oauth_crypto::{generate_opaque_token, sha256_hex},
-        password_hasher::compare_password,
-    },
+    utils::oauth_crypto::{generate_opaque_token, sha256_hex},
 };
-
-const ACCESS_TOKEN_TTL_SECONDS: i64 = 900; // 15 minutes
-const REFRESH_TOKEN_TTL_DAYS: i64 = 30;
 /// Default grace window (seconds) after a token is rotated during which presenting it again
 /// is treated as a legitimate concurrent refresh / retry (reissue a sibling) rather than
 /// token reuse (revoke the whole family). Bounds how long a just-rotated token stays usable,
 /// so keep it small — the standard rotation-leeway tradeoff (cf. Auth0's reuse interval).
-/// Overridable per environment via `REFRESH_REUSE_LEEWAY_SECONDS` (see `routes.rs`).
+/// Overridable per environment via `REFRESH_REUSE_LEEWAY_SECONDS` (see `config.rs`).
 pub const DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS: i64 = 10;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
-    signer: Arc<dyn TokenSigner>,
-    issuer: String,
+    minter: TokenMinter,
     audit_logger: Arc<dyn AuditLogger>,
+    password_hasher: Arc<dyn PasswordHasher>,
     // See DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS; injected so it's tunable per environment.
     reuse_leeway_seconds: i64,
     // Same engine the interactive login uses, so a refresh from a new country / an
@@ -61,12 +55,13 @@ impl UseCase {
         audit_logger: Arc<dyn AuditLogger>,
         reuse_leeway_seconds: i64,
         risk_engine: Arc<dyn RiskEngine>,
+        password_hasher: Arc<dyn PasswordHasher>,
     ) -> Self {
         Self {
             unit_of_work_factory,
-            signer,
-            issuer,
+            minter: TokenMinter::new(signer, issuer),
             audit_logger,
+            password_hasher,
             reuse_leeway_seconds,
             risk_engine,
         }
@@ -79,31 +74,14 @@ impl UseCase {
         let uow = self.unit_of_work_factory.begin().await?;
 
         // 1. Authenticate the client (confidential ⇒ verify secret).
-        let client = uow
-            .oauth_client_repository()
-            .find_by_client_id(command.tenant_id, &command.client_id)
-            .await?
-            .filter(|c| c.is_active())
-            .ok_or_else(|| DomainError::InvalidClient("unknown or inactive client".to_string()))?;
-
-        if client.is_confidential() {
-            let tenant = uow
-                .tenant_repository()
-                .find_by_id(command.tenant_id)
-                .await?
-                .ok_or_else(|| DomainError::InvalidClient("unknown tenant".to_string()))?;
-
-            let presented = command.client_secret.as_deref().unwrap_or("");
-            let valid = match client.client_secret_hash() {
-                Some(hash) => compare_password(hash, presented, tenant.password_hash_secret()),
-                None => false,
-            };
-            if !valid {
-                return Err(DomainError::InvalidClient(
-                    "invalid client secret".to_string(),
-                ));
-            }
-        }
+        let client = authenticate_client(
+            &*uow,
+            self.password_hasher.as_ref(),
+            command.tenant_id,
+            &command.client_id,
+            command.client_secret.as_deref(),
+        )
+        .await?;
 
         // 2. Look the presented refresh token up by hash.
         let presented = uow
@@ -205,51 +183,25 @@ impl UseCase {
             child
         };
 
-        // 5. Re-mint the access (+ id) token with the active signing key.
-        let key = uow
-            .signing_key_repository()
-            .find_active(command.tenant_id)
-            .await?
-            .ok_or_else(|| DomainError::InfrastructureError("no active signing key".to_string()))?;
-
-        // Re-resolve role/group names so a refreshed token reflects the user's
-        // CURRENT authorization context, not whatever it was at original sign-in.
-        let (roles, groups) =
-            resolve_user_claims(&*uow, command.tenant_id, new_token.user_id()).await?;
-
+        // 5. Re-mint the access (+ id) token with the active signing key. Roles and
+        //    groups are re-resolved so a refreshed token reflects the user's CURRENT
+        //    authorization context, not whatever it was at original sign-in.
         let scopes: Vec<String> = new_token.scopes().to_vec();
-        let scope_str = scopes.join(" ");
-        let iat = now.timestamp();
-        let exp = iat + ACCESS_TOKEN_TTL_SECONDS;
-
-        let access_claims = json!({
-          "iss": self.issuer,
-          "sub": new_token.user_id().to_string(),
-          "aud": client.client_id(),
-          "tid": command.tenant_id.to_string(),
-          "scope": scope_str,
-          "roles": roles,
-          "groups": groups,
-          "iat": iat,
-          "exp": exp,
-          "jti": Uuid::now_v7().to_string(),
-        });
-        let access_token = self.signer.sign(&key, &access_claims).await?;
-
-        let id_token = if scopes.iter().any(|s| s == "openid") {
-            let id_claims = json!({
-              "iss": self.issuer,
-              "sub": new_token.user_id().to_string(),
-              "aud": client.client_id(),
-              "roles": roles,
-              "groups": groups,
-              "iat": iat,
-              "exp": exp,
-            });
-            Some(self.signer.sign(&key, &id_claims).await?)
-        } else {
-            None
-        };
+        let tokens = self
+            .minter
+            .mint(
+                &*uow,
+                TokenGrant {
+                    tenant_id: command.tenant_id,
+                    user_id: new_token.user_id(),
+                    client: &client,
+                    scopes: &scopes,
+                    nonce: None,
+                    now,
+                },
+            )
+            .await?;
+        let scope_str = tokens.scope.clone();
 
         uow.commit().await?;
 
@@ -265,11 +217,11 @@ impl UseCase {
         let _ = self.audit_logger.record(event).await;
 
         Ok(Response {
-            access_token,
-            id_token,
+            access_token: tokens.access_token,
+            id_token: tokens.id_token,
             refresh_token: raw_new,
             token_type: "Bearer".to_string(),
-            expires_in: ACCESS_TOKEN_TTL_SECONDS,
+            expires_in: tokens.expires_in,
             scope: scope_str,
         })
     }

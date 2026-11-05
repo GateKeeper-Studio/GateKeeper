@@ -67,11 +67,14 @@ mod tests {
 
         let use_case = UseCase::new(Arc::new(factory));
         use_case
-            .execute(Command {
-                tenant_id,
-                user_id,
-                client_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    user_id,
+                    client_id,
+                },
+            )
             .await
             .unwrap();
 
@@ -93,13 +96,16 @@ mod tests {
         let use_case = UseCase::new(Arc::new(factory));
 
         let err = use_case
-            .execute(Command {
-                tenant_id: Uuid::now_v7(),
-                user_id: Uuid::now_v7(),
-                client_id: Uuid::now_v7(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: Uuid::now_v7(),
+                    user_id: Uuid::now_v7(),
+                    client_id: Uuid::now_v7(),
+                },
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

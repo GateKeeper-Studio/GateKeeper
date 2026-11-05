@@ -53,8 +53,6 @@ impl ExternalIdentityProviderClient for FakeExternalIdentityProviderClient {
         _redirect_uri: &str,
         _code: &str,
     ) -> Result<ExternalUserProfile, DomainError> {
-        self.result
-            .clone()
-            .map_err(DomainError::ExternalProviderError)
+        self.result.clone().map_err(DomainError::Upstream)
     }
 }

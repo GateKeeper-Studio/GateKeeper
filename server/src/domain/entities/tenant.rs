@@ -2,6 +2,8 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::domain::secret::SecretString;
+
 // Tenant is an isolated workspace owned by an organization.
 #[derive(Debug, Clone)]
 pub struct Tenant {
@@ -13,7 +15,9 @@ pub struct Tenant {
 
     can_self_register: bool, // Whether users can self-register under this tenant
     can_self_forgot_password: bool, // Whether users can use forgot password flow
-    password_hash_secret: String,
+    // The per-tenant Argon2 pepper. Redacted from `Debug`; sealed at rest by the
+    // repository.
+    password_hash_secret: SecretString,
 
     // The top-level organization that owns this tenant.
     organization_id: Uuid,
@@ -50,7 +54,7 @@ impl Tenant {
             is_active,
             can_self_register,
             can_self_forgot_password,
-            password_hash_secret,
+            password_hash_secret: SecretString::new(password_hash_secret),
             organization_id,
             appearance: None,
             default_language: "en".to_string(),
@@ -119,7 +123,7 @@ impl Tenant {
             is_active,
             can_self_register,
             can_self_forgot_password,
-            password_hash_secret,
+            password_hash_secret: SecretString::new(password_hash_secret),
             organization_id,
             appearance: None,
             default_language: "en".to_string(),
@@ -144,7 +148,7 @@ impl Tenant {
         self.updated_at
     }
     pub fn password_hash_secret(&self) -> &str {
-        &self.password_hash_secret
+        self.password_hash_secret.expose()
     }
     pub fn is_active(&self) -> bool {
         self.is_active

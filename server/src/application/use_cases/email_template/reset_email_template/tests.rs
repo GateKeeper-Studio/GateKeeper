@@ -24,12 +24,15 @@ async fn reset_removes_customization_and_returns_default() {
     .await
     .unwrap();
 
-    let use_case = UseCase::new(repo.clone());
+    let use_case = UseCase::new(repo.clone(), Arc::new(crate::testing::in_memory_repositories::in_memory_tenant_repository::InMemoryTenantRepository::new()));
     let response = use_case
-        .execute(Command {
-            tenant_id,
-            template_type: EmailTemplateType::EmailVerification,
-        })
+        .execute(
+            &crate::application::shared::actor::Actor::System,
+            Command {
+                tenant_id,
+                template_type: EmailTemplateType::EmailVerification,
+            },
+        )
         .await
         .unwrap();
 

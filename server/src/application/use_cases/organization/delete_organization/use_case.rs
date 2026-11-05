@@ -23,7 +23,7 @@ impl UseCase {
             .find_by_id(command.organization_id)
             .await?
             .ok_or_else(|| {
-                DomainError::OrganizationNotFound(format!(
+                DomainError::NotFound(format!(
                     "Organization with id {} not found",
                     command.organization_id
                 ))

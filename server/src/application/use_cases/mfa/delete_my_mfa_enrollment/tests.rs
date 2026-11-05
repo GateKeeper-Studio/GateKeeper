@@ -139,7 +139,7 @@ mod tests {
         let id = seed_webauthn(&ctx, Uuid::now_v7(), "cred-1");
 
         let err = ctx.use_case.execute(command(&ctx, id)).await.unwrap_err();
-        assert!(matches!(err, DomainError::MfaEnrollmentNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
         assert!(
             ctx.enrollments
                 .memory
@@ -158,6 +158,6 @@ mod tests {
             .execute(command(&ctx, Uuid::now_v7()))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::MfaEnrollmentNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

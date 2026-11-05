@@ -129,7 +129,12 @@ export interface MfaClient {
   listMethods(): Promise<MfaConfigurationState>;
   setPreferredMethod(method: MfaMethod | null): Promise<void>;
   renameMethod(id: string, name: string | null): Promise<MfaMethodEntry>;
-  removeMethod(id: string): Promise<void>;
+  /**
+   * Removes an enrollment. The identity provider requires the account's current
+   * password for this (step-up), so a stolen session alone cannot strip the
+   * second factor. Accounts without a password (social sign-in only) may omit it.
+   */
+  removeMethod(id: string, currentPassword?: string): Promise<void>;
   startTotpEnrollment(): Promise<TotpEnrollment>;
   confirmTotpEnrollment(code: string): Promise<MfaMethodEntry>;
   startPasskeyEnrollment(): Promise<WebAuthnStartResponse>;

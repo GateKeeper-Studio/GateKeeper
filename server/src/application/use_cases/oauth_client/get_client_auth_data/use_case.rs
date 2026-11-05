@@ -49,10 +49,7 @@ impl UseCase {
             .await?
             .filter(|c| c.is_active())
             .ok_or_else(|| {
-                DomainError::OAuthClientNotFound(format!(
-                    "OAuth client {} not found",
-                    query.client_id
-                ))
+                DomainError::NotFound(format!("OAuth client {} not found", query.client_id))
             })?;
 
         let tenant = self
@@ -61,7 +58,7 @@ impl UseCase {
             .await?
             .filter(|t| t.is_active())
             .ok_or_else(|| {
-                DomainError::TenantNotFound(format!("tenant {} not found", client.tenant_id()))
+                DomainError::NotFound(format!("tenant {} not found", client.tenant_id()))
             })?;
 
         // Active external providers become the "Sign in with <provider>" buttons.

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE tenants\n        SET name = $1, description = $2, is_active = $3, can_self_register = $4,\n          can_self_forgot_password = $5, password_hash_secret = $6,\n          password_hash_secret_sealed = TRUE, updated_at = $7,\n          appearance = $8, default_language = $9\n        WHERE id = $10\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Text",
+        "Timestamptz",
+        "Jsonb",
+        "Varchar",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "585a02faac25b6fed83f1af34ce459525785e80ffe4099534a49093d13543c21"
+}

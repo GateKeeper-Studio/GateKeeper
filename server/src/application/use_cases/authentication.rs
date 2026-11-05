@@ -1,5 +1,6 @@
 pub mod authorize_session;
 pub mod change_password;
+pub mod confirm_current_password;
 pub mod confirm_email;
 pub mod external_login;
 pub mod forgot_password;

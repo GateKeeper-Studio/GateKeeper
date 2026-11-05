@@ -101,11 +101,14 @@ mod tests {
             .insert(user.id(), user.clone());
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id: user.id(),
-                custom_field_values: Some(json!({"nickname": "gabs"})),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id: user.id(),
+                    custom_field_values: Some(json!({"nickname": "gabs"})),
+                },
+            )
             .await
             .unwrap();
 
@@ -128,15 +131,18 @@ mod tests {
         let (_, _, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id: Uuid::now_v7(),
-                custom_field_values: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id: Uuid::now_v7(),
+                    custom_field_values: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -145,15 +151,18 @@ mod tests {
         let (_, _, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: Uuid::now_v7(),
-                user_id: Uuid::now_v7(),
-                custom_field_values: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: Uuid::now_v7(),
+                    user_id: Uuid::now_v7(),
+                    custom_field_values: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -170,14 +179,17 @@ mod tests {
             .insert(user.id(), user.clone());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id: user.id(),
-                custom_field_values: Some(json!({"unknown_field": "x"})),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id: user.id(),
+                    custom_field_values: Some(json!({"unknown_field": "x"})),
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 }

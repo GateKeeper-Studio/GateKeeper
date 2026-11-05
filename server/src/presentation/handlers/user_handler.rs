@@ -54,7 +54,11 @@ pub async fn create_tenant_user(
 
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_tenant_user.execute(payload).await?;
+    let response = state
+        .users
+        .create_tenant_user
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -82,7 +86,7 @@ pub async fn list_tenant_users(
         page_size: params.page_size,
     };
 
-    let response = state.list_tenant_users.execute(query).await?;
+    let response = state.users.list_tenant_users.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -94,7 +98,7 @@ pub async fn get_tenant_user_by_id(
     Path((_, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = get_tenant_user_by_id::query::Query { tenant_id, user_id };
-    let response = state.get_tenant_user_by_id.execute(query).await?;
+    let response = state.users.get_tenant_user_by_id.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -114,7 +118,11 @@ pub async fn update_tenant_user_by_id(
     payload.user_id = user_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_tenant_user_by_id.execute(payload).await?;
+    let response = state
+        .users
+        .update_tenant_user_by_id
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -149,8 +157,9 @@ pub async fn update_tenant_user_custom_field_values(
     payload.user_id = user_id;
 
     let response = state
+        .users
         .update_tenant_user_custom_field_values
-        .execute(payload)
+        .execute(&principal.actor(), payload)
         .await?;
 
     admin_action(
@@ -177,7 +186,11 @@ pub async fn delete_tenant_user_by_id(
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = delete_tenant_user_by_id::command::Command { tenant_id, user_id };
-    state.delete_tenant_user_by_id.execute(command).await?;
+    state
+        .users
+        .delete_tenant_user_by_id
+        .execute(&principal.actor(), command)
+        .await?;
 
     admin_action(
         &state,

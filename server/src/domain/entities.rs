@@ -12,6 +12,7 @@ pub mod group;
 pub mod legal_document;
 pub mod organization;
 pub mod role;
+pub mod scope;
 pub mod tenant;
 
 // Authentication-related entities

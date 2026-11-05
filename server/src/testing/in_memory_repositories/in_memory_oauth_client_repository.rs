@@ -110,9 +110,7 @@ impl OAuthClientRepository for InMemoryOAuthClientRepository {
         let exists = self.memory.data.lock().unwrap().contains_key(&client.id())
             || self.memory.draft.lock().unwrap().contains_key(&client.id());
         if !exists {
-            return Err(DomainError::OAuthClientNotFound(
-                "OAuth client not found".to_string(),
-            ));
+            return Err(DomainError::NotFound("OAuth client not found".to_string()));
         }
         // Mirror Postgres: `update` leaves the stored secret hash alone, so a
         // use case that persists a rotation through it fails its tests here too.
@@ -145,9 +143,7 @@ impl OAuthClientRepository for InMemoryOAuthClientRepository {
             .get(&client.id())
             .or(self.memory.data.lock().unwrap().get(&client.id()))
             .cloned()
-            .ok_or_else(|| {
-                DomainError::OAuthClientNotFound("OAuth client not found".to_string())
-            })?;
+            .ok_or_else(|| DomainError::NotFound("OAuth client not found".to_string()))?;
         if let Some(hash) = client.client_secret_hash() {
             stored.rotate_secret_hash(hash.to_string());
         }

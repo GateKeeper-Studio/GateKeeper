@@ -37,7 +37,11 @@ pub async fn create_tenant_custom_field(
     payload.tenant_id = tenant_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_tenant_custom_field.execute(payload).await?;
+    let response = state
+        .custom_fields
+        .create_tenant_custom_field
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -58,7 +62,11 @@ pub async fn list_tenant_custom_fields(
     TenantScope { tenant_id, .. }: TenantScope,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_tenant_custom_fields::query::Query { tenant_id };
-    let response = state.list_tenant_custom_fields.execute(query).await?;
+    let response = state
+        .custom_fields
+        .list_tenant_custom_fields
+        .execute(query)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -73,7 +81,11 @@ pub async fn get_tenant_custom_field_by_id(
         tenant_id,
         field_id,
     };
-    let response = state.get_tenant_custom_field_by_id.execute(query).await?;
+    let response = state
+        .custom_fields
+        .get_tenant_custom_field_by_id
+        .execute(query)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -94,8 +106,9 @@ pub async fn update_tenant_custom_field_by_id(
     payload.validate().map_err(ApiError::Validation)?;
 
     let response = state
+        .custom_fields
         .update_tenant_custom_field_by_id
-        .execute(payload)
+        .execute(&principal.actor(), payload)
         .await?;
 
     admin_action(
@@ -123,7 +136,11 @@ pub async fn reorder_tenant_custom_fields(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = tenant_id;
 
-    state.reorder_tenant_custom_fields.execute(payload).await?;
+    state
+        .custom_fields
+        .reorder_tenant_custom_fields
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -153,8 +170,9 @@ pub async fn delete_tenant_custom_field_by_id(
         field_id,
     };
     state
+        .custom_fields
         .delete_tenant_custom_field_by_id
-        .execute(command)
+        .execute(&principal.actor(), command)
         .await?;
 
     admin_action(

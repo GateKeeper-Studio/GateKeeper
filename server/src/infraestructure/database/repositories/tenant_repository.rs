@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use crate::{
+    application::ports::secret_cipher::{SecretCipher, SecretContext, SecretPurpose},
     domain::{
         entities::tenant::Tenant, errors::DomainError,
         repositories::tenant_repository::TenantRepository,
@@ -9,23 +12,52 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+// The tenant's password pepper is sealed at rest (AES-256-GCM, bound to the tenant
+// id) and opened here, so the rest of the system sees the plaintext pepper and a
+// database dump does not. Rows written before sealing existed carry
+// `password_hash_secret_sealed = false` until the startup re-seal upgrades them.
 pub struct DbTenantRepository {
     executor: DbExecutor,
+    cipher: Arc<dyn SecretCipher>,
+}
+
+fn pepper_context(tenant_id: Uuid) -> SecretContext {
+    SecretContext::new(SecretPurpose::TenantPepper, tenant_id)
 }
 
 impl DbTenantRepository {
-    pub fn new(db_pool: PgPool) -> Self {
+    pub fn new(db_pool: PgPool, cipher: Arc<dyn SecretCipher>) -> Self {
         Self {
             executor: DbExecutor::Pool(db_pool),
+            cipher,
         }
     }
 
     /// Builds a repository that runs every statement on a shared transaction,
     /// so its writes participate in the owning Unit of Work.
-    pub fn with_tx(tx: SharedTx) -> Self {
+    pub fn with_tx(tx: SharedTx, cipher: Arc<dyn SecretCipher>) -> Self {
         Self {
             executor: DbExecutor::Tx(tx),
+            cipher,
         }
+    }
+
+    fn open_pepper(
+        &self,
+        tenant_id: Uuid,
+        stored: String,
+        sealed: bool,
+    ) -> Result<String, DomainError> {
+        if sealed {
+            self.cipher.decrypt(&stored, pepper_context(tenant_id))
+        } else {
+            Ok(stored)
+        }
+    }
+
+    fn seal_pepper(&self, tenant: &Tenant) -> Result<String, DomainError> {
+        self.cipher
+            .encrypt(tenant.password_hash_secret(), pepper_context(tenant.id()))
     }
 }
 
@@ -37,8 +69,8 @@ impl TenantRepository for DbTenantRepository {
             sqlx::query!(
                 r#"
         SELECT id, name, description, is_active, can_self_register,
-          can_self_forgot_password, password_hash_secret, organization_id,
-          created_at, updated_at, default_language,
+          can_self_forgot_password, password_hash_secret, password_hash_secret_sealed,
+          organization_id, created_at, updated_at, default_language,
           appearance as "appearance?: sqlx::types::Json<serde_json::Value>"
         FROM tenants
         WHERE id = $1
@@ -49,12 +81,14 @@ impl TenantRepository for DbTenantRepository {
         )
         .map_err(map_sqlx_error)?;
 
-        Ok(row.map(|r| {
+        row.map(|r| {
+            let pepper =
+                self.open_pepper(r.id, r.password_hash_secret, r.password_hash_secret_sealed)?;
             let mut tenant = Tenant::reconstruct(
                 r.id,
                 r.name,
                 r.description,
-                r.password_hash_secret,
+                pepper,
                 r.is_active,
                 r.can_self_register,
                 r.can_self_forgot_password,
@@ -64,8 +98,9 @@ impl TenantRepository for DbTenantRepository {
             );
             tenant.hydrate_appearance(r.appearance.map(|j| j.0));
             tenant.hydrate_default_language(r.default_language);
-            tenant
-        }))
+            Ok(tenant)
+        })
+        .transpose()
     }
 
     async fn find_by_id_for_organization(
@@ -86,6 +121,7 @@ impl TenantRepository for DbTenantRepository {
           is_active as "is_active!", can_self_register as "can_self_register!",
           can_self_forgot_password as "can_self_forgot_password!",
           password_hash_secret as "password_hash_secret!",
+          password_hash_secret_sealed as "password_hash_secret_sealed!",
           organization_id as "organization_id!",
           created_at as "created_at!", updated_at,
           default_language as "default_language!",
@@ -101,14 +137,15 @@ impl TenantRepository for DbTenantRepository {
         )
         .map_err(map_sqlx_error)?;
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
+                let pepper =
+                    self.open_pepper(r.id, r.password_hash_secret, r.password_hash_secret_sealed)?;
                 let mut tenant = Tenant::reconstruct(
                     r.id,
                     r.name,
                     r.description,
-                    r.password_hash_secret,
+                    pepper,
                     r.is_active,
                     r.can_self_register,
                     r.can_self_forgot_password,
@@ -118,9 +155,9 @@ impl TenantRepository for DbTenantRepository {
                 );
                 tenant.hydrate_appearance(r.appearance.map(|j| j.0));
                 tenant.hydrate_default_language(r.default_language);
-                tenant
+                Ok(tenant)
             })
-            .collect())
+            .collect()
     }
 
     async fn count_all(&self) -> Result<u32, DomainError> {
@@ -148,6 +185,7 @@ impl TenantRepository for DbTenantRepository {
           is_active as "is_active!", can_self_register as "can_self_register!",
           can_self_forgot_password as "can_self_forgot_password!",
           password_hash_secret as "password_hash_secret!",
+          password_hash_secret_sealed as "password_hash_secret_sealed!",
           organization_id as "organization_id!", created_at as "created_at!", updated_at,
           default_language as "default_language!",
           appearance as "appearance?: sqlx::types::Json<serde_json::Value>"
@@ -164,14 +202,15 @@ impl TenantRepository for DbTenantRepository {
         )
         .map_err(map_sqlx_error)?;
 
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|r| {
+                let pepper =
+                    self.open_pepper(r.id, r.password_hash_secret, r.password_hash_secret_sealed)?;
                 let mut tenant = Tenant::reconstruct(
                     r.id,
                     r.name,
                     r.description,
-                    r.password_hash_secret,
+                    pepper,
                     r.is_active,
                     r.can_self_register,
                     r.can_self_forgot_password,
@@ -181,9 +220,9 @@ impl TenantRepository for DbTenantRepository {
                 );
                 tenant.hydrate_appearance(r.appearance.map(|j| j.0));
                 tenant.hydrate_default_language(r.default_language);
-                tenant
+                Ok(tenant)
             })
-            .collect())
+            .collect()
     }
 
     async fn count_for_organization(&self, organization_id: Uuid) -> Result<u32, DomainError> {
@@ -220,21 +259,22 @@ impl TenantRepository for DbTenantRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::TenantNotFound("Tenant not found".to_string()))
+            Err(DomainError::NotFound("Tenant not found".to_string()))
         } else {
             Ok(())
         }
     }
 
     async fn add(&self, tenant: &Tenant) -> Result<(), DomainError> {
+        let sealed_pepper = self.seal_pepper(tenant)?;
         run!(
             self.executor,
             sqlx::query!(
                 r#"
         INSERT INTO tenants (id, name, description, is_active, can_self_register,
-          can_self_forgot_password, password_hash_secret, organization_id,
-          created_at, updated_at, appearance, default_language)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          can_self_forgot_password, password_hash_secret, password_hash_secret_sealed,
+          organization_id, created_at, updated_at, appearance, default_language)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, $9, $10, $11, $12)
         "#,
                 tenant.id(),
                 tenant.name(),
@@ -242,7 +282,7 @@ impl TenantRepository for DbTenantRepository {
                 tenant.is_active(),
                 tenant.can_self_register(),
                 tenant.can_self_forgot_password(),
-                tenant.password_hash_secret(),
+                sealed_pepper,
                 tenant.organization_id(),
                 tenant.created_at(),
                 tenant.updated_at(),
@@ -258,13 +298,15 @@ impl TenantRepository for DbTenantRepository {
     }
 
     async fn update(&self, tenant: &Tenant) -> Result<(), DomainError> {
+        let sealed_pepper = self.seal_pepper(tenant)?;
         let result = run!(
             self.executor,
             sqlx::query!(
                 r#"
         UPDATE tenants
         SET name = $1, description = $2, is_active = $3, can_self_register = $4,
-          can_self_forgot_password = $5, password_hash_secret = $6, updated_at = $7,
+          can_self_forgot_password = $5, password_hash_secret = $6,
+          password_hash_secret_sealed = TRUE, updated_at = $7,
           appearance = $8, default_language = $9
         WHERE id = $10
         "#,
@@ -273,7 +315,7 @@ impl TenantRepository for DbTenantRepository {
                 tenant.is_active(),
                 tenant.can_self_register(),
                 tenant.can_self_forgot_password(),
-                tenant.password_hash_secret(),
+                sealed_pepper,
                 tenant.updated_at(),
                 tenant.appearance().map(sqlx::types::Json)
                     as Option<sqlx::types::Json<&serde_json::Value>>,
@@ -285,7 +327,7 @@ impl TenantRepository for DbTenantRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::TenantNotFound("Tenant not found".to_string()))
+            Err(DomainError::NotFound("Tenant not found".to_string()))
         } else {
             Ok(())
         }
@@ -298,12 +340,12 @@ pub fn map_sqlx_error(e: sqlx::Error) -> DomainError {
     tracing::error!("Database error: {:?}", e);
 
     match e {
-        sqlx::Error::RowNotFound => DomainError::TenantNotFound("Tenant not found".to_string()),
+        sqlx::Error::RowNotFound => DomainError::NotFound("Tenant not found".to_string()),
 
         // A unique-constraint race (e.g. two requests creating the same tenant name)
         // should surface as a conflict, not an opaque 500.
         sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-            DomainError::TenantAlreadyExists("Tenant already exists".to_string())
+            DomainError::Conflict("Tenant already exists".to_string())
         }
 
         _ => DomainError::InfrastructureError("Database error".to_string()), // expand as needed

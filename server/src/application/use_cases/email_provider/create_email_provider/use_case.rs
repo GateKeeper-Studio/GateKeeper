@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -28,8 +30,16 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<ProviderView, DomainError> {
+    pub async fn execute(
+        &self,
+        actor: &Actor,
+        command: Command,
+    ) -> Result<ProviderView, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         if uow
             .tenant_repository()
@@ -37,7 +47,7 @@ impl UseCase {
             .await?
             .is_none()
         {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 command.tenant_id
             )));
@@ -47,7 +57,10 @@ impl UseCase {
         validate_port(command.port)?;
 
         // The SMTP password is encrypted before it ever touches the DB.
-        let password_encrypted = self.secret_cipher.encrypt(&command.password)?;
+        let password_encrypted = self.secret_cipher.encrypt(
+            &command.password,
+            SecretContext::new(SecretPurpose::SmtpPassword, command.tenant_id),
+        )?;
 
         // Single default per tenant: clear any existing default first.
         if command.is_default {

@@ -169,7 +169,7 @@ impl AdminUserRepository for DbAdminUserRepository {
 fn map_admin_write_error(e: sqlx::Error) -> DomainError {
     match &e {
         sqlx::Error::Database(db) if db.is_unique_violation() => {
-            DomainError::UserAlreadyExists("an admin with that email already exists".to_string())
+            DomainError::Conflict("an admin with that email already exists".to_string())
         }
         _ => map_sqlx_error(e),
     }

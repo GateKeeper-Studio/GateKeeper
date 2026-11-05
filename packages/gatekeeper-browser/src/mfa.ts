@@ -110,8 +110,11 @@ export function createMfaClient(options: MfaClientOptions = {}): MfaClient {
         body: JSON.stringify({ name })
       });
     },
-    async removeMethod(id) {
-      await request(`/methods/${id}`, { method: 'DELETE' });
+    async removeMethod(id, currentPassword) {
+      await request(`/methods/${id}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ current_password: currentPassword ?? null })
+      });
     },
     startTotpEnrollment() {
       return request<TotpEnrollment>('/totp', { method: 'POST' });

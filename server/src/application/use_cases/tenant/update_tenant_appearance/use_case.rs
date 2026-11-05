@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::application::ports::unit_of_work::UnitOfWorkFactory;
+use crate::application::shared::actor::Actor;
 use crate::application::use_cases::tenant::update_tenant_appearance::{
     command::{Command, validate_appearance},
     response::Response,
@@ -18,7 +19,10 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
+        // Tenant records belong to an organization: only its platform admins (or
+        // the system) may manage them. See `application/shared/actor.rs`.
+        actor.authorize_organization(command.organization_id)?;
         // Validate before opening a transaction — a bad payload never touches the DB.
         let appearance = validate_appearance(command.appearance)?;
 
@@ -29,10 +33,7 @@ impl UseCase {
             .find_by_id_for_organization(command.tenant_id, command.organization_id)
             .await?
             .ok_or_else(|| {
-                DomainError::TenantNotFound(format!(
-                    "Tenant with id {} not found",
-                    command.tenant_id
-                ))
+                DomainError::NotFound(format!("Tenant with id {} not found", command.tenant_id))
             })?;
 
         tenant.set_appearance(appearance);

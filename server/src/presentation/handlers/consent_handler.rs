@@ -27,7 +27,7 @@ pub async fn list_user_consents(
     Path((_, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_user_consents::query::Query { tenant_id, user_id };
-    let response = state.list_user_consents.execute(query).await?;
+    let response = state.consents.list_user_consents.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -49,7 +49,11 @@ pub async fn revoke_consent(
         user_id,
         client_id,
     };
-    state.revoke_consent.execute(command).await?;
+    state
+        .consents
+        .revoke_consent
+        .execute(&principal.actor(), command)
+        .await?;
     admin_action(
         &state,
         tenant_id,

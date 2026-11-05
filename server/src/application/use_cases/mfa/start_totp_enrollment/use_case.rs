@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use rand::RngCore;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -38,14 +39,14 @@ impl UseCase {
             .find_by_id(command.user_id)
             .await?
             .filter(|u| u.tenant_id() == command.tenant_id && u.is_active())
-            .ok_or_else(|| DomainError::UserNotFound("user not found".to_string()))?;
+            .ok_or_else(|| DomainError::NotFound("user not found".to_string()))?;
 
         // Issuer shown by the authenticator app next to the account label.
         let tenant = uow
             .tenant_repository()
             .find_by_id(command.tenant_id)
             .await?
-            .ok_or_else(|| DomainError::TenantNotFound("tenant not found".to_string()))?;
+            .ok_or_else(|| DomainError::NotFound("tenant not found".to_string()))?;
 
         // One TOTP enrollment per user (DB partial unique index). A confirmed
         // authenticator is a working factor — never silently invalidate it; an
@@ -56,7 +57,7 @@ impl UseCase {
             .await?
         {
             if existing.is_confirmed() {
-                return Err(DomainError::MfaEnrollmentConflict(
+                return Err(DomainError::Conflict(
                     "an authenticator app is already enrolled; remove it before adding a new one"
                         .to_string(),
                 ));
@@ -69,7 +70,10 @@ impl UseCase {
         let mut secret = [0u8; SECRET_BYTES];
         rand::rng().fill_bytes(&mut secret);
         let secret_base32 = base32::encode(base32::Alphabet::Rfc4648 { padding: false }, &secret);
-        let secret_enc = self.secret_cipher.encrypt(&secret_base32)?;
+        let secret_enc = self.secret_cipher.encrypt(
+            &secret_base32,
+            SecretContext::new(SecretPurpose::TotpSeed, command.tenant_id),
+        )?;
 
         let enrollment = MfaEnrollment::new_totp(command.tenant_id, command.user_id, secret_enc);
         let enrollment_id = enrollment.id();

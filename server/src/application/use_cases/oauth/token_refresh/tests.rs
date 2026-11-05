@@ -128,6 +128,7 @@ mod tests {
             Arc::new(FakeAuditLogger::new()),
             DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS,
             risk_engine,
+            crate::testing::password_hasher::test_password_hasher(),
         );
 
         Ctx {

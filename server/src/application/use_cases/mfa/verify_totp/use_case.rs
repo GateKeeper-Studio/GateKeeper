@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -124,7 +125,10 @@ impl UseCase {
                 return Err(invalid());
             }
         };
-        let secret_base32 = self.secret_cipher.decrypt(&encrypted)?;
+        let secret_base32 = self.secret_cipher.decrypt(
+            &encrypted,
+            SecretContext::new(SecretPurpose::TotpSeed, enrollment.tenant_id()),
+        )?;
         let secret =
             match base32::decode(base32::Alphabet::Rfc4648 { padding: false }, &secret_base32) {
                 Some(secret) => secret,

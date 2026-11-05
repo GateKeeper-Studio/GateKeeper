@@ -25,7 +25,11 @@ pub async fn login(
     AppJson(mut payload): AppJson<start::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     payload.provider_name = provider_name;
-    let response = state.external_login_start.execute(payload).await?;
+    let response = state
+        .authentication
+        .external_login_start
+        .execute(payload)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -71,7 +75,11 @@ pub async fn callback(
         ip_address: ctx.ip_address.clone(),
         user_agent: ctx.user_agent.clone(),
     };
-    let result = state.external_login_callback.execute(command).await?;
+    let result = state
+        .authentication
+        .external_login_callback
+        .execute(command)
+        .await?;
 
     // Build the OAuth success redirect back to the client app. The raw code
     // travels in the URL exactly once.

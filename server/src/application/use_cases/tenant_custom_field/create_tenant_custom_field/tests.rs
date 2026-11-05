@@ -77,7 +77,13 @@ mod tests {
     async fn creates_field_definition() {
         let (fields, tenant_id, use_case) = setup();
 
-        let response = use_case.execute(make_command(tenant_id)).await.unwrap();
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant_id),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(response.field_key, "shirt_size");
         assert_eq!(response.field_type, "select");
@@ -88,19 +94,34 @@ mod tests {
     async fn fails_when_tenant_missing() {
         let (_, _, use_case) = setup();
         let err = use_case
-            .execute(make_command(Uuid::now_v7()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(Uuid::now_v7()),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
     async fn fails_on_duplicate_field_key() {
         let (_, tenant_id, use_case) = setup();
-        use_case.execute(make_command(tenant_id)).await.unwrap();
+        use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant_id),
+            )
+            .await
+            .unwrap();
 
-        let err = use_case.execute(make_command(tenant_id)).await.unwrap_err();
-        assert!(matches!(err, DomainError::CustomFieldKeyAlreadyExists(_)));
+        let err = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant_id),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 
     #[tokio::test]
@@ -109,8 +130,11 @@ mod tests {
         let mut command = make_command(tenant_id);
         command.field_key = "Not Valid!".to_string();
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -119,8 +143,11 @@ mod tests {
         let mut command = make_command(tenant_id);
         command.options = None;
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -129,7 +156,10 @@ mod tests {
         let mut command = make_command(tenant_id);
         command.field_type = "richtext".to_string();
 
-        let err = use_case.execute(command).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 
@@ -141,13 +171,19 @@ mod tests {
             command.field_key = format!("field_{i}");
             command.field_type = "text".to_string();
             command.options = None;
-            use_case.execute(command).await.unwrap();
+            use_case
+                .execute(&crate::application::shared::actor::Actor::System, command)
+                .await
+                .unwrap();
         }
 
         let mut command = make_command(tenant_id);
         command.field_key = "one_too_many".to_string();
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::CustomFieldLimitReached(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -158,8 +194,11 @@ mod tests {
         // an "es"-only label leaves that required key unfilled.
         command.label = locale_map(&[("es", "Talla")]);
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -168,8 +207,11 @@ mod tests {
         let mut command = make_command(tenant_id);
         command.label = locale_map(&[("en", "Shirt size"), ("fr", "Taille")]);
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -178,8 +220,11 @@ mod tests {
         let mut command = make_command(tenant_id);
         command.options = Some(vec![locale_map(&[("en", "S")]), locale_map(&[("en", "S")])]);
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -188,7 +233,10 @@ mod tests {
         let mut command = make_command(tenant_id);
         command.options = Some(vec![locale_map(&[("en", "S")]), locale_map(&[("es", "M")])]);
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 }

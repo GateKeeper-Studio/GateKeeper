@@ -130,7 +130,7 @@ mod tests {
             .execute(command(&ctx, id, Some("mine")))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::MfaEnrollmentNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
         assert_eq!(stored_name(&ctx, id).as_deref(), Some("theirs"));
     }
 }

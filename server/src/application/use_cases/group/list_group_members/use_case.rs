@@ -30,7 +30,7 @@ impl UseCase {
     pub async fn execute(&self, query: Query) -> Result<PagedContent<Response>, DomainError> {
         let tenant = self.tenant_repository.find_by_id(query.tenant_id).await?;
         if tenant.is_none() {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 query.tenant_id
             )));
@@ -42,7 +42,7 @@ impl UseCase {
             .await?
             .filter(|g| g.tenant_id() == query.tenant_id)
             .ok_or_else(|| {
-                DomainError::GroupNotFound(format!("Group with id {} not found", query.group_id))
+                DomainError::NotFound(format!("Group with id {} not found", query.group_id))
             })?;
 
         let page = query.page.unwrap_or(1).max(1);

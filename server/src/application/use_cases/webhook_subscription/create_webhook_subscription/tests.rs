@@ -74,7 +74,13 @@ mod tests {
         let tenant_id = Uuid::now_v7();
         let (use_case, subscriptions) = setup(tenant_id, false);
 
-        let response = use_case.execute(command(tenant_id)).await.unwrap();
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(response.subscription.name, "User sync");
         assert_eq!(response.subscription.event_types, vec!["user.created"]);
@@ -95,7 +101,13 @@ mod tests {
         let tenant_id = Uuid::now_v7();
         let (use_case, _) = setup(tenant_id, false);
 
-        let response = use_case.execute(command(tenant_id)).await.unwrap();
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id),
+            )
+            .await
+            .unwrap();
         let serialized = serde_json::to_string(&response.subscription).unwrap();
 
         assert!(!serialized.contains(&response.secret));
@@ -107,8 +119,20 @@ mod tests {
         let tenant_id = Uuid::now_v7();
         let (use_case, _) = setup(tenant_id, false);
 
-        let first = use_case.execute(command(tenant_id)).await.unwrap();
-        let second = use_case.execute(command(tenant_id)).await.unwrap();
+        let first = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id),
+            )
+            .await
+            .unwrap();
+        let second = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id),
+            )
+            .await
+            .unwrap();
 
         assert_ne!(first.secret, second.secret);
     }
@@ -123,7 +147,10 @@ mod tests {
         let mut cmd = command(tenant_id);
         cmd.url = "https://169.254.169.254/latest/meta-data/".to_string();
 
-        let err = use_case.execute(cmd).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
         assert!(subscriptions.memory.data.lock().unwrap().is_empty());
     }
@@ -137,7 +164,9 @@ mod tests {
         cmd.url = "https://10.0.0.5/hook".to_string();
 
         assert!(matches!(
-            use_case.execute(cmd).await,
+            use_case
+                .execute(&crate::application::shared::actor::Actor::System, cmd)
+                .await,
             Err(DomainError::InvalidRequest(_))
         ));
     }
@@ -150,7 +179,12 @@ mod tests {
         let mut cmd = command(tenant_id);
         cmd.url = "http://127.0.0.1:9099/hook".to_string();
 
-        assert!(use_case.execute(cmd).await.is_ok());
+        assert!(
+            use_case
+                .execute(&crate::application::shared::actor::Actor::System, cmd)
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -162,7 +196,9 @@ mod tests {
         cmd.event_types = vec!["user.create".to_string()];
 
         assert!(matches!(
-            use_case.execute(cmd).await,
+            use_case
+                .execute(&crate::application::shared::actor::Actor::System, cmd)
+                .await,
             Err(DomainError::InvalidRequest(_))
         ));
     }
@@ -175,7 +211,10 @@ mod tests {
         let mut cmd = command(tenant_id);
         cmd.event_types = vec![];
 
-        let response = use_case.execute(cmd).await.unwrap();
+        let response = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap();
         assert!(response.subscription.event_types.is_empty());
     }
 
@@ -183,7 +222,13 @@ mod tests {
     async fn fails_for_an_unknown_tenant() {
         let (use_case, _) = setup(Uuid::now_v7(), false);
 
-        let err = use_case.execute(command(Uuid::now_v7())).await.unwrap_err();
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        let err = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(Uuid::now_v7()),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

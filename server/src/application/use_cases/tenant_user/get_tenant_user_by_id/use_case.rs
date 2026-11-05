@@ -28,7 +28,7 @@ impl UseCase {
         let tenant = self.tenant_repository.find_by_id(query.tenant_id).await?;
 
         if tenant.is_none() {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 query.tenant_id
             )));
@@ -42,11 +42,11 @@ impl UseCase {
             // different tenant they don't belong to.
             .filter(|u| u.tenant_id() == query.tenant_id)
             .ok_or_else(|| {
-                DomainError::UserNotFound(format!("User with id {} not found", query.user_id))
+                DomainError::NotFound(format!("User with id {} not found", query.user_id))
             })?;
 
         let profile = user.profile().ok_or_else(|| {
-            DomainError::UserNotFound(format!("User with id {} has no profile", query.user_id))
+            DomainError::NotFound(format!("User with id {} has no profile", query.user_id))
         })?;
 
         Ok(Response {

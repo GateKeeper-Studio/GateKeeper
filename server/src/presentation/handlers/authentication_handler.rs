@@ -38,7 +38,7 @@ pub async fn register(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.register.execute(payload).await?;
+    let response = state.authentication.register.execute(payload).await?;
 
     Ok((StatusCode::CREATED, Json(response)))
 }
@@ -63,7 +63,7 @@ pub async fn login(
     payload.ip_address = ctx.ip_address.clone();
     payload.user_agent = ctx.user_agent.clone();
 
-    match state.login.execute(payload).await {
+    match state.authentication.login.execute(payload).await {
         Ok(response) => {
             let actor = Uuid::parse_str(&response.user_id).ok();
             let event = AuditEvent::new(
@@ -103,7 +103,11 @@ pub async fn authorize(
     State(state): State<AppState>,
     AppJson(payload): AppJson<authorize_session::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let response = state.authorize_session.execute(payload).await?;
+    let response = state
+        .authentication
+        .authorize_session
+        .execute(payload)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -122,7 +126,11 @@ pub async fn refresh_session(
     State(state): State<AppState>,
     AppJson(payload): AppJson<refresh_session::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let response = state.refresh_session.execute(payload).await?;
+    let response = state
+        .authentication
+        .refresh_session
+        .execute(payload)
+        .await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -136,7 +144,7 @@ pub async fn confirm_email(
     State(state): State<AppState>,
     AppJson(payload): AppJson<confirm_email::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let response = state.confirm_email.execute(payload).await?;
+    let response = state.authentication.confirm_email.execute(payload).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -149,7 +157,11 @@ pub async fn resend_confirm_email(
     State(state): State<AppState>,
     AppJson(payload): AppJson<resend_confirm_email::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    state.resend_confirm_email.execute(payload).await?;
+    state
+        .authentication
+        .resend_confirm_email
+        .execute(payload)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -165,7 +177,11 @@ pub async fn forgot_password(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.validate().map_err(ApiError::Validation)?;
 
-    state.forgot_password.execute(payload).await?;
+    state
+        .authentication
+        .forgot_password
+        .execute(payload)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -181,7 +197,7 @@ pub async fn reset_password(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.validate().map_err(ApiError::Validation)?;
 
-    state.reset_password.execute(payload).await?;
+    state.authentication.reset_password.execute(payload).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -199,7 +215,11 @@ pub async fn change_password(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.validate().map_err(ApiError::Validation)?;
 
-    state.change_password.execute(payload).await?;
+    state
+        .authentication
+        .change_password
+        .execute(payload)
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -224,6 +244,7 @@ pub async fn client_auth_data(
     Query(params): Query<ClientAuthDataParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .oauth_clients
         .get_client_auth_data
         .execute(get_client_auth_data::query::Query {
             client_id,

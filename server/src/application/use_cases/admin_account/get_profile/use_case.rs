@@ -21,9 +21,7 @@ impl UseCase {
             .admin_repository
             .find_by_id(query.admin_id)
             .await?
-            .ok_or_else(|| {
-                DomainError::UserNotFound(format!("admin {} not found", query.admin_id))
-            })?;
+            .ok_or_else(|| DomainError::NotFound(format!("admin {} not found", query.admin_id)))?;
 
         Ok(Response {
             id: admin.id(),

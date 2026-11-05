@@ -14,6 +14,8 @@ pub struct VerifiedToken {
 }
 
 #[async_trait]
+// Verifies an ACCESS token: signature (by `kid`), issuer, expiry and the
+// `typ: at+jwt` header. ID tokens and any other JWT class are rejected.
 pub trait TokenVerifier: Send + Sync {
     // Verifies `token` against the tenant's PUBLISHED keys (active + retiring),
     // selecting the right one by the `kid` in the JWT header. Asymmetric only —

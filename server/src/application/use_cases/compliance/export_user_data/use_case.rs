@@ -45,9 +45,7 @@ impl UseCase {
             .find_by_id_with_profile(query.user_id)
             .await?
             .filter(|u| u.tenant_id() == query.tenant_id)
-            .ok_or_else(|| {
-                DomainError::UserNotFound(format!("user {} not found", query.user_id))
-            })?;
+            .ok_or_else(|| DomainError::NotFound(format!("user {} not found", query.user_id)))?;
 
         let profile = user.profile();
         let exported_user = ExportedUser {

@@ -204,12 +204,14 @@ rather than redeemed.
 ## 5. Platform-admin authentication
 
 Admins are global (organization-scoped, not tenant-scoped) and use **HS256** tokens
-signed with the server-wide `JWT_SECRET` (`AdminTokenService`). These endpoints live
+(15-minute TTL, `typ: "admin"`, `kid` header) signed with `ADMIN_TOKEN_SIGNING_KEY`
+(`AdminTokenService`). The key rotates without logging admins out: the previous key in
+`ADMIN_TOKEN_PREVIOUS_SIGNING_KEY` keeps verifying for one token lifetime. These endpoints live
 **outside** the admin guard (they're how an admin *gets* a token):
 
 | Endpoint | Use case | Purpose |
 |---|---|---|
-| `POST /admin/login` | `admin_login` | Verify admin password (Argon2 + `JWT_SECRET` pepper) → issue access token + refresh token |
+| `POST /admin/login` | `admin_login` | Verify admin password (Argon2 + `ADMIN_PASSWORD_PEPPER`; an unknown admin pays a dummy verification so timing does not reveal it) → issue access token + refresh token |
 | `POST /admin/refresh` | `admin_refresh` | Rotate the refresh token → new access token |
 | `POST /admin/logout` | `admin_logout` | Revoke the refresh-token family (server-side sign-out) |
 
@@ -219,7 +221,7 @@ Bootstrap the first admin from the CLI:
 cargo run --bin create_admin -- <email> <password> [organization_id]
 ```
 
-It hashes with the same `JWT_SECRET` pepper the running API verifies against, and
+It hashes with the same `ADMIN_PASSWORD_PEPPER` (legacy: `JWT_SECRET`) the running API verifies against, and
 attaches the admin to the given organization (or a find-or-created "Default
 Organization").
 
@@ -229,35 +231,38 @@ Organization").
 
 `presentation/middleware/auth.rs` runs on protected routes:
 
-- **`require_auth`** — any valid token (used by `/me/*`).
-- **`require_admin`** — valid token **and** an admin role (`admin` / `tenant_admin`);
-  records `admin.access_denied` audit events on failure.
+- **`require_auth`** — a valid tenant **access** token with the **`account`** scope
+  (used by `/me/*`). Platform-admin tokens are refused (they use `/admin/me`).
+- **`require_admin`** — a platform-admin token, **or** a tenant access token with an
+  admin role (`admin` / `tenant_admin`) **and** the **`admin`** scope; records
+  `admin.access_denied` audit events on failure. Without the scope checks, any OAuth
+  client of a tenant received tokens that opened these APIs.
+- Destructive self-service calls (`DELETE /me`, `DELETE /me/mfa/methods/{id}`) also
+  need `{"current_password": "..."}` in the body (step-up, `step_up_required` 403).
 
 Token verification picks the right path automatically:
 
-1. **HS256** header ⇒ a **platform-admin** token, verified with `JWT_SECRET`. Yields
-   a principal with `is_platform_admin = true`, no tenant, authorized across all
-   tenants.
-2. Otherwise it's a **tenant ES256** token: the unverified `tid` claim selects which
-   tenant's **published** keys to verify against, then the signature is verified for
-   real. The principal is pinned to that tenant.
+1. **HS256** header ⇒ a **platform-admin** token, verified by `AdminTokenService`
+   (key by `kid`, `typ` must be `admin`). Yields a principal with
+   `is_platform_admin = true`, no tenant, authorized for the tenants **of its
+   organization**.
+2. Otherwise it's a **tenant ES256 access token** (`typ: at+jwt`; ID tokens are
+   refused): the unverified `tid` claim selects which tenant's **published** keys to
+   verify against, then the signature is verified for real. The principal is pinned
+   to that tenant.
 
 The resulting **`AuthPrincipal`** (`user_id`, `tenant_id`, `roles`, `groups`,
 `scopes`, `is_platform_admin`) is placed in request extensions. Handlers pull it via
-the `AuthPrincipal` extractor and enforce tenant isolation with
-`principal.can_access_tenant(tenant_id)` — a platform admin passes for any tenant; a
-tenant-scoped caller only for its own. A **`RequestContext`** (client IP, User-Agent)
-is captured app-wide by the `capture_client_context` middleware: the IP is taken from
-`X-Forwarded-For` (left-most hop) / `X-Real-IP` when behind a proxy and **falls back to
-the TCP peer address** otherwise (so a direct, unproxied deployment still gets a real
-client IP). It feeds both audit logging and the adaptive risk engine — geolocation and
-the new-country / impossible-travel / new-device signals. (`X-Forwarded-For` is
-client-spoofable, so trust it only behind a proxy that overwrites it; the socket address
-is the unspoofable fallback.)
-
-> `REQUIRE_ADMIN_AUTH=false` turns `require_admin` into best-effort mode (parses a
-> token for audit attribution but does not block) — a dashboard-rollout aid only.
-> Keep it `true` in any shared environment.
+the `AuthPrincipal` extractor and enforce tenant isolation with the `TenantScope`
+extractor — a platform admin passes for the tenants of its own organization; a
+tenant-scoped caller only for its own tenant. A **`RequestContext`** (client IP,
+User-Agent) is captured app-wide by the `capture_client_context` middleware. The IP is
+the **TCP peer address** unless that peer is listed in `TRUSTED_PROXIES`; only then is
+`X-Forwarded-For` believed, read **from the right** (the first address that is not a
+trusted proxy), with `X-Real-IP` as a fallback (`middleware/client_ip.rs`). The same
+value keys the rate limiter and feeds audit logging and the adaptive risk engine —
+geolocation and the new-country / impossible-travel / new-device signals — so a client
+cannot pick its own IP.
 
 ---
 
@@ -273,6 +278,8 @@ is the unspoofable fallback.)
 | Refresh token | 30 days | hash only, rotating + reuse detection |
 | Email verification / reset / change tokens | short-lived | hash only, single-use |
 
-All passwords use Argon2id with a per-tenant pepper (admin passwords: `JWT_SECRET`
-pepper); all opaque credentials are returned once and persisted only as SHA-256
-hashes.
+All passwords use Argon2id with a per-tenant pepper (generated by the server, sealed
+at rest; admin passwords: `ADMIN_PASSWORD_PEPPER`), run on the blocking pool behind a
+concurrency limit (`PasswordHasher` port). OAuth client secrets (256 random bits) are
+stored as HMAC-SHA-256 keyed with the tenant pepper. All other opaque credentials are
+returned once and persisted only as SHA-256 hashes.

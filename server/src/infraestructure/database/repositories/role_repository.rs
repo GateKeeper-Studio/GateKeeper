@@ -354,9 +354,9 @@ pub fn map_sqlx_error(e: sqlx::Error) -> DomainError {
     tracing::error!("Database error: {:?}", e);
 
     match e {
-        sqlx::Error::RowNotFound => DomainError::RoleNotFound("Role not found".to_string()),
+        sqlx::Error::RowNotFound => DomainError::NotFound("Role not found".to_string()),
         sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-            DomainError::RoleAlreadyExists("Role already exists".to_string())
+            DomainError::Conflict("Role already exists".to_string())
         }
         _ => DomainError::InfrastructureError("Database error".to_string()),
     }

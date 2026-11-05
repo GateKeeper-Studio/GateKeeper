@@ -21,6 +21,9 @@ export function idpBaseUrl(): string {
  * adaptive risk engine. Without this header every admin request would arrive
  * wearing the dashboard's IP, so one admin tripping the credential rate limit
  * would lock out all of them, and audit trails would name the wrong host.
+ *
+ * The IdP believes this header only from peers listed in its TRUSTED_PROXIES
+ * setting — add this dashboard server's address there.
  */
 function forwardedHeaders(clientAddress: string | null): Record<string, string> {
 	return clientAddress ? { 'x-forwarded-for': clientAddress } : {};

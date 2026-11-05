@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -26,8 +27,17 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+
+        let tenant = uow
+            .tenant_repository()
+            .find_by_id(command.tenant_id)
+            .await?
+            .ok_or_else(|| {
+                DomainError::NotFound(format!("tenant {} not found", command.tenant_id))
+            })?;
+        actor.authorize_account(&tenant, command.user_id)?;
 
         // Tenant isolation: a user from another tenant is treated as not found.
         let user = uow
@@ -35,9 +45,7 @@ impl UseCase {
             .find_by_id(command.user_id)
             .await?
             .filter(|u| u.tenant_id() == command.tenant_id)
-            .ok_or_else(|| {
-                DomainError::UserNotFound(format!("user {} not found", command.user_id))
-            })?;
+            .ok_or_else(|| DomainError::NotFound(format!("user {} not found", command.user_id)))?;
 
         // Scrub PII + deactivate (refuses with AccessDenied under legal hold).
         uow.user_repository().anonymize(user.id()).await?;

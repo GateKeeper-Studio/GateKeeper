@@ -31,6 +31,7 @@ pub async fn userinfo(
     };
 
     match state
+        .oauth
         .userinfo
         .execute(userinfo::query::Query {
             tenant_id: params.tenant_id,

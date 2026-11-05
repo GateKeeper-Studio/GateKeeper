@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::application::ports::unit_of_work::UnitOfWorkFactory;
+use crate::application::shared::actor::Actor;
 use crate::application::use_cases::tenant_user::update_tenant_user_by_id::{
     command::Command, response::Response,
 };
@@ -21,8 +22,12 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         let tenant = uow
             .tenant_repository()
@@ -30,7 +35,7 @@ impl UseCase {
             .await?;
 
         if tenant.is_none() {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 command.tenant_id
             )));
@@ -42,7 +47,7 @@ impl UseCase {
             .await?
             .filter(|u| u.tenant_id() == command.tenant_id)
             .ok_or_else(|| {
-                DomainError::UserNotFound(format!("User with id {} not found", command.user_id))
+                DomainError::NotFound(format!("User with id {} not found", command.user_id))
             })?;
 
         let profile = UserProfile::new(
@@ -65,7 +70,7 @@ impl UseCase {
         uow.commit().await?;
 
         let updated_profile = user.profile().ok_or_else(|| {
-            DomainError::UserNotFound(format!("User with id {} has no profile", user.id()))
+            DomainError::NotFound(format!("User with id {} has no profile", user.id()))
         })?;
 
         Ok(Response {

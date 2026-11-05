@@ -75,7 +75,10 @@ mod tests {
         let (use_case, subscriptions) = setup(Some(&sub));
 
         let response = use_case
-            .execute(command(tenant_id, sub.id()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id, sub.id()),
+            )
             .await
             .unwrap();
 
@@ -96,7 +99,10 @@ mod tests {
         let (use_case, subscriptions) = setup(Some(&sub));
 
         let response = use_case
-            .execute(command(tenant_id, sub.id()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id, sub.id()),
+            )
             .await
             .unwrap();
 
@@ -117,7 +123,10 @@ mod tests {
         let mut cmd = command(tenant_id, sub.id());
         cmd.rotate_secret = true;
 
-        let response = use_case.execute(cmd).await.unwrap();
+        let response = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap();
         let secret = response.secret.expect("a rotated secret must be returned");
 
         let stored = subscriptions.memory.data.lock().unwrap();
@@ -138,7 +147,9 @@ mod tests {
         cmd.url = "https://169.254.169.254/latest/meta-data/".to_string();
 
         assert!(matches!(
-            use_case.execute(cmd).await,
+            use_case
+                .execute(&crate::application::shared::actor::Actor::System, cmd)
+                .await,
             Err(DomainError::InvalidRequest(_))
         ));
         // Unchanged on disk.
@@ -159,7 +170,9 @@ mod tests {
         cmd.event_types = vec!["user.renamed".to_string()];
 
         assert!(matches!(
-            use_case.execute(cmd).await,
+            use_case
+                .execute(&crate::application::shared::actor::Actor::System, cmd)
+                .await,
             Err(DomainError::InvalidRequest(_))
         ));
     }
@@ -169,10 +182,13 @@ mod tests {
         let (use_case, _) = setup(None);
 
         let err = use_case
-            .execute(command(Uuid::now_v7(), Uuid::now_v7()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(Uuid::now_v7(), Uuid::now_v7()),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::WebhookSubscriptionNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     // Tenant isolation: the lookup is scoped, so another tenant's id is a 404 rather
@@ -185,9 +201,12 @@ mod tests {
 
         let attacker = Uuid::now_v7();
         let err = use_case
-            .execute(command(attacker, sub.id()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(attacker, sub.id()),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::WebhookSubscriptionNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

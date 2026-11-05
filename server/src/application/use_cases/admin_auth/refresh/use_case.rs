@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::shared::token_policy::REFRESH_TOKEN_TTL_DAYS;
 use crate::{
     application::{
         ports::{admin_token_issuer::AdminTokenIssuer, audit_logger::AuditLogger},
@@ -20,8 +21,6 @@ use crate::{
     },
     utils::oauth_crypto::{generate_opaque_token, sha256_hex},
 };
-
-const REFRESH_TOKEN_TTL_DAYS: i64 = 30;
 
 // Exchange a valid admin refresh token for a fresh access token, ROTATING the
 // refresh token (mint a successor, invalidate the presented one). Core security

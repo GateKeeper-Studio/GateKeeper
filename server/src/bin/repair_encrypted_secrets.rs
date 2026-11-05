@@ -4,9 +4,14 @@
 //
 //   cargo run --bin repair_encrypted_secrets            # dry run: report only
 //   cargo run --bin repair_encrypted_secrets -- --apply # write the fixes
+//   cargo run --bin repair_encrypted_secrets -- --reseal
+//       # upgrade every readable secret to the current format/key (the server also
+//       # does this at startup); use it after rotating SECRETS_ENCRYPTION_KEY, then
+//       # drop the old key from SECRETS_ENCRYPTION_PREVIOUS_KEYS.
 //
 // Secrets (tenant signing keys, TOTP seeds, SMTP passwords, webhook secrets, IdP
-// client secrets) are sealed with AES-256-GCM under EMAIL_ENCRYPTION_KEY. If that key
+// client secrets, tenant peppers) are sealed with AES-256-GCM under
+// SECRETS_ENCRYPTION_KEY (and any SECRETS_ENCRYPTION_PREVIOUS_KEYS). If that key
 // changes — or was derived differently when the rows were written — every older row
 // fails with "secret decryption failed" and surfaces as an opaque HTTP 500.
 //
@@ -18,19 +23,23 @@
 //   - SMTP passwords, webhook secrets, IdP client secrets: REPORT ONLY. An operator
 //     has to re-enter the plaintext (dashboard / admin API).
 //
-// It reads the same .env as the API, so it must run with the same EMAIL_ENCRYPTION_KEY.
+// It reads the same .env as the API, so it must run with the same SECRETS_ENCRYPTION_KEY.
 
 use std::sync::Arc;
 
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 use web_api::{
-    application::ports::{secret_cipher::SecretCipher, signing_key_generator::SigningKeyGenerator},
+    application::ports::{
+        secret_cipher::{SecretCipher, SecretContext, SecretPurpose},
+        signing_key_generator::SigningKeyGenerator,
+    },
     domain::repositories::signing_key_repository::SigningKeyRepository,
     infraestructure::{
         config::AppConfig,
         crypto::{
             aes_gcm_secret_cipher::AesGcmSecretCipher, ecdsa_key_generator::EcdsaKeyGenerator,
+            secret_reseal::reseal_legacy_secrets,
         },
         database::{
             database_pool::create_database_pool,
@@ -42,14 +51,33 @@ use web_api::{
 #[tokio::main]
 async fn main() {
     let apply = std::env::args().skip(1).any(|a| a == "--apply");
+    let reseal = std::env::args().skip(1).any(|a| a == "--reseal");
 
     let config = AppConfig::from_env();
-    let pool = create_database_pool(&config.database_url).await;
-    let cipher: Arc<dyn SecretCipher> = Arc::new(AesGcmSecretCipher::new(config.email_encryption_key));
+    let pool = create_database_pool(&config.database_url, &config.database).await;
+    let cipher: Arc<dyn SecretCipher> = Arc::new(AesGcmSecretCipher::from_config(&config));
+
+    if reseal {
+        match reseal_legacy_secrets(&pool, cipher.as_ref()).await {
+            Ok(report) => println!(
+                "re-sealed {} secret(s); {} unreadable (run without --reseal to inspect)",
+                report.resealed, report.unreadable
+            ),
+            Err(e) => {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
 
     eprintln!(
         "# mode: {}",
-        if apply { "APPLY (writing)" } else { "dry run (pass --apply to write)" }
+        if apply {
+            "APPLY (writing)"
+        } else {
+            "dry run (pass --apply to write)"
+        }
     );
 
     if let Err(e) = run(&pool, cipher, apply).await {
@@ -65,7 +93,8 @@ async fn run(pool: &PgPool, cipher: Arc<dyn SecretCipher>, apply: bool) -> Resul
         pool,
         &cipher,
         "tenant_emails",
-        "SELECT id, password_encrypted AS enc FROM tenant_emails",
+        "SELECT id, tenant_id, password_encrypted AS enc FROM tenant_emails",
+        SecretPurpose::SmtpPassword,
         "SMTP password — re-save the email provider in the dashboard",
     )
     .await?;
@@ -73,7 +102,8 @@ async fn run(pool: &PgPool, cipher: Arc<dyn SecretCipher>, apply: bool) -> Resul
         pool,
         &cipher,
         "webhook_subscriptions",
-        "SELECT id, secret_encrypted AS enc FROM webhook_subscriptions",
+        "SELECT id, tenant_id, secret_encrypted AS enc FROM webhook_subscriptions",
+        SecretPurpose::WebhookSecret,
         "webhook signing secret — rotate/re-create the subscription",
     )
     .await?;
@@ -81,7 +111,8 @@ async fn run(pool: &PgPool, cipher: Arc<dyn SecretCipher>, apply: bool) -> Resul
         pool,
         &cipher,
         "external_identity_providers",
-        "SELECT id, provider_client_secret_encrypted AS enc FROM external_identity_providers",
+        "SELECT id, tenant_id, provider_client_secret_encrypted AS enc FROM external_identity_providers",
+        SecretPurpose::ExternalIdpClientSecret,
         "IdP client secret — re-save the provider with its client secret",
     )
     .await?;
@@ -105,10 +136,23 @@ async fn repair_signing_keys(
         .collect();
 
     for tenant_id in tenants {
-        let active = repo.find_active(tenant_id).await.map_err(|e| e.to_string())?;
+        let active = repo
+            .find_active(tenant_id)
+            .await
+            .map_err(|e| e.to_string())?;
         match active {
-            Some(mut key) if cipher.decrypt(key.private_key_encrypted()).is_err() => {
-                println!("signing key  tenant={tenant_id} kid={}: UNREADABLE -> replace", key.kid());
+            Some(mut key)
+                if cipher
+                    .decrypt(
+                        key.private_key_encrypted(),
+                        SecretContext::new(SecretPurpose::SigningKey, tenant_id),
+                    )
+                    .is_err() =>
+            {
+                println!(
+                    "signing key  tenant={tenant_id} kid={}: UNREADABLE -> replace",
+                    key.kid()
+                );
                 if apply {
                     // Retired (not deleted): out of the JWKS, row kept for the audit trail.
                     key.retire();
@@ -138,7 +182,7 @@ async fn repair_totp(
     apply: bool,
 ) -> Result<(), String> {
     let rows = sqlx::query(
-        "SELECT id, user_id, secret_enc FROM mfa_enrollments \
+        "SELECT id, tenant_id, user_id, secret_enc FROM mfa_enrollments \
          WHERE method = 'totp' AND secret_enc IS NOT NULL",
     )
     .fetch_all(pool)
@@ -147,13 +191,17 @@ async fn repair_totp(
 
     for row in rows {
         let id: Uuid = row.get("id");
+        let tenant_id: Uuid = row.get("tenant_id");
         let user_id: Uuid = row.get("user_id");
         let enc: String = row.get("secret_enc");
-        if cipher.decrypt(&enc).is_ok() {
+        let context = SecretContext::new(SecretPurpose::TotpSeed, tenant_id);
+        if cipher.decrypt(&enc, context).is_ok() {
             println!("totp         enrollment={id} user={user_id}: ok");
             continue;
         }
-        println!("totp         enrollment={id} user={user_id}: UNREADABLE -> delete (user re-enrolls)");
+        println!(
+            "totp         enrollment={id} user={user_id}: UNREADABLE -> delete (user re-enrolls)"
+        );
         if apply {
             sqlx::query("DELETE FROM mfa_enrollments WHERE id = $1")
                 .bind(id)
@@ -171,6 +219,7 @@ async fn report_only(
     cipher: &Arc<dyn SecretCipher>,
     table: &str,
     sql: &'static str,
+    purpose: SecretPurpose,
     advice: &str,
 ) -> Result<(), String> {
     let rows = sqlx::query(sql)
@@ -180,8 +229,12 @@ async fn report_only(
 
     for row in rows {
         let id: Uuid = row.get("id");
+        let tenant_id: Uuid = row.get("tenant_id");
         let enc: String = row.get("enc");
-        if cipher.decrypt(&enc).is_ok() {
+        if cipher
+            .decrypt(&enc, SecretContext::new(purpose, tenant_id))
+            .is_ok()
+        {
             println!("{table:<13} id={id}: ok");
         } else {
             println!("{table:<13} id={id}: UNREADABLE (manual) — {advice}");

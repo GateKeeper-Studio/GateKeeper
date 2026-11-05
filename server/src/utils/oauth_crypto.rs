@@ -35,6 +35,23 @@ pub fn hash_token(token: &str) -> String {
 // Derives the PKCE S256 challenge from a verifier: BASE64URL(SHA256(verifier)).
 // A provider verifies rather than generates these, but this is handy for clients
 // and tests.
+// Hex HMAC-SHA-256 of `message` under `key`. Used for high-entropy secrets
+// (OAuth client secrets) where a slow password hash buys nothing: the input is
+// 256 random bits, so the keyed hash only has to be one-way and keyed.
+pub fn hmac_sha256_hex(key: &str, message: &str) -> String {
+    use hmac::{Hmac, Mac};
+    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key.as_bytes())
+        .expect("HMAC accepts keys of any length");
+    mac.update(message.as_bytes());
+    hex::encode(mac.finalize().into_bytes())
+}
+
+// Constant-time string equality, so a comparison does not leak how many leading
+// bytes matched.
+pub fn constant_time_eq(a: &str, b: &str) -> bool {
+    a.as_bytes().ct_eq(b.as_bytes()).into()
+}
+
 pub fn pkce_challenge_s256(code_verifier: &str) -> String {
     let digest = Sha256::digest(code_verifier.as_bytes());
     URL_SAFE_NO_PAD.encode(digest)

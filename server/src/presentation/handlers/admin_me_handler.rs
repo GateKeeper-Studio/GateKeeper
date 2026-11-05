@@ -29,7 +29,11 @@ pub async fn get_my_organization(
 ) -> Result<impl IntoResponse, ApiError> {
     let organization_id = principal.require_org()?;
     let query = get_organization_by_id::query::Query { organization_id };
-    let response = state.get_organization_by_id.execute(query).await?;
+    let response = state
+        .organization
+        .get_organization_by_id
+        .execute(query)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -42,7 +46,11 @@ pub async fn update_my_organization(
     let organization_id = principal.require_org()?;
     payload.validate().map_err(ApiError::Validation)?;
     payload.organization_id = organization_id; // pin to the caller's org
-    let response = state.update_organization.execute(payload).await?;
+    let response = state
+        .organization
+        .update_organization
+        .execute(&principal.actor(), payload)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -59,7 +67,7 @@ pub async fn get_my_profile(
     let query = get_profile::query::Query {
         admin_id: principal.user_id,
     };
-    let response = state.get_my_profile.execute(query).await?;
+    let response = state.admin.get_my_profile.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -72,7 +80,7 @@ pub async fn update_my_profile(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.validate().map_err(ApiError::Validation)?;
     payload.admin_id = principal.user_id; // pin to the caller
-    let response = state.update_my_profile.execute(payload).await?;
+    let response = state.admin.update_my_profile.execute(payload).await?;
 
     let event = AuditEvent::new(
         None,
@@ -97,7 +105,7 @@ pub async fn change_my_password(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.validate().map_err(ApiError::Validation)?;
     payload.admin_id = principal.user_id; // pin to the caller
-    state.change_my_password.execute(payload).await?;
+    state.admin.change_my_password.execute(payload).await?;
 
     let event = AuditEvent::new(
         None,
@@ -122,7 +130,7 @@ pub async fn deactivate_my_account(
     let command = deactivate_account::command::Command {
         admin_id: principal.user_id,
     };
-    state.deactivate_my_account.execute(command).await?;
+    state.admin.deactivate_my_account.execute(command).await?;
 
     let event = AuditEvent::new(
         None,

@@ -213,7 +213,7 @@ impl WebhookSubscriptionRepository for DbWebhookSubscriptionRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::WebhookSubscriptionNotFound(
+            Err(DomainError::NotFound(
                 "Webhook subscription not found".to_string(),
             ))
         } else {
@@ -234,7 +234,7 @@ impl WebhookSubscriptionRepository for DbWebhookSubscriptionRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::WebhookSubscriptionNotFound(
+            Err(DomainError::NotFound(
                 "Webhook subscription not found".to_string(),
             ))
         } else {

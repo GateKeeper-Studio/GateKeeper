@@ -126,9 +126,7 @@ impl OrganizationRepository for DbOrganizationRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::OrganizationNotFound(
-                "Organization not found".to_string(),
-            ))
+            Err(DomainError::NotFound("Organization not found".to_string()))
         } else {
             Ok(())
         }
@@ -177,9 +175,7 @@ impl OrganizationRepository for DbOrganizationRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::OrganizationNotFound(
-                "Organization not found".to_string(),
-            ))
+            Err(DomainError::NotFound("Organization not found".to_string()))
         } else {
             Ok(())
         }
@@ -191,11 +187,9 @@ pub fn map_sqlx_error(e: sqlx::Error) -> DomainError {
     tracing::error!("Database error: {:?}", e);
 
     match e {
-        sqlx::Error::RowNotFound => {
-            DomainError::OrganizationNotFound("Organization not found".to_string())
-        }
+        sqlx::Error::RowNotFound => DomainError::NotFound("Organization not found".to_string()),
         sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-            DomainError::OrganizationAlreadyExists("Organization already exists".to_string())
+            DomainError::Conflict("Organization already exists".to_string())
         }
         _ => DomainError::InfrastructureError("Database error".to_string()),
     }

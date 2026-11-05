@@ -30,10 +30,7 @@ impl UseCase {
             .find_by_id(query.tenant_id, query.field_id)
             .await?
             .ok_or_else(|| {
-                DomainError::CustomFieldNotFound(format!(
-                    "custom field {} not found",
-                    query.field_id
-                ))
+                DomainError::NotFound(format!("custom field {} not found", query.field_id))
             })?;
 
         Ok(CustomFieldView::from_entity(&definition))

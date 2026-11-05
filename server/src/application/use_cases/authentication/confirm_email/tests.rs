@@ -223,7 +223,7 @@ mod tests {
         command.token = "000000".to_string();
 
         let err = ctx.use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::EmailVerificationError(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
 
         // Attempt counter was persisted.
         let token = ctx
@@ -258,7 +258,7 @@ mod tests {
             .execute(make_command(&ctx.email))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::EmailVerificationError(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
         assert_eq!(ctx.codes.memory.data.lock().unwrap().len(), 0);
     }
 
@@ -272,7 +272,7 @@ mod tests {
             .execute(make_command(&ctx.email))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::EmailVerificationError(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -285,7 +285,7 @@ mod tests {
             .execute(make_command(&ctx.email))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::EmailVerificationError(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]

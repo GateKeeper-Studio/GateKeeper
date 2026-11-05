@@ -27,7 +27,7 @@ pub async fn login(
     // Don't store the submitted email in metadata on failure (PII minimization); the
     // IP/User-Agent in the request context is enough for brute-force detection.
 
-    match state.admin_login.execute(payload).await {
+    match state.admin.admin_login.execute(payload).await {
         Ok(response) => {
             let event = AuditEvent::new(
                 None,
@@ -65,7 +65,7 @@ pub async fn refresh(
     State(state): State<AppState>,
     AppJson(payload): AppJson<refresh::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let response = state.admin_refresh.execute(payload).await?;
+    let response = state.admin.admin_refresh.execute(payload).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -79,7 +79,7 @@ pub async fn logout(
     ctx: RequestContext,
     AppJson(payload): AppJson<logout::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    state.admin_logout.execute(payload).await?;
+    state.admin.admin_logout.execute(payload).await?;
 
     let event = AuditEvent::new(None, ActorType::Admin, None, ADMIN_LOGOUT, Outcome::Success)
         .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());

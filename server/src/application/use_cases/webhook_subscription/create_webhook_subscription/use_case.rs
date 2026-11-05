@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -34,8 +36,12 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         if uow
             .tenant_repository()
@@ -43,7 +49,7 @@ impl UseCase {
             .await?
             .is_none()
         {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 command.tenant_id
             )));
@@ -56,7 +62,10 @@ impl UseCase {
         // A fresh high-entropy secret per subscription: one compromised consumer
         // must not let an attacker forge deliveries to any other.
         let raw_secret = generate_opaque_token();
-        let secret_encrypted = self.secret_cipher.encrypt(&raw_secret)?;
+        let secret_encrypted = self.secret_cipher.encrypt(
+            &raw_secret,
+            SecretContext::new(SecretPurpose::WebhookSecret, command.tenant_id),
+        )?;
 
         let subscription = WebhookSubscription::new(
             command.tenant_id,

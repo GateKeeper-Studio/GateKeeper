@@ -120,7 +120,11 @@ mod tests {
 
         let (templated_email, emails) = recording_templated_email_sender();
 
-        let use_case = UseCase::new(Arc::new(factory), templated_email);
+        let use_case = UseCase::new(
+            Arc::new(factory),
+            templated_email,
+            crate::testing::password_hasher::test_password_hasher(),
+        );
 
         Ctx {
             use_case,
@@ -229,7 +233,7 @@ mod tests {
         ctx.use_case.execute(make_command()).await.unwrap();
 
         let err = ctx.use_case.execute(make_command()).await.unwrap_err();
-        assert!(matches!(err, DomainError::UserAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 
     #[tokio::test]
@@ -255,7 +259,7 @@ mod tests {
         let mut second = make_command();
         second.email = "MIXED.CASE@example.COM".to_string();
         let err = ctx.use_case.execute(second).await.unwrap_err();
-        assert!(matches!(err, DomainError::UserAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
         assert_eq!(ctx.users.memory.data.lock().unwrap().len(), 1);
     }
 
@@ -314,7 +318,7 @@ mod tests {
             .insert(field.id(), field);
 
         let err = ctx.use_case.execute(make_command()).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
         assert_eq!(ctx.users.memory.data.lock().unwrap().len(), 0);
     }
 

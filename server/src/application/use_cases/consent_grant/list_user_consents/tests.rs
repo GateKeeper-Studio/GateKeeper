@@ -103,6 +103,6 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

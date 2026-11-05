@@ -134,7 +134,7 @@ mod tests {
             .insert(existing_id, existing);
 
         let err = ctx.use_case.execute(command(&ctx)).await.unwrap_err();
-        assert!(matches!(err, DomainError::MfaEnrollmentConflict(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
         // The working factor is untouched.
         assert!(
             ctx.enrollments
@@ -157,6 +157,6 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

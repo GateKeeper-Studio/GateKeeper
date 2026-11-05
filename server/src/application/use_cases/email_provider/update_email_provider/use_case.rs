@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -28,8 +30,16 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<ProviderView, DomainError> {
+    pub async fn execute(
+        &self,
+        actor: &Actor,
+        command: Command,
+    ) -> Result<ProviderView, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         if uow
             .tenant_repository()
@@ -37,7 +47,7 @@ impl UseCase {
             .await?
             .is_none()
         {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 command.tenant_id
             )));
@@ -51,17 +61,15 @@ impl UseCase {
             .find_by_id(command.tenant_id, command.id)
             .await?
             .ok_or_else(|| {
-                DomainError::EmailProviderNotFound(format!(
-                    "Email provider {} not found",
-                    command.id
-                ))
+                DomainError::NotFound(format!("Email provider {} not found", command.id))
             })?;
 
         // Keep the stored password unless the admin supplied a new one.
         let password_encrypted = match command.password {
-            Some(ref new_password) if !new_password.is_empty() => {
-                self.secret_cipher.encrypt(new_password)?
-            }
+            Some(ref new_password) if !new_password.is_empty() => self.secret_cipher.encrypt(
+                new_password,
+                SecretContext::new(SecretPurpose::SmtpPassword, provider.tenant_id()),
+            )?,
             _ => provider.password_encrypted().to_string(),
         };
 

@@ -105,7 +105,7 @@ impl ExternalIdentityProviderRepository for InMemoryExternalIdentityProviderRepo
             p.oauth_client_id() == provider.oauth_client_id() && p.provider() == provider.provider()
         });
         if conflict {
-            return Err(DomainError::ExternalIdentityProviderAlreadyExists(
+            return Err(DomainError::Conflict(
                 "This provider is already configured for the client".to_string(),
             ));
         }

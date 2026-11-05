@@ -96,6 +96,12 @@ impl CachingSigningKeyRepository {
     }
 }
 
+impl crate::application::ports::signing_key_cache::SigningKeyCache for CachingSigningKeyRepository {
+    fn invalidate(&self, tenant_id: Uuid) {
+        CachingSigningKeyRepository::invalidate(self, tenant_id);
+    }
+}
+
 #[async_trait]
 impl SigningKeyRepository for CachingSigningKeyRepository {
     // NOT cached — see the type-level note. This selects the signing key for newly

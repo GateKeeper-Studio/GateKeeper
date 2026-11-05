@@ -84,7 +84,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::RoleNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -105,6 +105,6 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::RoleNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

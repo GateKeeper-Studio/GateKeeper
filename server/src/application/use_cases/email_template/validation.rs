@@ -16,12 +16,12 @@ pub fn validate(
 ) -> Result<(), DomainError> {
     let lowered = body_mjml.to_lowercase();
     if lowered.contains("<script") {
-        return Err(DomainError::EmailTemplateError(
+        return Err(DomainError::Validation(
             "inline <script> is not allowed in email templates".to_string(),
         ));
     }
     if lowered.contains("<mj-raw") {
-        return Err(DomainError::EmailTemplateError(
+        return Err(DomainError::Validation(
             "<mj-raw> is not allowed in email templates".to_string(),
         ));
     }
@@ -32,7 +32,7 @@ pub fn validate(
         .chain(placeholders(body_mjml))
     {
         if !allowed.contains(key.as_str()) {
-            return Err(DomainError::EmailTemplateError(format!(
+            return Err(DomainError::Validation(format!(
                 "unknown placeholder {{{{{key}}}}}; allowed: {}",
                 template_type.variables().join(", ")
             )));

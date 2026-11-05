@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod application;
+pub mod bootstrap;
 pub mod domain;
 pub mod infraestructure;
 pub mod presentation;

@@ -28,7 +28,7 @@ export function gatekeeperConfig(): GateKeeperConfig {
     clientId: env.OAUTH_CLIENT_ID,
     clientSecret: env.OAUTH_CLIENT_SECRET,
     redirectUri: env.OAUTH_REDIRECT_URI,
-    scope: env.OAUTH_SCOPE || 'openid profile email',
+    scope: env.OAUTH_SCOPE || 'openid profile email account',
     sessionSecret: env.SESSION_SECRET,
     secureCookies: !dev
   };

@@ -64,7 +64,13 @@ mod tests {
         let tenant = make_tenant();
         let (role_repo, use_case) = setup(&tenant);
 
-        let response = use_case.execute(make_command(tenant.id())).await.unwrap();
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(response.name, "Editor");
         assert_eq!(response.description, Some("Content editors".to_string()));
@@ -80,7 +86,10 @@ mod tests {
         let mut command = make_command(tenant.id());
         command.description = Some("   ".into());
 
-        let response = use_case.execute(command).await.unwrap();
+        let response = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap();
 
         assert_eq!(response.description, None);
     }
@@ -91,11 +100,14 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(make_command(Uuid::new_v4()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(Uuid::new_v4()),
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -112,11 +124,14 @@ mod tests {
             .insert(existing.id(), existing);
 
         let err = use_case
-            .execute(make_command(tenant.id()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::RoleAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 
     // A role name is privilege-bearing: it lands in the access token's `roles`
@@ -138,7 +153,10 @@ mod tests {
             let mut command = make_command(tenant.id());
             command.name = name.into();
 
-            let err = use_case.execute(command).await.unwrap_err();
+            let err = use_case
+                .execute(&crate::application::shared::actor::Actor::System, command)
+                .await
+                .unwrap_err();
 
             assert!(
                 matches!(err, DomainError::InvalidRequest(_)),

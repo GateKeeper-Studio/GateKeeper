@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -19,8 +20,12 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<(), DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         if uow
             .tenant_repository()
@@ -28,7 +33,7 @@ impl UseCase {
             .await?
             .is_none()
         {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 command.tenant_id
             )));
@@ -40,10 +45,7 @@ impl UseCase {
             .find_by_id(command.tenant_id, command.id)
             .await?
             .ok_or_else(|| {
-                DomainError::EmailProviderNotFound(format!(
-                    "Email provider {} not found",
-                    command.id
-                ))
+                DomainError::NotFound(format!("Email provider {} not found", command.id))
             })?;
 
         uow.email_provider_repository()

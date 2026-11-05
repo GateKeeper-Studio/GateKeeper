@@ -38,10 +38,7 @@ impl UseCase {
             .find_by_id(query.tenant_id, query.oauth_client_id)
             .await?
             .ok_or_else(|| {
-                DomainError::OAuthClientNotFound(format!(
-                    "OAuth client {} not found",
-                    query.oauth_client_id
-                ))
+                DomainError::NotFound(format!("OAuth client {} not found", query.oauth_client_id))
             })?;
 
         let providers = self

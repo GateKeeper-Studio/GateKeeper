@@ -38,7 +38,11 @@ pub async fn create_external_provider(
     payload.oauth_client_id = client_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_external_provider.execute(payload).await?;
+    let response = state
+        .oauth_clients
+        .create_external_provider
+        .execute(&principal.actor(), payload)
+        .await?;
     admin_action(
         &state,
         tenant_id,
@@ -62,7 +66,11 @@ pub async fn list_external_providers(
         tenant_id,
         oauth_client_id: client_id,
     };
-    let response = state.list_external_providers.execute(query).await?;
+    let response = state
+        .oauth_clients
+        .list_external_providers
+        .execute(query)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -82,7 +90,11 @@ pub async fn update_external_provider(
     payload.id = id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_external_provider.execute(payload).await?;
+    let response = state
+        .oauth_clients
+        .update_external_provider
+        .execute(&principal.actor(), payload)
+        .await?;
     admin_action(
         &state,
         tenant_id,
@@ -111,7 +123,11 @@ pub async fn delete_external_provider(
         oauth_client_id: client_id,
         id,
     };
-    state.delete_external_provider.execute(command).await?;
+    state
+        .oauth_clients
+        .delete_external_provider
+        .execute(&principal.actor(), command)
+        .await?;
     admin_action(
         &state,
         tenant_id,

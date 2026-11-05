@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 
 use crate::{
-    application::ports::unit_of_work::{UnitOfWork, UnitOfWorkFactory},
+    application::ports::{
+        secret_cipher::SecretCipher,
+        unit_of_work::{UnitOfWork, UnitOfWorkFactory},
+    },
     domain::{
         errors::DomainError,
         repositories::{
@@ -105,7 +108,10 @@ pub struct DbUnitOfWork {
 }
 
 impl DbUnitOfWork {
-    async fn begin(db_pool: &sqlx::PgPool) -> Result<Self, DomainError> {
+    async fn begin(
+        db_pool: &sqlx::PgPool,
+        cipher: &Arc<dyn SecretCipher>,
+    ) -> Result<Self, DomainError> {
         let tx = db_pool.begin().await.map_err(map_sqlx_error)?;
         let transaction_context: SharedTx = Arc::new(Mutex::new(Some(tx)));
 
@@ -113,7 +119,10 @@ impl DbUnitOfWork {
             // Repositories share the same transaction handle, so every write they
             // perform lands in this transaction and is only visible after commit().
             user_repository: Arc::new(DbUserRepository::with_tx(transaction_context.clone())),
-            tenant_repository: Arc::new(DbTenantRepository::with_tx(transaction_context.clone())),
+            tenant_repository: Arc::new(DbTenantRepository::with_tx(
+                transaction_context.clone(),
+                Arc::clone(cipher),
+            )),
             organization_repository: Arc::new(DbOrganizationRepository::with_tx(
                 transaction_context.clone(),
             )),
@@ -333,18 +342,20 @@ impl UnitOfWork for DbUnitOfWork {
 
 pub struct DbUnitOfWorkFactory {
     db_pool: sqlx::PgPool,
+    // Repositories that seal columns at rest (the tenant pepper) need the cipher.
+    cipher: Arc<dyn SecretCipher>,
 }
 
 impl DbUnitOfWorkFactory {
-    pub fn new(db_pool: sqlx::PgPool) -> Self {
-        Self { db_pool }
+    pub fn new(db_pool: sqlx::PgPool, cipher: Arc<dyn SecretCipher>) -> Self {
+        Self { db_pool, cipher }
     }
 }
 
 #[async_trait]
 impl UnitOfWorkFactory for DbUnitOfWorkFactory {
     async fn begin(&self) -> Result<Box<dyn UnitOfWork>, DomainError> {
-        let uow = DbUnitOfWork::begin(&self.db_pool).await?;
+        let uow = DbUnitOfWork::begin(&self.db_pool, &self.cipher).await?;
         Ok(Box::new(uow))
     }
 }

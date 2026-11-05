@@ -4,6 +4,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
+        application::shared::client_secret::hash_client_secret,
         application::use_cases::oauth_client::{
             create_oauth_client::{
                 command::Command as CreateCommand, use_case::UseCase as CreateUseCase,
@@ -19,7 +20,6 @@ mod tests {
             },
             in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
         },
-        utils::password_hasher::compare_password,
     };
 
     fn make_tenant() -> Tenant {
@@ -88,7 +88,10 @@ mod tests {
         let (clients, create, rotate) = setup(&tenant);
 
         let created = create
-            .execute(create_command(tenant.id(), "confidential"))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                create_command(tenant.id(), "confidential"),
+            )
             .await
             .unwrap();
         let client_db_id = created.client.id;
@@ -98,10 +101,13 @@ mod tests {
             .expect("confidential client must return a secret");
 
         let rotated = rotate
-            .execute(Command {
-                tenant_id: tenant.id(),
-                id: client_db_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    id: client_db_id,
+                },
+            )
             .await
             .unwrap();
 
@@ -115,16 +121,14 @@ mod tests {
         let hash = client
             .client_secret_hash()
             .expect("secret hash should be stored");
-        assert!(compare_password(
+        assert_eq!(
             hash,
-            &rotated.client_secret,
-            tenant.password_hash_secret()
-        ));
-        assert!(!compare_password(
+            hash_client_secret(&rotated.client_secret, tenant.password_hash_secret())
+        );
+        assert_ne!(
             hash,
-            &old_secret,
-            tenant.password_hash_secret()
-        ));
+            hash_client_secret(&old_secret, tenant.password_hash_secret())
+        );
     }
 
     #[tokio::test]
@@ -133,15 +137,21 @@ mod tests {
         let (_, create, rotate) = setup(&tenant);
 
         let created = create
-            .execute(create_command(tenant.id(), "public"))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                create_command(tenant.id(), "public"),
+            )
             .await
             .unwrap();
 
         let err = rotate
-            .execute(Command {
-                tenant_id: tenant.id(),
-                id: created.client.id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    id: created.client.id,
+                },
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
@@ -153,13 +163,16 @@ mod tests {
         let (_, _create, rotate) = setup(&tenant);
 
         let err = rotate
-            .execute(Command {
-                tenant_id: tenant.id(),
-                id: Uuid::now_v7(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    id: Uuid::now_v7(),
+                },
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::OAuthClientNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -168,12 +181,15 @@ mod tests {
         let (_, _create, rotate) = setup(&tenant);
 
         let err = rotate
-            .execute(Command {
-                tenant_id: Uuid::now_v7(),
-                id: Uuid::now_v7(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: Uuid::now_v7(),
+                    id: Uuid::now_v7(),
+                },
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

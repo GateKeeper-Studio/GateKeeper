@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -26,8 +28,16 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<ExternalProviderView, DomainError> {
+    pub async fn execute(
+        &self,
+        actor: &Actor,
+        command: Command,
+    ) -> Result<ExternalProviderView, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         let mut provider = uow
             .external_identity_provider_repository()
@@ -36,7 +46,7 @@ impl UseCase {
             // Guard against editing a provider through the wrong client's URL.
             .filter(|p| p.oauth_client_id() == command.oauth_client_id)
             .ok_or_else(|| {
-                DomainError::ExternalIdentityProviderNotFound(format!(
+                DomainError::NotFound(format!(
                     "External identity provider {} not found",
                     command.id
                 ))
@@ -66,7 +76,10 @@ impl UseCase {
 
         // Keep the stored ciphertext unless the admin supplied a new secret.
         let secret_encrypted = match command.client_secret {
-            Some(ref s) if !s.trim().is_empty() => self.secret_cipher.encrypt(s)?,
+            Some(ref s) if !s.trim().is_empty() => self.secret_cipher.encrypt(
+                s,
+                SecretContext::new(SecretPurpose::ExternalIdpClientSecret, provider.tenant_id()),
+            )?,
             _ => provider.provider_client_secret_encrypted().to_string(),
         };
 

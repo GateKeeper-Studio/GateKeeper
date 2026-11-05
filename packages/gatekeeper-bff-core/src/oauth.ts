@@ -18,7 +18,7 @@ export function validateConfig(config: GateKeeperConfig): ResolvedGateKeeperConf
     clientId: config?.clientId ?? '',
     clientSecret: config?.clientSecret,
     redirectUri: config?.redirectUri ?? '',
-    scope: config?.scope || 'openid profile email',
+    scope: config?.scope || 'openid profile email account',
     sessionSecret: config?.sessionSecret ?? '',
     secureCookies: Boolean(config?.secureCookies),
     sessionCookieName: config?.sessionCookieName || 'gk_session',

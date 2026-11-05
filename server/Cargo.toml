@@ -12,38 +12,30 @@ publish = false
 
 [dependencies]
 # ── HTTP framework ─────────────────────────────────────────────────────────────
-# Axum is built on top of Tower (middleware) and Hyper (HTTP). It's ergonomic,
-# type-safe, and maintained by the Tokio team. The "macros" feature enables
-# route macros if desired.
 axum = "0.8.9"
 
 # ── Async runtime ──────────────────────────────────────────────────────────────
-# Tokio is the de-facto async runtime. "full" enables all features (timers,
-# fs, net, etc.). In prod you might pick only what you need to reduce compile
-# times, but "full" is fine while learning.
-tokio = { version = "1.52.3", features = ["full"] }
+# Only what the server uses: the multi-threaded runtime, #[tokio::main]/#[tokio::test],
+# TCP listeners, SIGTERM handling, timers, sync primitives (Mutex, Semaphore, watch)
+# and the blocking pool (spawn_blocking, part of `rt`).
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
 
 # ── Async traits ─────────────────────────────────────────────────────────────
-# async-trait allows you to write async functions in traits, which is not natively supported in Rust yet.
+# Native `async fn` in traits is not dyn-compatible, and every port is used as
+# `Arc<dyn Trait>`, so the ports keep async-trait.
 async-trait = "0.1.89"
 
 # ── Serialization ─────────────────────────────────────────────────────────────
-# Serde is the standard serialization framework. The "derive" feature lets you
-# annotate structs with #[derive(Serialize, Deserialize)].
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 
 # ── Middleware layer ───────────────────────────────────────────────────────────
-# Tower provides the Service/Layer abstraction. tower-http adds HTTP-specific
-# middleware (CORS, tracing, compression, auth headers...).
 tower = "0.5.3"
 tower-http = { version = "0.6.11", features = ["cors", "trace", "compression-gzip", "timeout"] }
 
 # ── Database ──────────────────────────────────────────────────────────────────
-# sqlx is an async SQL library with compile-time query checking. "postgres"
-# enables the PostgreSQL driver; "runtime-tokio" wires it to our async runtime;
-# "macros" enables sqlx::query! which validates SQL at compile time (killer
-# feature). "uuid" and "chrono" add type mappings.
+# Compile-time-checked queries (`sqlx::query!`); the `.sqlx/` cache lets builds run
+# offline (SQLX_OFFLINE=true). Regenerate with `cargo sqlx prepare -- --lib`.
 sqlx = { version = "0.9.0", features = ["runtime-tokio", "postgres", "chrono", "uuid", "json"] }
 
 # ── Date/time ─────────────────────────────────────────────────────────────────
@@ -53,37 +45,27 @@ chrono = { version = "0.4.44", features = ["serde"] }
 uuid = { version = "1.23.2", features = ["v4","v7", "serde"] }
 
 # ── Error handling ────────────────────────────────────────────────────────────
-# thiserror lets you derive the std::error::Error trait on your own error types
-# with minimal boilerplate. anyhow is great for application-level errors where
-# you don't need to pattern-match on the type.
 thiserror = "2.0.18"
-anyhow = "1.0.102"
 
 
 # ── Observability ─────────────────────────────────────────────────────────────
-# Tracing is the standard for structured logging and distributed tracing in Rust.
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 
 
 # ── Validation ────────────────────────────────────────────────────────────────
-# Validator provides a convenient way to validate struct fields using attributes.
-# The "derive" feature allows you to use #[derive(Validate)] on your structs.
 validator = { version = "0.20.0", features = ["derive"] }
 
 # ── Config ────────────────────────────────────────────────────────────────────
-# dotenvy loads .env files; config reads structured configuration.
+# dotenvy loads .env in development; everything else is read once by AppConfig.
 dotenvy = "0.15.7"
-config = "0.15.23"
 
 # ── Password hashing ──────────────────────────────────────────────────────────
-# Argon2 is a secure password hashing algorithm. The "password-hash" feature
-# provides a common interface for password hashing libraries.
+# Argon2id, behind the `PasswordHasher` port (bounded, on the blocking pool).
 argon2 = { version = "0.5.3", features = ["password-hash"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
-# jsonwebtoken is a popular library for encoding and decoding JSON Web Tokens (JWTs).
 # v10 requires opting into exactly one crypto backend; `rust_crypto` is pure-Rust
 # (RSA/EC/Ed25519) with no C build deps. Without it, encode/decode panics at runtime
 # ("Could not automatically determine the process-level CryptoProvider").
@@ -152,6 +134,11 @@ tower_governor = { version = "0.8", default-features = false, features = ["axum"
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.17", default-features = false }
 
+[features]
+# Repository tests against a real Postgres (tests/db_*.rs). Off by default so
+# `cargo test` needs no running database; CI enables it via --all-features.
+db-tests = []
+
 [profile.release]
 # This service's hot path is CPU-bound crypto — Argon2id on every login, ECDSA
 # P-256 signing on every token issued — so cross-crate inlining is worth the
@@ -165,12 +152,6 @@ strip = "symbols"
 overflow-checks = true
 
 [dev-dependencies]
-# axum-test provides a test client that drives Axum apps in-process (no socket).
-axum-test = "16"
-# mockall generates mock implementations of your traits automatically.
-mockall = "0.13"
-# For async test helpers
-tokio-test = "0.4"
 # fake generates realistic random data (names, emails, etc.) for test factories.
 # rand is the underlying RNG engine it uses.
 fake = { version = "4", features = ["derive"] }

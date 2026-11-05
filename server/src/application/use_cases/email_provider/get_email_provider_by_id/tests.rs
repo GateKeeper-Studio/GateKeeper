@@ -92,6 +92,6 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::EmailProviderNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

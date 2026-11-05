@@ -15,17 +15,21 @@
   encryption). _Verify it is ON in the target deployment — the code assumes but cannot
   enforce this._ For the most sensitive columns, column-level encryption (`pgcrypto`)
   is an option but is not currently applied.
-- **SMTP provider passwords** are encrypted at rest with AES-256-GCM
-  (`AesGcmSecretCipher`), key from `EMAIL_ENCRYPTION_KEY`.
+- **Secrets at rest** (SMTP passwords, webhook secrets, IdP client secrets, TOTP
+  seeds, tenant signing keys, tenant password peppers) are sealed with AES-256-GCM
+  (`AesGcmSecretCipher`), key from `SECRETS_ENCRYPTION_KEY`, format
+  `v1:<key_id>:base64(nonce‖ciphertext‖tag)`, associated data = purpose + tenant id.
+  Rotation: new key in `SECRETS_ENCRYPTION_KEY`, old key in
+  `SECRETS_ENCRYPTION_PREVIOUS_KEYS`; the startup re-seal upgrades every value.
 
 ## Secrets & keys
 
 | Secret | Current source | Target |
 |---|---|---|
-| Tenant pepper (`tenants.password_hash_secret`) | DB column | Move to / wrap with KMS; rotate per policy |
+| Tenant pepper (`tenants.password_hash_secret`) | DB column, sealed (AES-256-GCM), server-generated | KMS-wrapped key; the pepper itself cannot rotate (password hashes depend on it) |
 | JWT signing private keys (`signing_keys`) | DB (per tenant, ES256) | KMS-backed; private half never leaves the boundary |
-| OAuth client secrets | Hashed in `oauth_clients` | OK (hash only) |
-| `EMAIL_ENCRYPTION_KEY`, `JWT_SECRET` | Env | Secrets manager |
+| OAuth client secrets | HMAC-SHA-256 (tenant pepper) in `oauth_clients`; legacy Argon2 until rotated | OK (hash only) |
+| `SECRETS_ENCRYPTION_KEY`, `ADMIN_TOKEN_SIGNING_KEY`, `ADMIN_PASSWORD_PEPPER` | Env | Secrets manager |
 
 - **Password hashing:** Argon2id (or bcrypt cost ≥ 12) + per-tenant pepper. Record the
   exact parameters here once finalized.

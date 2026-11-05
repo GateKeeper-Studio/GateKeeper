@@ -65,6 +65,6 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::OrganizationAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 }

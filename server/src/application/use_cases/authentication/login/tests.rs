@@ -165,6 +165,7 @@ mod tests {
                 recording_templated_email_sender().0,
                 Arc::new(FakeWebauthnService::new()),
                 risk_engine,
+                crate::testing::password_hasher::test_password_hasher(),
             ),
             client,
             sessions,

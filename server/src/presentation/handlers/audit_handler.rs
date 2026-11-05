@@ -45,6 +45,6 @@ pub async fn list_audit_events(
         to: params.to,
     };
 
-    let response = state.list_audit_events.execute(query).await?;
+    let response = state.compliance.list_audit_events.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }

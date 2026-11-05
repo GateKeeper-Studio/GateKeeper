@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id as \"id!\", name as \"name!\", description,\n          is_active as \"is_active!\", can_self_register as \"can_self_register!\",\n          can_self_forgot_password as \"can_self_forgot_password!\",\n          password_hash_secret as \"password_hash_secret!\",\n          organization_id as \"organization_id!\", created_at as \"created_at!\", updated_at,\n          default_language as \"default_language!\",\n          appearance as \"appearance?: sqlx::types::Json<serde_json::Value>\"\n        FROM tenants\n        WHERE organization_id = $1\n        ORDER BY created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "query": "\n        SELECT id as \"id!\", name as \"name!\", description,\n          is_active as \"is_active!\", can_self_register as \"can_self_register!\",\n          can_self_forgot_password as \"can_self_forgot_password!\",\n          password_hash_secret as \"password_hash_secret!\",\n          password_hash_secret_sealed as \"password_hash_secret_sealed!\",\n          organization_id as \"organization_id!\",\n          created_at as \"created_at!\", updated_at,\n          default_language as \"default_language!\",\n          appearance as \"appearance?: sqlx::types::Json<serde_json::Value>\"\n        FROM tenants\n        ORDER BY created_at DESC\n        LIMIT $1 OFFSET $2\n        ",
   "describe": {
     "columns": [
       {
@@ -72,7 +72,7 @@
       {
         "ordinal": 6,
         "name": "password_hash_secret!",
-        "type_info": "Varchar",
+        "type_info": "Text",
         "origin": {
           "Table": {
             "table": "tenants",
@@ -82,6 +82,17 @@
       },
       {
         "ordinal": 7,
+        "name": "password_hash_secret_sealed!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "password_hash_secret_sealed"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "organization_id!",
         "type_info": "Uuid",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "created_at!",
         "type_info": "Timestamptz",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "default_language!",
         "type_info": "Varchar",
         "origin": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "appearance?: sqlx::types::Json<serde_json::Value>",
         "type_info": "Jsonb",
         "origin": {
@@ -138,7 +149,6 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Int8",
         "Int8"
       ]
@@ -153,10 +163,11 @@
       false,
       false,
       false,
+      false,
       true,
       false,
       true
     ]
   },
-  "hash": "0dc8cbcf7ff52ba4c01f23abb5550e8f7e9db2956ec3d860d44c4b8d00db452c"
+  "hash": "fe777b87ccc35d16b1fec3c1ffe4f72dd91993904c76210a42206ddf2f22fcdd"
 }

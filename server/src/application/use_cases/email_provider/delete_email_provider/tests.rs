@@ -92,10 +92,13 @@ mod tests {
     async fn deletes_existing_provider() {
         let ctx = setup();
         ctx.use_case
-            .execute(Command {
-                tenant_id: ctx.tenant_id,
-                id: ctx.provider_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: ctx.tenant_id,
+                    id: ctx.provider_id,
+                },
+            )
             .await
             .unwrap();
         assert!(
@@ -114,12 +117,15 @@ mod tests {
         let ctx = setup();
         let err = ctx
             .use_case
-            .execute(Command {
-                tenant_id: ctx.tenant_id,
-                id: Uuid::now_v7(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: ctx.tenant_id,
+                    id: Uuid::now_v7(),
+                },
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::EmailProviderNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

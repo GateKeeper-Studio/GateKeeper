@@ -26,10 +26,7 @@ impl UseCase {
             .find_by_id(query.tenant_id, query.id)
             .await?
             .ok_or_else(|| {
-                DomainError::WebhookSubscriptionNotFound(format!(
-                    "Webhook subscription {} not found",
-                    query.id
-                ))
+                DomainError::NotFound(format!("Webhook subscription {} not found", query.id))
             })?;
 
         Ok(SubscriptionView::from_entity(&subscription))

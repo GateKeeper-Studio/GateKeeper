@@ -36,7 +36,17 @@ pub fn spawn_retention_purge(
 ) -> (JoinHandle<()>, watch::Sender<bool>) {
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
 
-    let uow_factory: Arc<dyn UnitOfWorkFactory> = Arc::new(DbUnitOfWorkFactory::new(db_pool));
+    // The purge never reads sealed columns, but the Unit of Work hands out every
+    // repository, so it carries the cipher like everywhere else.
+    let secret_cipher: Arc<dyn crate::application::ports::secret_cipher::SecretCipher> = Arc::new(
+        crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::from_config(
+            config,
+        ),
+    );
+    let uow_factory: Arc<dyn UnitOfWorkFactory> = Arc::new(DbUnitOfWorkFactory::new(
+        db_pool,
+        Arc::clone(&secret_cipher),
+    ));
     let use_case = purge_expired_data::use_case::UseCase::new(uow_factory);
 
     let interval_seconds = config.retention_purge_interval_seconds;

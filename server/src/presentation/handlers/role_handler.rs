@@ -45,7 +45,11 @@ pub async fn create_role(
     payload.tenant_id = tenant_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_role.execute(payload).await?;
+    let response = state
+        .roles
+        .create_role
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -72,7 +76,7 @@ pub async fn list_roles(
         page_size: params.page_size,
     };
 
-    let response = state.list_roles.execute(query).await?;
+    let response = state.roles.list_roles.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -84,7 +88,7 @@ pub async fn get_role_by_id(
     Path((_, role_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = get_role_by_id::query::Query { tenant_id, role_id };
-    let response = state.get_role_by_id.execute(query).await?;
+    let response = state.roles.get_role_by_id.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -104,7 +108,11 @@ pub async fn update_role_by_id(
     payload.role_id = role_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_role_by_id.execute(payload).await?;
+    let response = state
+        .roles
+        .update_role_by_id
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -130,7 +138,11 @@ pub async fn delete_role_by_id(
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = delete_role_by_id::command::Command { tenant_id, role_id };
-    state.delete_role_by_id.execute(command).await?;
+    state
+        .roles
+        .delete_role_by_id
+        .execute(&principal.actor(), command)
+        .await?;
 
     admin_action(
         &state,
@@ -159,7 +171,7 @@ pub async fn list_role_users(
         page_size: params.page_size,
     };
 
-    let response = state.list_role_users.execute(query).await?;
+    let response = state.roles.list_role_users.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -179,7 +191,11 @@ pub async fn assign_role_users(
     payload.role_id = role_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.assign_role_users.execute(payload).await?;
+    let response = state
+        .roles
+        .assign_role_users
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -209,7 +225,11 @@ pub async fn unassign_role_user(
         role_id,
         user_id,
     };
-    state.unassign_role_user.execute(command).await?;
+    state
+        .roles
+        .unassign_role_user
+        .execute(&principal.actor(), command)
+        .await?;
 
     admin_action(
         &state,
@@ -231,7 +251,7 @@ pub async fn list_user_roles(
     Path((_, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_user_roles::query::Query { tenant_id, user_id };
-    let response = state.list_user_roles.execute(query).await?;
+    let response = state.roles.list_user_roles.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }

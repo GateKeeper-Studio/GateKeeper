@@ -32,13 +32,20 @@ pub struct PaginationParams {
 // 201 carries the signing secret — the ONLY time it is ever returned.
 pub async fn create_webhook_subscription(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     AppJson(mut payload): AppJson<create_webhook_subscription::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = tenant_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_webhook_subscription.execute(payload).await?;
+    let response = state
+        .webhooks
+        .create_webhook_subscription
+        .execute(&principal.actor(), payload)
+        .await?;
     Ok((StatusCode::CREATED, Json(response)))
 }
 
@@ -53,7 +60,11 @@ pub async fn list_webhook_subscriptions(
         page: params.page,
         page_size: params.page_size,
     };
-    let response = state.list_webhook_subscriptions.execute(query).await?;
+    let response = state
+        .webhooks
+        .list_webhook_subscriptions
+        .execute(query)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -64,7 +75,11 @@ pub async fn get_webhook_subscription_by_id(
     Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = get_webhook_subscription_by_id::query::Query { tenant_id, id };
-    let response = state.get_webhook_subscription_by_id.execute(query).await?;
+    let response = state
+        .webhooks
+        .get_webhook_subscription_by_id
+        .execute(query)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -73,7 +88,10 @@ pub async fn get_webhook_subscription_by_id(
 // The response carries a `secret` only when `rotate_secret` was requested.
 pub async fn update_webhook_subscription(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, id)): Path<(Uuid, Uuid)>,
     AppJson(mut payload): AppJson<update_webhook_subscription::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -81,18 +99,29 @@ pub async fn update_webhook_subscription(
     payload.id = id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_webhook_subscription.execute(payload).await?;
+    let response = state
+        .webhooks
+        .update_webhook_subscription
+        .execute(&principal.actor(), payload)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
 // DELETE /tenants/:tenant_id/webhooks/:id
 pub async fn delete_webhook_subscription(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = delete_webhook_subscription::command::Command { tenant_id, id };
-    state.delete_webhook_subscription.execute(command).await?;
+    state
+        .webhooks
+        .delete_webhook_subscription
+        .execute(&principal.actor(), command)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -103,11 +132,18 @@ pub async fn delete_webhook_subscription(
 // Always 200: a consumer returning 500 is a successful *test*, and the body says so.
 pub async fn send_test_event(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = send_test_event::command::Command { tenant_id, id };
-    let response = state.send_test_event.execute(command).await?;
+    let response = state
+        .webhooks
+        .send_test_event
+        .execute(&principal.actor(), command)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -124,6 +160,10 @@ pub async fn list_webhook_deliveries(
         page: params.page,
         page_size: params.page_size,
     };
-    let response = state.list_webhook_deliveries.execute(query).await?;
+    let response = state
+        .webhooks
+        .list_webhook_deliveries
+        .execute(query)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }

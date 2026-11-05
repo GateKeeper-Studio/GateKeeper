@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 
 use crate::{
-    application::ports::{secret_cipher::SecretCipher, token_signer::TokenSigner},
+    application::ports::{
+        secret_cipher::{SecretCipher, SecretContext, SecretPurpose},
+        token_signer::{TokenSigner, TokenType},
+    },
     domain::entities::signing_key::{SigningAlgorithm, SigningKey},
     domain::errors::DomainError,
 };
@@ -22,21 +25,15 @@ impl JwtSigningService {
         Self { cipher }
     }
 
-    // Recover the PEM private key from the stored column. New keys are sealed with
-    // the SecretCipher (AES-256-GCM); rows written before sealing hold the PEM in the
-    // clear. A PEM is unambiguous — AES-GCM ciphertext is base64 and never starts with
-    // this marker — so legacy keys keep working transparently while every freshly
-    // generated key is encrypted. Re-seal or rotate the legacy ones to close the gap.
+    // Recover the PEM private key from the sealed column. Keys stored as a plaintext
+    // PEM (written before sealing existed) are re-sealed by the startup job
+    // (`secret_reseal`) before the server takes traffic, so there is no plaintext
+    // path here any more: an unsealed key fails to load instead of being used.
     fn private_key_pem(&self, key: &SigningKey) -> Result<String, DomainError> {
-        let stored = key.private_key_encrypted();
-        if stored.starts_with("-----BEGIN") {
-            tracing::warn!(
-                kid = key.kid(),
-                "signing key is stored unencrypted (legacy) — re-seal or rotate it"
-            );
-            return Ok(stored.to_string());
-        }
-        self.cipher.decrypt(stored)
+        self.cipher.decrypt(
+            key.private_key_encrypted(),
+            SecretContext::new(SecretPurpose::SigningKey, key.tenant_id()),
+        )
     }
 }
 
@@ -46,6 +43,7 @@ impl TokenSigner for JwtSigningService {
         &self,
         key: &SigningKey,
         claims: &serde_json::Value,
+        token_type: TokenType,
     ) -> Result<String, DomainError> {
         let pem = self.private_key_pem(key)?;
 
@@ -67,6 +65,7 @@ impl TokenSigner for JwtSigningService {
         let mut header = Header::new(alg);
         // The kid lets verifiers pick the matching public key from /jwks.json.
         header.kid = Some(key.kid().to_string());
+        header.typ = Some(token_type.header_value().to_string());
 
         encode(&header, claims, &encoding_key)
             .map_err(|e| DomainError::InfrastructureError(format!("failed to sign token: {e}")))

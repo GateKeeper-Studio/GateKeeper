@@ -40,7 +40,11 @@ pub async fn create_tenant(
     payload.organization_id = principal.require_org()?;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_tenant.execute(payload).await?;
+    let response = state
+        .tenants
+        .create_tenant
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -67,7 +71,7 @@ pub async fn list_tenants(
         page_size: params.page_size,
     };
 
-    let response = state.list_tenants.execute(query).await?;
+    let response = state.tenants.list_tenants.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -82,7 +86,7 @@ pub async fn get_tenant_by_id(
         tenant_id,
         organization_id: principal.require_org()?,
     };
-    let response = state.get_tenant_by_id.execute(query).await?;
+    let response = state.tenants.get_tenant_by_id.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -108,7 +112,11 @@ pub async fn update_tenant_by_id(
         default_language: payload.default_language,
     };
 
-    let response = state.update_tenant_by_id.execute(command).await?;
+    let response = state
+        .tenants
+        .update_tenant_by_id
+        .execute(&principal.actor(), command)
+        .await?;
 
     admin_action(
         &state,
@@ -142,7 +150,11 @@ pub async fn update_tenant_appearance(
         appearance: payload.appearance,
     };
 
-    let response = state.update_tenant_appearance.execute(command).await?;
+    let response = state
+        .tenants
+        .update_tenant_appearance
+        .execute(&principal.actor(), command)
+        .await?;
 
     admin_action(
         &state,
@@ -168,7 +180,11 @@ pub async fn delete_tenant_by_id(
         tenant_id,
         organization_id: principal.require_org()?,
     };
-    state.delete_tenant_by_id.execute(command).await?;
+    state
+        .tenants
+        .delete_tenant_by_id
+        .execute(&principal.actor(), command)
+        .await?;
 
     admin_action(
         &state,

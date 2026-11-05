@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -34,24 +35,25 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         let tenant = uow
             .tenant_repository()
             .find_by_id(command.tenant_id)
             .await?
             .ok_or_else(|| {
-                DomainError::TenantNotFound(format!(
-                    "Tenant with id {} not found",
-                    command.tenant_id
-                ))
+                DomainError::NotFound(format!("Tenant with id {} not found", command.tenant_id))
             })?;
         let default_language = tenant.default_language();
 
         let field_key = command.field_key.trim().to_string();
         if !is_valid_field_key(&field_key) {
-            return Err(DomainError::InvalidCustomFieldValue(
+            return Err(DomainError::Validation(
                 "field_key must start with a lowercase letter and contain only lowercase letters, digits, and underscores".to_string(),
             ));
         }
@@ -67,13 +69,13 @@ impl UseCase {
             .await?
             .is_some()
         {
-            return Err(DomainError::CustomFieldKeyAlreadyExists(format!(
+            return Err(DomainError::Conflict(format!(
                 "custom field '{field_key}' already exists for this tenant"
             )));
         }
 
         if repo.count_by_tenant_id(command.tenant_id).await? >= MAX_FIELDS_PER_TENANT {
-            return Err(DomainError::CustomFieldLimitReached(format!(
+            return Err(DomainError::Validation(format!(
                 "tenant already has the maximum of {MAX_FIELDS_PER_TENANT} custom fields"
             )));
         }

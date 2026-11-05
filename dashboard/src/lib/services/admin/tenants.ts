@@ -17,7 +17,6 @@ export type Tenant = {
 export type CreateTenantInput = {
 	name: string;
 	description?: string | null;
-	passwordHashSecret: string;
 	canSelfRegister: boolean;
 	canSelfForgotPassword: boolean;
 };
@@ -144,8 +143,8 @@ export async function deleteTenant(tenantId: string): Promise<VoidResult> {
 	}
 }
 
-// POST /tenants — registers a new tenant. The password hash secret is what the
-// IdP uses to hash every password belonging to users of this tenant.
+// POST /tenants — registers a new tenant. The server generates the tenant's
+// password pepper itself (random, sealed at rest); the dashboard never sees it.
 export async function createTenant(
 	input: CreateTenantInput,
 	fetchFn: typeof fetch = fetch
@@ -156,7 +155,6 @@ export async function createTenant(
 			{
 				name: input.name,
 				description: input.description ?? null,
-				password_hash_secret: input.passwordHashSecret,
 				can_self_register: input.canSelfRegister,
 				can_self_forgot_password: input.canSelfForgotPassword
 			},

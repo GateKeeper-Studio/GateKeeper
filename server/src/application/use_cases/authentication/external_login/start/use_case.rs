@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::shared::token_policy::EXTERNAL_LOGIN_FLOW_TTL_MINUTES;
 use crate::{
     application::{
         ports::{
@@ -19,7 +20,6 @@ use crate::{
 
 // A login flow only needs to live long enough for the user to authenticate at the
 // external provider and be redirected back.
-const FLOW_TTL_MINUTES: i64 = 10;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -54,9 +54,7 @@ impl UseCase {
             .find_active_by_id(command.oauth_provider_id)
             .await?
             .ok_or_else(|| {
-                DomainError::ExternalIdentityProviderNotFound(
-                    "external provider not found or inactive".to_string(),
-                )
+                DomainError::NotFound("external provider not found or inactive".to_string())
             })?;
 
         // The provider in the path must match the configured one.
@@ -103,7 +101,7 @@ impl UseCase {
             command.client_nonce,
             command.client_code_challenge,
             command.client_code_challenge_method,
-            Utc::now() + Duration::minutes(FLOW_TTL_MINUTES),
+            Utc::now() + Duration::minutes(EXTERNAL_LOGIN_FLOW_TTL_MINUTES),
         );
         uow.external_login_flow_repository().add(&flow).await?;
 

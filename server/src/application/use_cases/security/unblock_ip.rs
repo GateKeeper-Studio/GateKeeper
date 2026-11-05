@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
+use crate::application::shared::actor::Actor;
 use crate::{application::ports::unit_of_work::UnitOfWorkFactory, domain::errors::DomainError};
 
 // Write use case: an admin removes a security block by id. Returns
@@ -23,14 +24,18 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<(), DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
         let removed = uow
             .security_block_repository()
             .delete(command.tenant_id, command.block_id)
             .await?;
         if !removed {
-            return Err(DomainError::SecurityBlockNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "block {} not found",
                 command.block_id
             )));

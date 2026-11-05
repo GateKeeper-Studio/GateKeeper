@@ -10,9 +10,14 @@
 #
 # TLS: this stack speaks plain HTTP. Terminate TLS at a reverse proxy in front of
 # it (the same proxy the dashboard sits behind). Two things depend on that proxy:
-#   - the rate limiter keys on X-Forwarded-For / X-Real-IP, which the proxy must
-#     OVERWRITE rather than pass through, or a client can spoof its own key;
+#   - the client IP: set TRUSTED_PROXIES to the proxy's address range, or every
+#     request appears to come from the proxy (forwarding headers are believed only
+#     from a trusted peer, and read from the right);
 #   - HSTS and `Secure` cookies only mean anything over HTTPS.
+#
+# Database roles: `migrate` runs once per deploy with the OWNER role (DDL), then
+# exits; `server` runs with a DML-only role (deploy/postgres/roles.sql), so a
+# compromised server process cannot alter the schema or the audit trigger.
 
 name: gatekeeper-prod
 
@@ -24,8 +29,14 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # Runtime role, created on first init by deploy/postgres/10-runtime-role.sh.
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD}
     volumes:
       - gatekeeper_pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/10-runtime-role.sh:/docker-entrypoint-initdb.d/10-runtime-role.sh:ro
+      # Outside initdb.d: the entrypoint would run a bare .sql there without variables.
+      - ./deploy/postgres/roles.sql:/opt/gatekeeper/roles.sql:ro
     # Not published to the host: only the server, on the internal network, needs it.
     expose:
       - "5432"
@@ -41,29 +52,36 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  server:
+  # One-shot deploy job: migrations + secret re-seal with the owner role, then exit.
+  migrate:
     build:
       context: .
       dockerfile: Dockerfile
     image: gatekeeper-server:latest
-    restart: unless-stopped
+    command: ["--migrate-only"]
+    restart: "no"
     depends_on:
       db:
-        # `main()` runs migrations on boot, so the database must be accepting
-        # connections first or the process exits.
         condition: service_healthy
-    environment:
+    environment: &server_env
       # Selects strict startup validation (see config.rs).
       APP_ENV: production
 
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Runtime role (DML only). The migrate job overrides RUN_MIGRATIONS and adds
+      # DATABASE_MIGRATION_URL with the owner role.
+      DATABASE_URL: postgres://${POSTGRES_APP_USER}:${POSTGRES_APP_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_MIGRATION_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      RUN_MIGRATIONS: "true"
       PORT: 8080
+      METRICS_PORT: 9090
 
-      # Independent secrets. Generate with:
-      #   JWT_SECRET:           openssl rand -base64 48
-      #   EMAIL_ENCRYPTION_KEY: openssl rand -base64 32
-      JWT_SECRET: ${JWT_SECRET}
-      EMAIL_ENCRYPTION_KEY: ${EMAIL_ENCRYPTION_KEY}
+      # Independent secrets. Generate each with `openssl rand -base64 48`
+      # (SECRETS_ENCRYPTION_KEY: `openssl rand -base64 32`). ADMIN_PASSWORD_PEPPER
+      # must never change; deployments created before the split set it to their
+      # old JWT_SECRET value.
+      ADMIN_TOKEN_SIGNING_KEY: ${ADMIN_TOKEN_SIGNING_KEY}
+      ADMIN_PASSWORD_PEPPER: ${ADMIN_PASSWORD_PEPPER}
+      SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
 
       # Public identity. OAUTH_ISSUER is pinned as `iss` in every token issued and
       # published at /.well-known/openid-configuration — changing it later
@@ -75,19 +93,39 @@ services:
       WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
       WEBAUTHN_RP_ORIGIN: ${WEBAUTHN_RP_ORIGIN}
 
-      REQUIRE_ADMIN_AUTH: "true"
+      # The reverse proxy's network (see the TLS note at the top).
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES}
+
       # Refusing private/loopback webhook targets is the safe posture: with this on
       # in a cloud environment a tenant admin can point a webhook at the instance
       # metadata endpoint and read your IAM credentials.
       WEBHOOK_ALLOW_PRIVATE_TARGETS: "false"
 
       RUST_LOG: ${RUST_LOG:-info}
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gatekeeper-server:latest
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *server_env
+      # Schema changes belong to the migrate job; the runtime role cannot do them.
+      RUN_MIGRATIONS: "false"
+      DATABASE_MIGRATION_URL: ""
     ports:
       - "${SERVER_BIND:-127.0.0.1:8080}:8080"
+    # The metrics port is reachable on the compose network only (for a Prometheus
+    # container); it is deliberately not published to the host.
+    expose:
+      - "9090"
     healthcheck:
-      # /ready currently returns a static body and does NOT verify the database
-      # connection — treat it as liveness, not readiness, until that is fixed.
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      # /ready runs `SELECT 1` against the pool and returns 503 when it fails.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ready || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

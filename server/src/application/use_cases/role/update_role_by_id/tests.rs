@@ -65,12 +65,15 @@ mod tests {
         let role_id = seed_role(&role_repo, tenant.id(), "Old");
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                role_id,
-                name: "New".into(),
-                description: Some("desc".into()),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    role_id,
+                    name: "New".into(),
+                    description: Some("desc".into()),
+                },
+            )
             .await
             .unwrap();
 
@@ -95,16 +98,19 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                role_id: Uuid::new_v4(),
-                name: "New".into(),
-                description: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    role_id: Uuid::new_v4(),
+                    name: "New".into(),
+                    description: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::RoleNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -115,16 +121,19 @@ mod tests {
         let role_id = seed_role(&role_repo, tenant.id(), "Original");
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                role_id,
-                name: "Taken".into(),
-                description: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    role_id,
+                    name: "Taken".into(),
+                    description: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::RoleAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 
     #[tokio::test]
@@ -134,12 +143,15 @@ mod tests {
         let role_id = seed_role(&role_repo, tenant.id(), "Same");
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                role_id,
-                name: "Same".into(),
-                description: Some("now with desc".into()),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    role_id,
+                    name: "Same".into(),
+                    description: Some("now with desc".into()),
+                },
+            )
             .await
             .unwrap();
 
@@ -157,12 +169,15 @@ mod tests {
 
         for name in ["admin", "tenant_admin", "Admin"] {
             let err = use_case
-                .execute(Command {
-                    tenant_id: tenant.id(),
-                    role_id,
-                    name: name.into(),
-                    description: None,
-                })
+                .execute(
+                    &crate::application::shared::actor::Actor::System,
+                    Command {
+                        tenant_id: tenant.id(),
+                        role_id,
+                        name: name.into(),
+                        description: None,
+                    },
+                )
                 .await
                 .unwrap_err();
 

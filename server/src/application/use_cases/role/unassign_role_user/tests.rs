@@ -68,11 +68,14 @@ mod tests {
             .insert((role_id, user_id));
 
         use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                role_id,
-                user_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    role_id,
+                    user_id,
+                },
+            )
             .await
             .unwrap();
 
@@ -85,14 +88,17 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                role_id: Uuid::new_v4(),
-                user_id: Uuid::new_v4(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    role_id: Uuid::new_v4(),
+                    user_id: Uuid::new_v4(),
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::RoleNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

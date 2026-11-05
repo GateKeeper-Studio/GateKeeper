@@ -128,11 +128,14 @@ mod tests {
         let use_case = UseCase::new(factory);
 
         use_case
-            .execute(Command {
-                tenant_id,
-                oauth_client_id,
-                id: provider_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    oauth_client_id,
+                    id: provider_id,
+                },
+            )
             .await
             .unwrap();
 
@@ -148,18 +151,18 @@ mod tests {
         let use_case = UseCase::new(factory);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: Uuid::now_v7(),
-                oauth_client_id: Uuid::now_v7(),
-                id: Uuid::now_v7(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: Uuid::now_v7(),
+                    oauth_client_id: Uuid::now_v7(),
+                    id: Uuid::now_v7(),
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(
-            err,
-            DomainError::ExternalIdentityProviderNotFound(_)
-        ));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     // The other half of the external-login-only invariant: update_oauth_client refuses
@@ -174,11 +177,14 @@ mod tests {
         let (use_case, providers) = setup(&client, &[provider]);
 
         let err = use_case
-            .execute(Command {
-                tenant_id,
-                oauth_client_id: client.id(),
-                id: provider_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    oauth_client_id: client.id(),
+                    id: provider_id,
+                },
+            )
             .await
             .unwrap_err();
 
@@ -203,11 +209,14 @@ mod tests {
         let (use_case, providers) = setup(&client, &[first, second]);
 
         use_case
-            .execute(Command {
-                tenant_id,
-                oauth_client_id: client.id(),
-                id: first_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    oauth_client_id: client.id(),
+                    id: first_id,
+                },
+            )
             .await
             .unwrap();
 
@@ -227,11 +236,14 @@ mod tests {
         let (use_case, providers) = setup(&client, &[provider]);
 
         use_case
-            .execute(Command {
-                tenant_id,
-                oauth_client_id: client.id(),
-                id: provider_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    oauth_client_id: client.id(),
+                    id: provider_id,
+                },
+            )
             .await
             .unwrap();
 

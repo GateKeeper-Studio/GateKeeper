@@ -77,7 +77,10 @@ mod tests {
                 .with_outbox_event_repository(outbox.clone()),
         );
 
-        let use_case = UseCase::new(uow_factory);
+        let use_case = UseCase::new(
+            uow_factory,
+            crate::testing::password_hasher::test_password_hasher(),
+        );
 
         (user_repo, use_case, outbox)
     }
@@ -89,7 +92,13 @@ mod tests {
         let tenant = make_tenant();
         let (user_repo, use_case) = setup(&tenant);
 
-        let response = use_case.execute(make_command(tenant.id())).await.unwrap();
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
+            .await
+            .unwrap();
 
         let saved = user_repo
             .find_by_id(response.user_id)
@@ -110,7 +119,13 @@ mod tests {
         let tenant = make_tenant();
         let (user_repo, use_case) = setup(&tenant);
 
-        let response = use_case.execute(make_command(tenant.id())).await.unwrap();
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
+            .await
+            .unwrap();
 
         let saved = user_repo
             .find_by_id(response.user_id)
@@ -138,7 +153,10 @@ mod tests {
         let mut command = make_command(tenant.id());
         command.display_name = None;
 
-        let response = use_case.execute(command).await.unwrap();
+        let response = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap();
 
         assert_eq!(response.display_name, None);
     }
@@ -150,9 +168,12 @@ mod tests {
 
         let command = make_command(Uuid::new_v4()); // unknown tenant
 
-        let err = use_case.execute(command).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -172,9 +193,12 @@ mod tests {
         let mut command = make_command(tenant.id());
         command.email = existing_email(&user_repo);
 
-        let err = use_case.execute(command).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
 
-        assert!(matches!(err, DomainError::UserAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 
     // Returns the email of the first user in the repository.
@@ -197,7 +221,13 @@ mod tests {
         let tenant = make_tenant();
         let (_, use_case, outbox) = setup_with_outbox(&tenant);
 
-        let response = use_case.execute(make_command(tenant.id())).await.unwrap();
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
+            .await
+            .unwrap();
 
         let stored = outbox.memory.data.lock().unwrap();
         assert_eq!(stored.len(), 1);
@@ -222,15 +252,24 @@ mod tests {
         let (user_repo, use_case, outbox) = setup_with_outbox(&tenant);
 
         // First call succeeds and commits.
-        use_case.execute(make_command(tenant.id())).await.unwrap();
+        use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
+            .await
+            .unwrap();
         assert_eq!(outbox.memory.data.lock().unwrap().len(), 1);
 
         // Second call fails on the duplicate-email guard, before commit.
         let err = use_case
-            .execute(make_command(tenant.id()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::UserAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
 
         // Neither a second user nor a second event was committed.
         assert_eq!(user_repo.memory.data.lock().unwrap().len(), 1);

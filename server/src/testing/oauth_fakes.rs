@@ -5,7 +5,7 @@ use async_trait::async_trait;
 
 use crate::{
     application::ports::{
-        token_signer::TokenSigner,
+        token_signer::{TokenSigner, TokenType},
         token_verifier::{TokenVerifier, VerifiedToken},
     },
     domain::{entities::signing_key::SigningKey, errors::DomainError},
@@ -39,6 +39,7 @@ impl TokenSigner for FakeTokenSigner {
         &self,
         key: &SigningKey,
         claims: &serde_json::Value,
+        _token_type: TokenType,
     ) -> Result<String, DomainError> {
         self.signed.lock().unwrap().push(claims.clone());
         let sub = claims.get("sub").and_then(|v| v.as_str()).unwrap_or("");

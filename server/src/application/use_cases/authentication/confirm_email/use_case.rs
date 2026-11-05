@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 use subtle::ConstantTimeEq;
 
+use crate::application::shared::token_policy::AUTH_CODE_TTL_SECONDS;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -23,7 +24,6 @@ use crate::{
 
 // Same short lifetime as the regular authorize flow — the code is a single-use
 // credential redeemed immediately at the token endpoint.
-const AUTH_CODE_TTL_SECONDS: i64 = 60;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -73,9 +73,8 @@ impl UseCase {
 
         // 3. Deliberate generic error for all verification failures so an attacker
         //    can't distinguish between "wrong code", "expired", "user not found", etc.
-        let invalid = || {
-            DomainError::EmailVerificationError("invalid or expired verification code".to_string())
-        };
+        let invalid =
+            || DomainError::Validation("invalid or expired verification code".to_string());
 
         // 4. Resolve the user by email (scoped to the tenant). The 6-digit code is
         //    NOT globally unique, so confirmation is always user-scoped.

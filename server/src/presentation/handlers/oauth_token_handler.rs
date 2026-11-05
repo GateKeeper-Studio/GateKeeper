@@ -67,7 +67,7 @@ pub async fn token(
                     .code_verifier
                     .ok_or_else(|| invalid_request("code_verifier is required"))?,
             };
-            let response = state.token_exchange.execute(command).await?;
+            let response = state.oauth.token_exchange.execute(command).await?;
             serde_json::to_value(response).map_err(|_| ApiError::Internal)?
         }
         "refresh_token" => {
@@ -81,7 +81,7 @@ pub async fn token(
                 ip_address: ctx.ip_address.clone(),
                 user_agent: ctx.user_agent.clone(),
             };
-            let response = state.token_refresh.execute(command).await?;
+            let response = state.oauth.token_refresh.execute(command).await?;
             serde_json::to_value(response).map_err(|_| ApiError::Internal)?
         }
         other => return Err(invalid_request(&format!("unsupported grant_type: {other}"))),

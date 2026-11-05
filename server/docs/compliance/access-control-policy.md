@@ -26,8 +26,10 @@
 | Audit of denials | `admin.access_denied` action (to be emitted from the middleware) |
 | Request context | `RequestContext` (IP, User-Agent) captured for audit |
 
-`REQUIRE_ADMIN_AUTH` (default **true**) toggles enforcement; set `false` only during
-the dashboard's bearer-token rollout.
+Enforcement is unconditional (the former `REQUIRE_ADMIN_AUTH` toggle was removed).
+Tenant tokens reach the admin API only with an admin role **and** the `admin` scope;
+`/me/*` requires the `account` scope; platform admins reach only their own
+organization's tenants.
 
 ## Roles
 

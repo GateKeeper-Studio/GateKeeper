@@ -73,10 +73,14 @@
     run(() => mfaClient.renameMethod(entry.id as string, name));
   }
 
+  // The IdP requires the current password to remove a factor (step-up). This
+  // headless example keeps the prompt minimal; a real UI should use a masked
+  // password field.
   function removeMethod(entry: MfaMethodEntry) {
     if (!entry.id) return;
     if (!confirm(`Remove "${methodLabel(entry)}"?`)) return;
-    run(() => mfaClient.removeMethod(entry.id as string));
+    const currentPassword = prompt('Confirm with your current password') ?? undefined;
+    run(() => mfaClient.removeMethod(entry.id as string, currentPassword || undefined));
   }
 
   function startTotp() {

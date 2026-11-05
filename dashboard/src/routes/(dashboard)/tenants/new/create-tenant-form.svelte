@@ -13,7 +13,6 @@
 
 	import { validate } from '$lib/utils/form';
 	import { formSchema } from './schema';
-	import StrongPasswordDialog from './strong-password-dialog.svelte';
 	import { createTenant, type TenantView } from '$lib/services/admin/tenants';
 	import { selectedTenant } from '$lib/state/selected-tenant.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -22,7 +21,6 @@
 
 	let name = $state('');
 	let description = $state('');
-	let passwordHashSecret = $state('');
 	let canSelfRegister = $state(false);
 	let canSelfForgotPassword = $state(false);
 	let errors = $state<Record<string, string>>({});
@@ -31,7 +29,7 @@
 	async function onSubmit(event: SubmitEvent) {
 		event.preventDefault();
 
-		const result = validate(formSchema, { name, description, passwordHashSecret });
+		const result = validate(formSchema, { name, description });
 		if (!result.success) {
 			errors = result.errors;
 			return;
@@ -42,7 +40,6 @@
 		const [tenant, err] = await createTenant({
 			name: result.data.name.trim(),
 			description: result.data.description.trim(),
-			passwordHashSecret: result.data.passwordHashSecret,
 			canSelfRegister,
 			canSelfForgotPassword
 		});
@@ -116,31 +113,6 @@
 		/>
 		{#if errors.description}
 			<p class="text-sm font-medium text-destructive">{errors.description}</p>
-		{/if}
-	</div>
-
-	<Separator class="my-2" />
-
-	<div class="space-y-2">
-		<Label for="passwordHashSecret" class="flex gap-1">
-			{m.create_tenant_password_hash_secret_label()}
-			<span class="text-red-500">*</span>
-		</Label>
-		<Input
-			id="passwordHashSecret"
-			type="password"
-			autocomplete="off"
-			placeholder={m.create_tenant_password_hash_secret_placeholder()}
-			bind:value={passwordHashSecret}
-		/>
-
-		<StrongPasswordDialog setPassword={(value) => (passwordHashSecret = value)} />
-
-		<p class="text-sm text-muted-foreground">
-			{m.create_tenant_password_hash_secret_description()}
-		</p>
-		{#if errors.passwordHashSecret}
-			<p class="text-sm font-medium text-destructive">{errors.passwordHashSecret}</p>
 		{/if}
 	</div>
 

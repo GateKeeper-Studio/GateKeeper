@@ -26,7 +26,7 @@ impl UseCase {
             .await?;
 
         if already_exists {
-            return Err(DomainError::OrganizationAlreadyExists(format!(
+            return Err(DomainError::Conflict(format!(
                 "Organization with name '{}' already exists",
                 command.name
             )));

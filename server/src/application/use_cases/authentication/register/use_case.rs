@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::ports::password_hasher::PasswordHasher;
+use crate::application::shared::token_policy::VERIFICATION_CODE_TTL_MINUTES;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -22,29 +24,28 @@ use crate::{
         },
         errors::DomainError,
     },
-    utils::{
-        oauth_crypto::{generate_numeric_code, sha256_hex},
-        password_hasher::hash_password,
-    },
+    utils::oauth_crypto::{generate_numeric_code, sha256_hex},
 };
 
 // 15 minutes is the standard window for a human-typed numeric code — long enough
 // to find the email, short enough to limit the brute-force window.
-const VERIFICATION_CODE_TTL_MINUTES: i64 = 15;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
     templated_email: Arc<TemplatedEmailSender>,
+    password_hasher: Arc<dyn PasswordHasher>,
 }
 
 impl UseCase {
     pub fn new(
         unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
         templated_email: Arc<TemplatedEmailSender>,
+        password_hasher: Arc<dyn PasswordHasher>,
     ) -> Self {
         Self {
             unit_of_work_factory,
             templated_email,
+            password_hasher,
         }
     }
 
@@ -76,7 +77,7 @@ impl UseCase {
             .find_by_id(tenant_id)
             .await?
             .filter(|t| t.is_active())
-            .ok_or_else(|| DomainError::TenantNotFound(format!("tenant {tenant_id} not found")))?;
+            .ok_or_else(|| DomainError::NotFound(format!("tenant {tenant_id} not found")))?;
 
         if !tenant.can_self_register() {
             return Err(DomainError::AccessDenied(
@@ -91,24 +92,18 @@ impl UseCase {
             .is_user_with_email_exists(tenant_id, &command.email)
             .await?
         {
-            return Err(DomainError::UserAlreadyExists(format!(
+            return Err(DomainError::Conflict(format!(
                 "User with email {} already exists",
                 command.email
             )));
         }
 
-        // 4. Argon2 is intentionally CPU/memory heavy; run it off the async worker.
-        let password = command.password.clone();
-        let secret = tenant.password_hash_secret().to_string();
-        let hashed_password =
-            tokio::task::spawn_blocking(move || hash_password(&password, &secret))
-                .await
-                .map_err(|_| {
-                    DomainError::PasswordHashingError("Failed to hash password".to_string())
-                })?
-                .map_err(|_| {
-                    DomainError::PasswordHashingError("Failed to hash password".to_string())
-                })?;
+        // Argon2id runs behind the `PasswordHasher` port: bounded and off the async
+        // workers.
+        let hashed_password = self
+            .password_hasher
+            .hash(&command.password, tenant.password_hash_secret())
+            .await?;
 
         // 5. Build the (unverified) user with credentials + profile.
         let custom_field_definitions = uow

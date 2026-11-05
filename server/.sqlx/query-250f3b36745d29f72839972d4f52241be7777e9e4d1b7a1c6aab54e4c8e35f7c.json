@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id as \"id!\", name as \"name!\", description,\n          is_active as \"is_active!\", can_self_register as \"can_self_register!\",\n          can_self_forgot_password as \"can_self_forgot_password!\",\n          password_hash_secret as \"password_hash_secret!\",\n          organization_id as \"organization_id!\",\n          created_at as \"created_at!\", updated_at,\n          default_language as \"default_language!\",\n          appearance as \"appearance?: sqlx::types::Json<serde_json::Value>\"\n        FROM tenants\n        ORDER BY created_at DESC\n        LIMIT $1 OFFSET $2\n        ",
+  "query": "\n        SELECT id, name, description, is_active, can_self_register,\n          can_self_forgot_password, password_hash_secret, password_hash_secret_sealed,\n          organization_id, created_at, updated_at, default_language,\n          appearance as \"appearance?: sqlx::types::Json<serde_json::Value>\"\n        FROM tenants\n        WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id!",
+        "name": "id",
         "type_info": "Uuid",
         "origin": {
           "Table": {
@@ -16,7 +16,7 @@
       },
       {
         "ordinal": 1,
-        "name": "name!",
+        "name": "name",
         "type_info": "Varchar",
         "origin": {
           "Table": {
@@ -38,7 +38,7 @@
       },
       {
         "ordinal": 3,
-        "name": "is_active!",
+        "name": "is_active",
         "type_info": "Bool",
         "origin": {
           "Table": {
@@ -49,7 +49,7 @@
       },
       {
         "ordinal": 4,
-        "name": "can_self_register!",
+        "name": "can_self_register",
         "type_info": "Bool",
         "origin": {
           "Table": {
@@ -60,7 +60,7 @@
       },
       {
         "ordinal": 5,
-        "name": "can_self_forgot_password!",
+        "name": "can_self_forgot_password",
         "type_info": "Bool",
         "origin": {
           "Table": {
@@ -71,8 +71,8 @@
       },
       {
         "ordinal": 6,
-        "name": "password_hash_secret!",
-        "type_info": "Varchar",
+        "name": "password_hash_secret",
+        "type_info": "Text",
         "origin": {
           "Table": {
             "table": "tenants",
@@ -82,7 +82,18 @@
       },
       {
         "ordinal": 7,
-        "name": "organization_id!",
+        "name": "password_hash_secret_sealed",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "password_hash_secret_sealed"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "organization_id",
         "type_info": "Uuid",
         "origin": {
           "Table": {
@@ -92,8 +103,8 @@
         }
       },
       {
-        "ordinal": 8,
-        "name": "created_at!",
+        "ordinal": 9,
+        "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -114,8 +125,8 @@
         }
       },
       {
-        "ordinal": 10,
-        "name": "default_language!",
+        "ordinal": 11,
+        "name": "default_language",
         "type_info": "Varchar",
         "origin": {
           "Table": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "appearance?: sqlx::types::Json<serde_json::Value>",
         "type_info": "Jsonb",
         "origin": {
@@ -138,8 +149,7 @@
     ],
     "parameters": {
       "Left": [
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -152,10 +162,11 @@
       false,
       false,
       false,
+      false,
       true,
       false,
       true
     ]
   },
-  "hash": "26bb50bc5567e64e3185725381014309de6fc95039a3a648896fbd591646edeb"
+  "hash": "250f3b36745d29f72839972d4f52241be7777e9e4d1b7a1c6aab54e4c8e35f7c"
 }

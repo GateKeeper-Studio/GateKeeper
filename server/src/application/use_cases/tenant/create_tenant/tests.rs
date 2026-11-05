@@ -58,7 +58,6 @@ mod tests {
             organization_id,
             name: name.to_string(),
             description: Some("A test tenant".to_string()),
-            password_hash_secret: "super_secret_123".to_string(),
             can_self_register: true,
             can_self_forgot_password: true,
         }
@@ -69,7 +68,10 @@ mod tests {
         let (tenant_repo, signing_keys, organization_id, use_case) = setup();
 
         let response = use_case
-            .execute(make_command("Acme Corp", organization_id))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command("Acme Corp", organization_id),
+            )
             .await
             .unwrap();
 
@@ -86,15 +88,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn generates_a_long_random_pepper_per_tenant() {
+        // The pepper used to be whatever the caller sent (one character was
+        // accepted). It is now 32 random bytes, generated server-side.
+        let (tenant_repo, _, organization_id, use_case) = setup();
+        use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command("Tenant A", organization_id),
+            )
+            .await
+            .unwrap();
+        use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command("Tenant B", organization_id),
+            )
+            .await
+            .unwrap();
+
+        let tenants = tenant_repo.memory.data.lock().unwrap();
+        let peppers: Vec<String> = tenants
+            .values()
+            .map(|t| t.password_hash_secret().to_string())
+            .collect();
+        assert_eq!(peppers.len(), 2);
+        assert!(peppers.iter().all(|p| p.len() >= 43), "{peppers:?}");
+        assert_ne!(peppers[0], peppers[1]);
+
+        // ...and never shows up in a Debug dump of the entity.
+        let tenant = tenants.values().next().unwrap();
+        assert!(!format!("{tenant:?}").contains(tenant.password_hash_secret()));
+    }
+
+    #[tokio::test]
     async fn fails_when_organization_is_missing() {
         let (_, _, _, use_case) = setup();
 
         let err = use_case
-            .execute(make_command("Orphan Corp", Uuid::now_v7()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command("Orphan Corp", Uuid::now_v7()),
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::OrganizationNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -117,10 +156,13 @@ mod tests {
             .insert(existing.id(), existing);
 
         let err = use_case
-            .execute(make_command("Duplicate Name", organization_id))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command("Duplicate Name", organization_id),
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 }

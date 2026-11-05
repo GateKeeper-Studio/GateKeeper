@@ -63,7 +63,7 @@ impl AdminUserRepository for InMemoryAdminUserRepository {
             .iter()
             .any(|a| a.id() != admin.id() && a.email() == admin.email())
         {
-            return Err(DomainError::UserAlreadyExists(
+            return Err(DomainError::Conflict(
                 "an admin with that email already exists".to_string(),
             ));
         }

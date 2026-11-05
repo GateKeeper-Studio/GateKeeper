@@ -122,7 +122,14 @@ mod tests {
     #[tokio::test]
     async fn updates_fields_and_keeps_password_when_omitted() {
         let ctx = setup();
-        let view = ctx.use_case.execute(cmd(&ctx, None)).await.unwrap();
+        let view = ctx
+            .use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                cmd(&ctx, None),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(view.name, "SMTP Gmail");
         assert_eq!(view.host, "smtp.gmail.com");
@@ -135,7 +142,10 @@ mod tests {
     async fn replaces_password_when_provided() {
         let ctx = setup();
         ctx.use_case
-            .execute(cmd(&ctx, Some("brand-new".to_string())))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                cmd(&ctx, Some("brand-new".to_string())),
+            )
             .await
             .unwrap();
         assert_eq!(stored_password(&ctx), "enc:brand-new");
@@ -146,7 +156,11 @@ mod tests {
         let ctx = setup();
         let mut c = cmd(&ctx, None);
         c.id = Uuid::now_v7();
-        let err = ctx.use_case.execute(c).await.unwrap_err();
-        assert!(matches!(err, DomainError::EmailProviderNotFound(_)));
+        let err = ctx
+            .use_case
+            .execute(&crate::application::shared::actor::Actor::System, c)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

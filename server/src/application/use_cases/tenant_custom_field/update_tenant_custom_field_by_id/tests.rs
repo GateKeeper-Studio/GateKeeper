@@ -99,7 +99,10 @@ mod tests {
         let (fields, tenant_id, field_id, use_case) = setup();
 
         let response = use_case
-            .execute(make_command(tenant_id, field_id))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant_id, field_id),
+            )
             .await
             .unwrap();
 
@@ -121,20 +124,26 @@ mod tests {
     async fn fails_when_field_not_found() {
         let (_, tenant_id, _, use_case) = setup();
         let err = use_case
-            .execute(make_command(tenant_id, Uuid::now_v7()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant_id, Uuid::now_v7()),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::CustomFieldNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
     async fn fails_when_tenant_not_found() {
         let (_, _, field_id, use_case) = setup();
         let err = use_case
-            .execute(make_command(Uuid::now_v7(), field_id))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(Uuid::now_v7(), field_id),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -143,8 +152,11 @@ mod tests {
         let mut command = make_command(tenant_id, field_id);
         command.options = None;
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -153,8 +165,11 @@ mod tests {
         let mut command = make_command(tenant_id, field_id);
         command.label = locale_map(&[("es", "Talla")]);
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -163,7 +178,10 @@ mod tests {
         let mut command = make_command(tenant_id, field_id);
         command.label = locale_map(&[("en", "Shirt size"), ("fr", "Taille")]);
 
-        let err = use_case.execute(command).await.unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 }

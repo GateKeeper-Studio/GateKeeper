@@ -16,7 +16,7 @@ export const gatekeeper = createSvelteKitGateKeeperClient({
   clientId: process.env.OAUTH_CLIENT_ID,
   clientSecret: process.env.OAUTH_CLIENT_SECRET,
   redirectUri: process.env.OAUTH_REDIRECT_URI,
-  scope: process.env.OAUTH_SCOPE || 'openid profile email',
+  scope: process.env.OAUTH_SCOPE || 'openid profile email account',
   sessionSecret: process.env.SESSION_SECRET,
   secureCookies: process.env.NODE_ENV === 'production'
 });

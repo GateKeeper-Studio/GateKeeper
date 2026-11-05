@@ -347,9 +347,7 @@ impl UserRepository for DbUserRepository {
             .map_err(map_sqlx_error)?;
 
             return match existing {
-                None => Err(DomainError::UserNotFound(format!(
-                    "user {user_id} not found"
-                ))),
+                None => Err(DomainError::NotFound(format!("user {user_id} not found"))),
                 Some(r) if r.legal_hold => Err(DomainError::AccessDenied(
                     "user is under legal hold; erasure refused".to_string(),
                 )),
@@ -413,9 +411,7 @@ impl UserRepository for DbUserRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            return Err(DomainError::UserNotFound(format!(
-                "user {user_id} not found"
-            )));
+            return Err(DomainError::NotFound(format!("user {user_id} not found")));
         }
         Ok(())
     }
@@ -563,12 +559,12 @@ pub fn map_sqlx_error(e: sqlx::Error) -> DomainError {
     tracing::error!("Database error: {:?}", e);
 
     match e {
-        sqlx::Error::RowNotFound => DomainError::UserNotFound("User not found".to_string()),
+        sqlx::Error::RowNotFound => DomainError::NotFound("User not found".to_string()),
 
         // A unique-constraint race (e.g. two requests creating the same email in a
         // tenant) should surface as a conflict, not an opaque 500.
         sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-            DomainError::UserAlreadyExists("User already exists".to_string())
+            DomainError::Conflict("User already exists".to_string())
         }
 
         _ => DomainError::InfrastructureError("Database error".to_string()), // expand as needed

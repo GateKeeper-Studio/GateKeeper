@@ -86,7 +86,10 @@ mod tests {
 
         let view = ctx
             .use_case
-            .execute(cmd(ctx.tenant_id, true))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                cmd(ctx.tenant_id, true),
+            )
             .await
             .unwrap();
         assert_eq!(view.encryption, "starttls");
@@ -98,7 +101,15 @@ mod tests {
         // Stored password is encrypted (not plaintext) but reversible.
         assert_ne!(p.password_encrypted(), "app-password");
         assert_eq!(
-            StubSecretCipher.decrypt(p.password_encrypted()).unwrap(),
+            StubSecretCipher
+                .decrypt(
+                    p.password_encrypted(),
+                    crate::application::ports::secret_cipher::SecretContext::new(
+                        crate::application::ports::secret_cipher::SecretPurpose::SmtpPassword,
+                        p.tenant_id(),
+                    ),
+                )
+                .unwrap(),
             "app-password"
         );
     }
@@ -109,19 +120,29 @@ mod tests {
         let mut c = cmd(ctx.tenant_id, false);
         c.encryption = "ssl".to_string();
 
-        let err = ctx.use_case.execute(c).await.unwrap_err();
-        assert!(matches!(err, DomainError::EmailProviderError(_)));
+        let err = ctx
+            .use_case
+            .execute(&crate::application::shared::actor::Actor::System, c)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
     async fn second_default_clears_the_first() {
         let ctx = setup();
         ctx.use_case
-            .execute(cmd(ctx.tenant_id, true))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                cmd(ctx.tenant_id, true),
+            )
             .await
             .unwrap();
         ctx.use_case
-            .execute(cmd(ctx.tenant_id, true))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                cmd(ctx.tenant_id, true),
+            )
             .await
             .unwrap();
 
@@ -135,9 +156,12 @@ mod tests {
         let ctx = setup();
         let err = ctx
             .use_case
-            .execute(cmd(Uuid::now_v7(), false))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                cmd(Uuid::now_v7(), false),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

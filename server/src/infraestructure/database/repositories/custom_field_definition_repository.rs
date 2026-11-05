@@ -324,9 +324,7 @@ impl CustomFieldDefinitionRepository for DbCustomFieldDefinitionRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::CustomFieldNotFound(
-                "Custom field not found".to_string(),
-            ))
+            Err(DomainError::NotFound("Custom field not found".to_string()))
         } else {
             Ok(())
         }
@@ -345,9 +343,7 @@ impl CustomFieldDefinitionRepository for DbCustomFieldDefinitionRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::CustomFieldNotFound(
-                "Custom field not found".to_string(),
-            ))
+            Err(DomainError::NotFound("Custom field not found".to_string()))
         } else {
             Ok(())
         }
@@ -358,13 +354,9 @@ fn map_sqlx_error(e: sqlx::Error) -> DomainError {
     tracing::error!("Database error: {:?}", e);
 
     match e {
-        sqlx::Error::RowNotFound => {
-            DomainError::CustomFieldNotFound("Custom field not found".to_string())
-        }
+        sqlx::Error::RowNotFound => DomainError::NotFound("Custom field not found".to_string()),
         sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-            DomainError::CustomFieldKeyAlreadyExists(
-                "A custom field with this key already exists".to_string(),
-            )
+            DomainError::Conflict("A custom field with this key already exists".to_string())
         }
         _ => DomainError::InfrastructureError("Database error".to_string()),
     }

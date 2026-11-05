@@ -4,10 +4,10 @@
 //
 //   cargo run --bin create_admin -- <email> <password> [organization_id]
 //
-// Hashes the password with Argon2id using the server-wide pepper (JWT_SECRET) — the
+// Hashes the password with Argon2id using the admin password pepper (ADMIN_PASSWORD_PEPPER, legacy JWT_SECRET) — the
 // SAME pepper the running API uses to verify admin logins — and inserts a row into
 // `admin_users`. This is how the first admin is bootstrapped (and how more are added
-// later). Requires DATABASE_URL + JWT_SECRET in the environment / .env.
+// later). Requires DATABASE_URL + ADMIN_PASSWORD_PEPPER (or JWT_SECRET) in the environment / .env.
 //
 // Every admin belongs to an organization. Pass an organization_id as the third
 // argument to attach the admin to it; if omitted, a "Default Organization" is
@@ -45,9 +45,9 @@ async fn main() {
         std::process::exit(2);
     };
 
-    // AppConfig loads .env (dotenvy) and validates DATABASE_URL / JWT_SECRET.
+    // AppConfig loads .env (dotenvy) and validates the environment.
     let config = AppConfig::from_env();
-    let pool = create_database_pool(&config.database_url).await;
+    let pool = create_database_pool(&config.database_url, &config.database).await;
     let org_repository = DbOrganizationRepository::new(pool.clone());
     let repository = DbAdminUserRepository::new(pool);
 
@@ -74,7 +74,7 @@ async fn main() {
     };
 
     let password_hash =
-        hash_password(password, &config.jwt_secret).expect("failed to hash password");
+        hash_password(password, &config.admin_password_pepper).expect("failed to hash password");
     let admin = AdminUser::new(
         organization_id,
         email.to_string(),

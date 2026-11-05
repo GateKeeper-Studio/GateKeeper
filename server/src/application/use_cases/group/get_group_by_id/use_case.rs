@@ -27,7 +27,7 @@ impl UseCase {
     pub async fn execute(&self, query: Query) -> Result<Response, DomainError> {
         let tenant = self.tenant_repository.find_by_id(query.tenant_id).await?;
         if tenant.is_none() {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 query.tenant_id
             )));
@@ -41,7 +41,7 @@ impl UseCase {
             // tenant it doesn't belong to.
             .filter(|g| g.tenant_id() == query.tenant_id)
             .ok_or_else(|| {
-                DomainError::GroupNotFound(format!("Group with id {} not found", query.group_id))
+                DomainError::NotFound(format!("Group with id {} not found", query.group_id))
             })?;
 
         let member_count = self.group_repository.count_members(group.id()).await?;

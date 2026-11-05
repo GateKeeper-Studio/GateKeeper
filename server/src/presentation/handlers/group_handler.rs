@@ -45,7 +45,11 @@ pub async fn create_group(
     payload.tenant_id = tenant_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_group.execute(payload).await?;
+    let response = state
+        .groups
+        .create_group
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -72,7 +76,7 @@ pub async fn list_groups(
         page_size: params.page_size,
     };
 
-    let response = state.list_groups.execute(query).await?;
+    let response = state.groups.list_groups.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -87,7 +91,7 @@ pub async fn get_group_by_id(
         tenant_id,
         group_id,
     };
-    let response = state.get_group_by_id.execute(query).await?;
+    let response = state.groups.get_group_by_id.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -107,7 +111,11 @@ pub async fn update_group_by_id(
     payload.group_id = group_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_group_by_id.execute(payload).await?;
+    let response = state
+        .groups
+        .update_group_by_id
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -136,7 +144,11 @@ pub async fn delete_group_by_id(
         tenant_id,
         group_id,
     };
-    state.delete_group_by_id.execute(command).await?;
+    state
+        .groups
+        .delete_group_by_id
+        .execute(&principal.actor(), command)
+        .await?;
 
     admin_action(
         &state,
@@ -165,7 +177,7 @@ pub async fn list_group_members(
         page_size: params.page_size,
     };
 
-    let response = state.list_group_members.execute(query).await?;
+    let response = state.groups.list_group_members.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -185,7 +197,11 @@ pub async fn add_group_members(
     payload.group_id = group_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.add_group_members.execute(payload).await?;
+    let response = state
+        .groups
+        .add_group_members
+        .execute(&principal.actor(), payload)
+        .await?;
 
     admin_action(
         &state,
@@ -215,7 +231,11 @@ pub async fn remove_group_member(
         group_id,
         user_id,
     };
-    state.remove_group_member.execute(command).await?;
+    state
+        .groups
+        .remove_group_member
+        .execute(&principal.actor(), command)
+        .await?;
 
     admin_action(
         &state,
@@ -237,7 +257,7 @@ pub async fn list_user_groups(
     Path((_, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_user_groups::query::Query { tenant_id, user_id };
-    let response = state.list_user_groups.execute(query).await?;
+    let response = state.groups.list_user_groups.execute(query).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }

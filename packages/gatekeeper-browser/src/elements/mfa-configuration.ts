@@ -49,6 +49,8 @@ export class GateKeeperMfaConfigurationElement extends HTMLElement {
   #busy = false;
   #totpEnrollment: TotpEnrollment | null = null;
   #addingPasskey = false;
+  // Key of the method awaiting removal; its row shows a password form.
+  #removing: string | null = null;
 
   get client(): MfaClient {
     if (!this.#client) {
@@ -188,6 +190,18 @@ export class GateKeeperMfaConfigurationElement extends HTMLElement {
           }
           ${renameRemove}
         </div>
+        ${
+          this.#removing === methodKey(entry)
+            ? `
+              <form class="gk-mfa__actions" data-action="confirm-remove" data-method-key="${key}">
+                <label class="gk-mfa__muted" for="gk-mfa-current-password">Confirm with your current password</label>
+                <input id="gk-mfa-current-password" name="current-password" type="password" autocomplete="current-password" class="gk-mfa__input" />
+                <button class="gk-mfa__button gk-mfa__button--danger" type="submit" ${this.#disabledAttr()}>Remove</button>
+                <button class="gk-mfa__button" type="button" data-action="cancel-remove" ${this.#disabledAttr()}>Cancel</button>
+              </form>
+            `
+            : ''
+        }
       </li>
     `;
   }
@@ -298,6 +312,9 @@ export class GateKeeperMfaConfigurationElement extends HTMLElement {
     } else if (action === 'cancel-passkey') {
       this.#addingPasskey = false;
       this.render();
+    } else if (action === 'cancel-remove') {
+      this.#removing = null;
+      this.render();
     }
   };
 
@@ -311,6 +328,14 @@ export class GateKeeperMfaConfigurationElement extends HTMLElement {
       void this.#run(async () => {
         await this.client.confirmTotpEnrollment(input?.value ?? '');
         this.#totpEnrollment = null;
+      });
+    } else if (form.dataset.action === 'confirm-remove') {
+      const entry = this.#findMethod(form.dataset.methodKey);
+      const input = form.elements.namedItem('current-password') as HTMLInputElement | null;
+      if (!entry?.id) return;
+      void this.#run(async () => {
+        await this.client.removeMethod(entry.id as string, input?.value || undefined);
+        this.#removing = null;
       });
     } else if (form.dataset.action === 'add-passkey') {
       const input = form.elements.namedItem('passkey-name') as HTMLInputElement | null;
@@ -345,12 +370,13 @@ export class GateKeeperMfaConfigurationElement extends HTMLElement {
     await this.#run(() => this.client.renameMethod(entry.id as string, name).then(() => undefined));
   }
 
+  // Opens the inline confirmation form; the removal itself needs the current
+  // password (step-up), submitted through `confirm-remove`.
   async #removeMethod(key: string | undefined) {
     const entry = this.#findMethod(key);
     if (!entry?.id) return;
-    const approved = confirm(`Remove "${entry.name || defaultMfaMethodLabels[entry.method]}"? You will no longer be able to sign in with it.`);
-    if (!approved) return;
-    await this.#run(() => this.client.removeMethod(entry.id as string));
+    this.#removing = key ?? null;
+    this.render();
   }
 
   #findMethod(key: string | undefined): MfaMethodEntry | undefined {

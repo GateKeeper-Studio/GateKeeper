@@ -14,12 +14,15 @@ use tower_http::{
 const REQUEST_TIMEOUT_SECONDS: u64 = 30;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use web_api::{
+    bootstrap::build_router,
     infraestructure::{
-        config::AppConfig, database::database_pool::create_database_pool,
+        config::{self, AppConfig},
+        crypto::{aes_gcm_secret_cipher::AesGcmSecretCipher, secret_reseal::reseal_legacy_secrets},
+        database::database_pool::create_database_pool,
         observability::metrics::install as install_metrics,
-        retention::scheduler::spawn_retention_purge, webhooks::dispatcher::spawn_dispatcher,
+        retention::scheduler::spawn_retention_purge,
+        webhooks::dispatcher::spawn_dispatcher,
     },
-    presentation::routes::create_router,
 };
 
 // Restrict CORS to the methods this API actually serves. Origins are restricted
@@ -40,19 +43,10 @@ fn build_cors(allowed_origins: &[String]) -> CorsLayer {
     }
 }
 
-// Log format. Text is readable in a terminal; JSON is what a log pipeline can
-// actually query. Selected by LOG_FORMAT, defaulting to JSON outside development so
-// a production deployment is searchable without anyone remembering to set it.
-//
-// (`tracing-subscriber`'s `json` feature was already enabled in Cargo.toml but never
-// used — the subscriber only ever installed the text layer.)
-fn init_tracing(app_env: web_api::infraestructure::config::AppEnv) {
+// Log format: text is readable in a terminal; JSON is what a log pipeline can
+// query. `config::resolve_log_json` defaults to JSON outside development.
+fn init_tracing(json: bool) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
-
-    let json = match std::env::var("LOG_FORMAT") {
-        Ok(value) => value.trim().eq_ignore_ascii_case("json"),
-        Err(_) => !app_env.is_development(),
-    };
 
     let registry = tracing_subscriber::registry().with(filter);
     if json {
@@ -71,13 +65,48 @@ fn init_tracing(app_env: web_api::infraestructure::config::AppEnv) {
     }
 }
 
+// Serves `/metrics` on its own listener. The API port is public; the metrics port
+// should only be reachable by the scraper (bind it to an internal network).
+fn spawn_metrics_server(
+    port: u16,
+    handle: Option<metrics_exporter_prometheus::PrometheusHandle>,
+) -> tokio::task::JoinHandle<()> {
+    let app = axum::Router::new().route(
+        "/metrics",
+        axum::routing::get(move || {
+            let rendered = handle.as_ref().map(|h| h.render());
+            async move {
+                match rendered {
+                    Some(body) => (StatusCode::OK, body),
+                    None => (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "metrics recorder not installed".to_string(),
+                    ),
+                }
+            }
+        }),
+    );
+    tokio::spawn(async move {
+        let address = format!("0.0.0.0:{port}");
+        match tokio::net::TcpListener::bind(&address).await {
+            Ok(listener) => {
+                tracing::info!("metrics listening on {address}");
+                if let Err(e) = axum::serve(listener, app).await {
+                    tracing::error!("metrics server error: {e}");
+                }
+            }
+            Err(e) => tracing::error!("metrics server could not bind {address}: {e}"),
+        }
+    })
+}
+
 #[tokio::main]
 async fn main() {
-    // Read the environment before logging is up: it decides the log format, and
-    // `AppConfig::from_env` may panic on a misconfigured deployment — a panic is
-    // visible either way.
-    let app_env = web_api::infraestructure::config::resolve_app_env();
-    init_tracing(app_env);
+    // `.env` first, so APP_ENV / LOG_FORMAT set only there are honoured. Logging is
+    // up before `AppConfig::from_env`, which may warn or panic on a misconfigured
+    // deployment — a panic is visible either way.
+    config::load_dotenv();
+    init_tracing(config::resolve_log_json(config::resolve_app_env()));
 
     let config = AppConfig::from_env();
 
@@ -89,12 +118,55 @@ async fn main() {
         tracing::warn!("metrics recorder not installed; /metrics will return 503");
     }
 
-    let db_pool = create_database_pool(&config.database_url).await;
+    let db_pool = create_database_pool(&config.database_url, &config.database).await;
 
-    sqlx::migrate!("./migrations")
-        .run(&db_pool)
-        .await
-        .expect("Failed to run database migrations");
+    // Migrations need DDL rights the runtime role should not have. With
+    // DATABASE_MIGRATION_URL set they run as that (owner) role; with
+    // RUN_MIGRATIONS=false a separate deploy job owns them entirely.
+    if config.run_migrations {
+        let migration_pool = match &config.database_migration_url {
+            Some(url) => sqlx::postgres::PgPoolOptions::new()
+                .max_connections(1)
+                .connect(url)
+                .await
+                .expect("Failed to connect with DATABASE_MIGRATION_URL"),
+            None => db_pool.clone(),
+        };
+        sqlx::migrate!("./migrations")
+            .run(&migration_pool)
+            .await
+            .expect("Failed to run database migrations");
+        if config.database_migration_url.is_some() {
+            migration_pool.close().await;
+        }
+    } else {
+        tracing::info!("RUN_MIGRATIONS=false — schema migrations are managed externally");
+    }
+
+    // Upgrade secrets at rest to the current sealing format and key before taking
+    // traffic: legacy ciphertexts, values sealed under a retired key, signing keys
+    // still stored as plaintext PEM, and plaintext tenant peppers. Idempotent and
+    // safe on every replica (compare-and-swap writes).
+    {
+        let cipher = AesGcmSecretCipher::from_config(&config);
+        match reseal_legacy_secrets(&db_pool, &cipher).await {
+            Ok(report) if report.resealed > 0 || report.unreadable > 0 => tracing::warn!(
+                resealed = report.resealed,
+                unreadable = report.unreadable,
+                "re-sealed secrets at rest"
+            ),
+            Ok(_) => {}
+            Err(e) => tracing::error!("secret re-seal failed: {e}"),
+        }
+    }
+
+    // `web-api --migrate-only`: the deploy job. It runs with the owner role
+    // (DATABASE_MIGRATION_URL), applies migrations, re-seals, and exits, so the
+    // long-running server can use a DML-only role with RUN_MIGRATIONS=false.
+    if std::env::args().any(|a| a == "--migrate-only") {
+        tracing::info!("--migrate-only: migrations and re-seal done, exiting");
+        return;
+    }
 
     // The outbound-webhook dispatcher: the one long-running background task in this
     // service. Safe to run on every replica — its claim queries use FOR UPDATE SKIP
@@ -121,7 +193,15 @@ async fn main() {
         None
     };
 
-    let app = create_router(db_pool, metrics_handle).layer(
+    let metrics_server = match config.metrics_port {
+        Some(port) => Some(spawn_metrics_server(port, metrics_handle)),
+        None => {
+            tracing::warn!("metrics listener disabled (METRICS_PORT=off)");
+            None
+        }
+    };
+
+    let app = build_router(&config, db_pool.clone()).layer(
         // Tower layers compose from outermost to innermost. The request
         // passes through each layer before reaching the handler.
         tower::ServiceBuilder::new()
@@ -144,7 +224,9 @@ async fn main() {
     );
 
     let address = format!("0.0.0.0:{}", config.port);
-    let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&address)
+        .await
+        .unwrap_or_else(|e| panic!("could not bind {address}: {e}"));
 
     // `into_make_service_with_connect_info` exposes the TCP peer address to handlers
     // via `ConnectInfo<SocketAddr>`, letting `capture_client_context` fall back to the
@@ -157,7 +239,11 @@ async fn main() {
     .await;
 
     if let Err(err) = result {
-        eprintln!("Server error: {}", err);
+        tracing::error!("server error: {err}");
+    }
+
+    if let Some(handle) = metrics_server {
+        handle.abort();
     }
 
     // Stop the dispatcher only after the server has drained. Signalling and then

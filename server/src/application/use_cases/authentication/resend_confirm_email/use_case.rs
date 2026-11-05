@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::shared::token_policy::VERIFICATION_CODE_TTL_MINUTES;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -11,8 +12,6 @@ use crate::{
     domain::{entities::email_verification_token::EmailVerificationToken, errors::DomainError},
     utils::oauth_crypto::{generate_numeric_code, sha256_hex},
 };
-
-const VERIFICATION_CODE_TTL_MINUTES: i64 = 15;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -49,7 +48,7 @@ impl UseCase {
             .find_by_id(tenant_id)
             .await?
             .filter(|t| t.is_active())
-            .ok_or_else(|| DomainError::TenantNotFound(format!("tenant {tenant_id} not found")))?;
+            .ok_or_else(|| DomainError::NotFound(format!("tenant {tenant_id} not found")))?;
 
         if !tenant.can_self_register() {
             // Silently succeed — self-registration state is not an enumerable secret.

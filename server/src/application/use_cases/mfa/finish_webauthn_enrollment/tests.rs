@@ -225,7 +225,7 @@ mod tests {
             .execute(command(&ctx, mfa_id, None))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::MfaEnrollmentConflict(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 
     #[tokio::test]

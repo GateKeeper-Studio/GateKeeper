@@ -4,6 +4,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
+        application::shared::client_secret::hash_client_secret,
         application::use_cases::oauth_client::{
             create_oauth_client::{command::Command, use_case::UseCase},
             validation::LoginAppearanceInput,
@@ -20,7 +21,6 @@ mod tests {
             },
             in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
         },
-        utils::password_hasher::compare_password,
     };
 
     fn make_tenant() -> Tenant {
@@ -84,7 +84,10 @@ mod tests {
         let (clients, use_case) = setup(&tenant);
 
         let response = use_case
-            .execute(base_command(tenant.id(), "public"))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                base_command(tenant.id(), "public"),
+            )
             .await
             .unwrap();
 
@@ -103,7 +106,10 @@ mod tests {
         command.allowed_languages = vec!["en".to_string(), "es".to_string()];
         command.default_language = "es".to_string();
 
-        use_case.execute(command).await.unwrap();
+        use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap();
 
         let stored = clients.memory.data.lock().unwrap();
         let client = stored.values().next().unwrap();
@@ -124,7 +130,9 @@ mod tests {
         command.default_language = "es".to_string();
 
         assert!(matches!(
-            use_case.execute(command).await,
+            use_case
+                .execute(&crate::application::shared::actor::Actor::System, command)
+                .await,
             Err(DomainError::InvalidRequest(_))
         ));
     }
@@ -138,7 +146,10 @@ mod tests {
         command.tos_uri = Some(" https://app.example.com/terms ".to_string());
         command.policy_uri = Some("https://app.example.com/privacy".to_string());
 
-        let response = use_case.execute(command).await.unwrap();
+        let response = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap();
 
         assert_eq!(
             response.client.tos_uri.as_deref(),
@@ -163,7 +174,10 @@ mod tests {
         let mut command = base_command(tenant.id(), "public");
         command.policy_uri = Some("javascript:alert(1)".to_string());
 
-        let err = use_case.execute(command).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 
@@ -179,7 +193,10 @@ mod tests {
             ..Default::default()
         });
 
-        let response = use_case.execute(command).await.unwrap();
+        let response = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap();
         let appearance = response
             .client
             .login_appearance
@@ -204,7 +221,10 @@ mod tests {
             ..Default::default()
         });
 
-        let err = use_case.execute(command).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 
@@ -214,7 +234,10 @@ mod tests {
         let (clients, use_case) = setup(&tenant);
 
         let response = use_case
-            .execute(base_command(tenant.id(), "confidential"))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                base_command(tenant.id(), "confidential"),
+            )
             .await
             .unwrap();
 
@@ -228,11 +251,10 @@ mod tests {
         let hash = client
             .client_secret_hash()
             .expect("secret hash should be stored");
-        assert!(compare_password(
+        assert_eq!(
             hash,
-            &secret,
-            tenant.password_hash_secret()
-        ));
+            hash_client_secret(&secret, tenant.password_hash_secret())
+        );
     }
 
     #[tokio::test]
@@ -243,7 +265,10 @@ mod tests {
         let mut command = base_command(tenant.id(), "public");
         command.redirect_uris = vec!["http://evil.example.com/cb".to_string()]; // plain http, non-loopback
 
-        let err = use_case.execute(command).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 
@@ -253,7 +278,10 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(base_command(tenant.id(), "weird"))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                base_command(tenant.id(), "weird"),
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
@@ -265,9 +293,12 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(base_command(Uuid::now_v7(), "public"))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                base_command(Uuid::now_v7(), "public"),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

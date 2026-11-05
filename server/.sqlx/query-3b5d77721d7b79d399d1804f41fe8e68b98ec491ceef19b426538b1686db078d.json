@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, name, description, is_active, can_self_register,\n          can_self_forgot_password, password_hash_secret, organization_id,\n          created_at, updated_at, default_language,\n          appearance as \"appearance?: sqlx::types::Json<serde_json::Value>\"\n        FROM tenants\n        WHERE id = $1\n        ",
+  "query": "\n        SELECT id as \"id!\", name as \"name!\", description,\n          is_active as \"is_active!\", can_self_register as \"can_self_register!\",\n          can_self_forgot_password as \"can_self_forgot_password!\",\n          password_hash_secret as \"password_hash_secret!\",\n          password_hash_secret_sealed as \"password_hash_secret_sealed!\",\n          organization_id as \"organization_id!\", created_at as \"created_at!\", updated_at,\n          default_language as \"default_language!\",\n          appearance as \"appearance?: sqlx::types::Json<serde_json::Value>\"\n        FROM tenants\n        WHERE organization_id = $1\n        ORDER BY created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id",
+        "name": "id!",
         "type_info": "Uuid",
         "origin": {
           "Table": {
@@ -16,7 +16,7 @@
       },
       {
         "ordinal": 1,
-        "name": "name",
+        "name": "name!",
         "type_info": "Varchar",
         "origin": {
           "Table": {
@@ -38,7 +38,7 @@
       },
       {
         "ordinal": 3,
-        "name": "is_active",
+        "name": "is_active!",
         "type_info": "Bool",
         "origin": {
           "Table": {
@@ -49,7 +49,7 @@
       },
       {
         "ordinal": 4,
-        "name": "can_self_register",
+        "name": "can_self_register!",
         "type_info": "Bool",
         "origin": {
           "Table": {
@@ -60,7 +60,7 @@
       },
       {
         "ordinal": 5,
-        "name": "can_self_forgot_password",
+        "name": "can_self_forgot_password!",
         "type_info": "Bool",
         "origin": {
           "Table": {
@@ -71,8 +71,8 @@
       },
       {
         "ordinal": 6,
-        "name": "password_hash_secret",
-        "type_info": "Varchar",
+        "name": "password_hash_secret!",
+        "type_info": "Text",
         "origin": {
           "Table": {
             "table": "tenants",
@@ -82,7 +82,18 @@
       },
       {
         "ordinal": 7,
-        "name": "organization_id",
+        "name": "password_hash_secret_sealed!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "password_hash_secret_sealed"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "organization_id!",
         "type_info": "Uuid",
         "origin": {
           "Table": {
@@ -92,8 +103,8 @@
         }
       },
       {
-        "ordinal": 8,
-        "name": "created_at",
+        "ordinal": 9,
+        "name": "created_at!",
         "type_info": "Timestamptz",
         "origin": {
           "Table": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -114,8 +125,8 @@
         }
       },
       {
-        "ordinal": 10,
-        "name": "default_language",
+        "ordinal": 11,
+        "name": "default_language!",
         "type_info": "Varchar",
         "origin": {
           "Table": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "appearance?: sqlx::types::Json<serde_json::Value>",
         "type_info": "Jsonb",
         "origin": {
@@ -138,7 +149,9 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
@@ -151,10 +164,11 @@
       false,
       false,
       false,
+      false,
       true,
       false,
       true
     ]
   },
-  "hash": "d6832c618eab37c5229575b8560e54230121e1539106e391a840ad727814b7c1"
+  "hash": "3b5d77721d7b79d399d1804f41fe8e68b98ec491ceef19b426538b1686db078d"
 }

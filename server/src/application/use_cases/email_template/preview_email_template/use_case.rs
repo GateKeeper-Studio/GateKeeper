@@ -25,9 +25,7 @@ impl UseCase {
                 &command.body_mjml,
                 &command.template_type.sample_context(),
             )
-            .map_err(|e| {
-                DomainError::EmailTemplateError(format!("template failed to render: {e}"))
-            })?;
+            .map_err(|e| DomainError::Validation(format!("template failed to render: {e}")))?;
 
         Ok(Response {
             subject: rendered.subject,

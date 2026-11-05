@@ -81,16 +81,19 @@ mod tests {
         let use_case = UseCase::new(factory, Arc::new(StubSecretCipher));
 
         let view = use_case
-            .execute(Command {
-                tenant_id,
-                oauth_client_id: client.id(),
-                provider: "google".to_string(),
-                client_id: "google-client".to_string(),
-                client_secret: "supersecret".to_string(),
-                redirect_uri: "https://idp.example.com/v1/auth/oauth-provider/google/callback"
-                    .to_string(),
-                is_active: true,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    oauth_client_id: client.id(),
+                    provider: "google".to_string(),
+                    client_id: "google-client".to_string(),
+                    client_secret: "supersecret".to_string(),
+                    redirect_uri: "https://idp.example.com/v1/auth/oauth-provider/google/callback"
+                        .to_string(),
+                    is_active: true,
+                },
+            )
             .await
             .unwrap();
 
@@ -113,15 +116,18 @@ mod tests {
         let use_case = UseCase::new(factory, Arc::new(StubSecretCipher));
 
         let err = use_case
-            .execute(Command {
-                tenant_id,
-                oauth_client_id: client.id(),
-                provider: "facebook".to_string(),
-                client_id: "x".to_string(),
-                client_secret: "y".to_string(),
-                redirect_uri: "https://idp.example.com/cb".to_string(),
-                is_active: true,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    oauth_client_id: client.id(),
+                    provider: "facebook".to_string(),
+                    client_id: "x".to_string(),
+                    client_secret: "y".to_string(),
+                    redirect_uri: "https://idp.example.com/cb".to_string(),
+                    is_active: true,
+                },
+            )
             .await
             .unwrap_err();
 

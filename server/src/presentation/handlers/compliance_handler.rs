@@ -78,6 +78,7 @@ pub async fn export_user_data(
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let bundle = state
+        .compliance
         .export_user_data
         .execute(export_user_data::query::Query { tenant_id, user_id })
         .await?;
@@ -101,6 +102,7 @@ pub async fn export_my_data(
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let bundle = state
+        .compliance
         .export_user_data
         .execute(export_user_data::query::Query {
             tenant_id: principal.tenant_id,
@@ -137,6 +139,7 @@ async fn do_record_acceptance(
     ApiError,
 > {
     let response = state
+        .compliance
         .record_policy_acceptance
         .execute(record_policy_acceptance::command::Command {
             tenant_id,
@@ -195,6 +198,7 @@ pub async fn list_user_acceptances(
     Path((_, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let rows = state
+        .compliance
         .list_user_acceptances
         .execute(tenant_id, user_id)
         .await?;
@@ -226,6 +230,7 @@ pub async fn list_my_required_documents(
     principal: AuthPrincipal,
 ) -> Result<impl IntoResponse, ApiError> {
     let rows = state
+        .compliance
         .list_required_documents
         .execute(principal.user_id)
         .await?;
@@ -238,12 +243,17 @@ async fn do_erase(
     tenant_id: Uuid,
     user_id: Uuid,
     actor_type: ActorType,
-    actor: Option<Uuid>,
+    principal: &AuthPrincipal,
     ctx: &RequestContext,
 ) -> Result<(StatusCode, Json<erase_user::response::Response>), ApiError> {
+    let actor = principal.actor_id();
     let response = state
+        .compliance
         .erase_user
-        .execute(erase_user::command::Command { tenant_id, user_id })
+        .execute(
+            &principal.actor(),
+            erase_user::command::Command { tenant_id, user_id },
+        )
         .await?;
 
     let event = AuditEvent::new(
@@ -275,24 +285,28 @@ pub async fn erase_user(
         tenant_id,
         user_id,
         ActorType::Admin,
-        principal.actor_id(),
+        &principal,
         &ctx,
     )
     .await
 }
 
 // DELETE /me  (self-service erasure)
+//
+// Step-up: the body must carry `current_password` (see `step_up.rs`).
 pub async fn erase_me(
     State(state): State<AppState>,
     principal: AuthPrincipal,
     ctx: RequestContext,
+    body: Option<Json<crate::presentation::handlers::step_up::StepUpBody>>,
 ) -> Result<impl IntoResponse, ApiError> {
+    crate::presentation::handlers::step_up::confirm(&state, &principal, body).await?;
     do_erase(
         &state,
         principal.tenant_id,
         principal.user_id,
         ActorType::User,
-        Some(principal.user_id),
+        &principal,
         &ctx,
     )
     .await
@@ -304,7 +318,7 @@ pub async fn purge_expired_data(
     principal: AuthPrincipal,
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
-    let report = state.purge_expired_data.execute().await?;
+    let report = state.compliance.purge_expired_data.execute().await?;
 
     // Platform-level event (no single tenant).
     let event = AuditEvent::new(
@@ -338,7 +352,11 @@ pub async fn update_my_profile(
     payload.user_id = principal.user_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_tenant_user_by_id.execute(payload).await?;
+    let response = state
+        .users
+        .update_tenant_user_by_id
+        .execute(&principal.actor(), payload)
+        .await?;
 
     let event = AuditEvent::new(
         Some(principal.tenant_id),
@@ -367,8 +385,9 @@ pub async fn update_my_custom_field_values(
     payload.user_id = principal.user_id;
 
     let response = state
+        .users
         .update_tenant_user_custom_field_values
-        .execute(payload)
+        .execute(&principal.actor(), payload)
         .await?;
 
     let event = AuditEvent::new(

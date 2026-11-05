@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::ports::password_hasher::PasswordHasher;
+use crate::application::shared::token_policy::REFRESH_TOKEN_TTL_DAYS;
 use crate::{
     application::{
         ports::admin_token_issuer::AdminTokenIssuer,
@@ -15,16 +17,12 @@ use crate::{
             admin_user_repository::AdminUserRepository,
         },
     },
-    utils::{
-        oauth_crypto::{generate_opaque_token, sha256_hex},
-        password_hasher::compare_password,
-    },
+    utils::oauth_crypto::{generate_opaque_token, sha256_hex},
 };
 
 // How long an admin refresh token stays valid. The access token is short-lived;
 // the refresh token lets the dashboard renew it silently for up to this window
 // before the operator must sign in again.
-const REFRESH_TOKEN_TTL_DAYS: i64 = 30;
 
 // Verify an admin's email + password and, on success, mint an admin access token
 // plus an opaque refresh token (stored hashed, starting its own rotation family).
@@ -49,6 +47,7 @@ pub struct UseCase {
     token_issuer: Arc<dyn AdminTokenIssuer>,
     // Server-wide Argon2 pepper, matching what `create_admin` hashed with.
     password_pepper: String,
+    password_hasher: Arc<dyn PasswordHasher>,
 }
 
 impl UseCase {
@@ -57,33 +56,40 @@ impl UseCase {
         refresh_token_repository: Arc<dyn AdminRefreshTokenRepository>,
         token_issuer: Arc<dyn AdminTokenIssuer>,
         password_pepper: String,
+        password_hasher: Arc<dyn PasswordHasher>,
     ) -> Self {
         Self {
             admin_repository,
             refresh_token_repository,
             token_issuer,
             password_pepper,
+            password_hasher,
         }
     }
 
     pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
         let invalid = || DomainError::AuthenticationError("invalid credentials".to_string());
 
-        let admin = self
-            .admin_repository
-            .find_by_email(&command.email)
-            .await?
-            .ok_or_else(invalid)?;
+        // An unknown or inactive admin still pays one Argon2 verification (against
+        // a dummy hash), so the response time does not reveal which admin emails
+        // exist. Every failure is the same generic error.
+        let admin = match self.admin_repository.find_by_email(&command.email).await? {
+            Some(admin) if admin.is_active() => admin,
+            _ => {
+                self.password_hasher.verify_dummy(&command.password).await;
+                return Err(invalid());
+            }
+        };
 
-        if !admin.is_active() {
-            return Err(invalid());
-        }
-
-        if !compare_password(
-            admin.password_hash(),
-            &command.password,
-            &self.password_pepper,
-        ) {
+        if !self
+            .password_hasher
+            .verify(
+                admin.password_hash(),
+                &command.password,
+                &self.password_pepper,
+            )
+            .await
+        {
             return Err(invalid());
         }
 

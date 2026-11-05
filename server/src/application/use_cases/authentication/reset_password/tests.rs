@@ -156,7 +156,10 @@ mod tests {
             .with_refresh_token_repository(refresh.clone());
 
         Ctx {
-            use_case: UseCase::new(Arc::new(factory)),
+            use_case: UseCase::new(
+                Arc::new(factory),
+                crate::testing::password_hasher::test_password_hasher(),
+            ),
             users,
             tokens,
             refresh,
@@ -267,7 +270,7 @@ mod tests {
             .execute(command(&ctx, "not-the-token"))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::PasswordResetError(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
 
         assert_eq!(current_hash(&ctx), before);
         let rt = ctx
@@ -290,7 +293,7 @@ mod tests {
             .execute(command(&ctx, RAW_TOKEN))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::PasswordResetError(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -301,7 +304,7 @@ mod tests {
             .execute(command(&ctx, RAW_TOKEN))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::PasswordResetError(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -311,6 +314,6 @@ mod tests {
         cmd.password_reset_id = "not-a-uuid".to_string();
 
         let err = ctx.use_case.execute(cmd).await.unwrap_err();
-        assert!(matches!(err, DomainError::PasswordResetError(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 }

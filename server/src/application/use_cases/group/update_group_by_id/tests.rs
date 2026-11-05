@@ -65,12 +65,15 @@ mod tests {
         let group_id = seed_group(&group_repo, tenant.id(), "Old");
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                group_id,
-                name: "New".into(),
-                description: Some("desc".into()),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    group_id,
+                    name: "New".into(),
+                    description: Some("desc".into()),
+                },
+            )
             .await
             .unwrap();
 
@@ -95,16 +98,19 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                group_id: Uuid::new_v4(),
-                name: "New".into(),
-                description: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    group_id: Uuid::new_v4(),
+                    name: "New".into(),
+                    description: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::GroupNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -115,16 +121,19 @@ mod tests {
         let group_id = seed_group(&group_repo, tenant.id(), "Original");
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                group_id,
-                name: "Taken".into(),
-                description: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    group_id,
+                    name: "Taken".into(),
+                    description: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::GroupAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
     }
 
     #[tokio::test]
@@ -134,12 +143,15 @@ mod tests {
         let group_id = seed_group(&group_repo, tenant.id(), "Same");
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                group_id,
-                name: "Same".into(),
-                description: Some("now with desc".into()),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    group_id,
+                    name: "Same".into(),
+                    description: Some("now with desc".into()),
+                },
+            )
             .await
             .unwrap();
 

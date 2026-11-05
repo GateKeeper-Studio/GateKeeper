@@ -43,11 +43,11 @@ impl EmailRenderer for MjmlEmailRenderer {
         let substituted_mjml = apply_placeholders(body_mjml, vars, SubstitutionMode::HtmlBody);
 
         let parsed = mrml::parse(&substituted_mjml)
-            .map_err(|e| DomainError::EmailTemplateError(format!("invalid MJML: {e}")))?;
+            .map_err(|e| DomainError::Validation(format!("invalid MJML: {e}")))?;
         let html = parsed
             .element
             .render(&RenderOptions::default())
-            .map_err(|e| DomainError::EmailTemplateError(format!("failed to render MJML: {e}")))?;
+            .map_err(|e| DomainError::Validation(format!("failed to render MJML: {e}")))?;
 
         let html = scrub_html(&html)?;
         let text = html_to_text(&html);
@@ -155,7 +155,7 @@ fn scrub_html(html: &str) -> Result<String, DomainError> {
         }));
 
     rewrite_str(html, settings).map_err(|e: RewritingError| {
-        DomainError::EmailTemplateError(format!("failed to sanitize email HTML: {e}"))
+        DomainError::Validation(format!("failed to sanitize email HTML: {e}"))
     })
 }
 

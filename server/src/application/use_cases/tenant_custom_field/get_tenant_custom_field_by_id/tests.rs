@@ -62,6 +62,6 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::CustomFieldNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

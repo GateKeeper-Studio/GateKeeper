@@ -4,23 +4,29 @@ use chrono::Utc;
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
+use crate::application::ports::password_hasher::PasswordHasher;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
         use_cases::authentication::reset_password::command::Command,
     },
     domain::{entities::user_credentials::UserCredentials, errors::DomainError},
-    utils::{oauth_crypto::sha256_hex, password_hasher::hash_password},
+    utils::oauth_crypto::sha256_hex,
 };
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
+    password_hasher: Arc<dyn PasswordHasher>,
 }
 
 impl UseCase {
-    pub fn new(unit_of_work_factory: Arc<dyn UnitOfWorkFactory>) -> Self {
+    pub fn new(
+        unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
+        password_hasher: Arc<dyn PasswordHasher>,
+    ) -> Self {
         Self {
             unit_of_work_factory,
+            password_hasher,
         }
     }
 
@@ -48,9 +54,8 @@ impl UseCase {
 
         // 2. Generic error for every validation failure so an attacker cannot tell
         //    why a reset attempt failed (unknown id, expired, consumed, wrong token).
-        let invalid = || {
-            DomainError::PasswordResetError("invalid or expired password reset token".to_string())
-        };
+        let invalid =
+            || DomainError::Validation("invalid or expired password reset token".to_string());
 
         let reset_id = Uuid::parse_str(&command.password_reset_id).map_err(|_| invalid())?;
 
@@ -90,18 +95,12 @@ impl UseCase {
             .filter(|t| t.is_active())
             .ok_or_else(invalid)?;
 
-        // 6. Argon2 is intentionally CPU/memory heavy; run it off the async worker.
-        let password = command.new_password.clone();
-        let secret = tenant.password_hash_secret().to_string();
-        let hashed_password =
-            tokio::task::spawn_blocking(move || hash_password(&password, &secret))
-                .await
-                .map_err(|_| {
-                    DomainError::PasswordHashingError("Failed to hash password".to_string())
-                })?
-                .map_err(|_| {
-                    DomainError::PasswordHashingError("Failed to hash password".to_string())
-                })?;
+        // Argon2id runs behind the `PasswordHasher` port: bounded and off the async
+        // workers.
+        let hashed_password = self
+            .password_hasher
+            .hash(&command.new_password, tenant.password_hash_secret())
+            .await?;
 
         user.update_credentials(UserCredentials::new(
             user.id(),

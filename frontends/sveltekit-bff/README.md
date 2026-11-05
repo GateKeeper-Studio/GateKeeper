@@ -50,7 +50,7 @@ All config is **server-only** (read via `$env/dynamic/private`) — see `.env.ex
 | `OAUTH_CLIENT_ID`    | This app's registered client id.                              |
 | `OAUTH_CLIENT_SECRET`| This app's client secret (confidential client).              |
 | `OAUTH_REDIRECT_URI` | Must exactly match a registered redirect_uri (`…/auth/callback`). |
-| `OAUTH_SCOPE`        | Space-separated scopes (`openid profile email`).             |
+| `OAUTH_SCOPE`        | Space-separated scopes (`openid profile email account`; `account` is needed for the `/me` API).             |
 | `SESSION_SECRET`     | Key for the AES-256-GCM session cookie (`openssl rand -hex 32`). |
 
 ### MFA method hints

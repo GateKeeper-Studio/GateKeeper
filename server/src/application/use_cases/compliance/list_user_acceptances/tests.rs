@@ -98,6 +98,6 @@ mod tests {
 
         let use_case = UseCase::new(repo.clone(), users);
         let result = use_case.execute(other_tenant, user_id).await;
-        assert!(matches!(result, Err(DomainError::UserNotFound(_))));
+        assert!(matches!(result, Err(DomainError::NotFound(_))));
     }
 }

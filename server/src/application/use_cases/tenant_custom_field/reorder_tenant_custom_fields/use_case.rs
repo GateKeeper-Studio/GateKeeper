@@ -4,6 +4,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::application::ports::unit_of_work::UnitOfWorkFactory;
+use crate::application::shared::actor::Actor;
 use crate::application::use_cases::tenant_custom_field::reorder_tenant_custom_fields::command::Command;
 use crate::domain::entities::custom_field_definition::CustomFieldDefinition;
 use crate::domain::errors::DomainError;
@@ -19,8 +20,12 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<(), DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
         let repo = uow.custom_field_definition_repository();
 
         let mut existing = repo.find_by_tenant_id(command.tenant_id).await?;
@@ -29,12 +34,12 @@ impl UseCase {
         let submitted_ids: HashSet<Uuid> = command.field_ids.iter().copied().collect();
 
         if submitted_ids.len() != command.field_ids.len() {
-            return Err(DomainError::CustomFieldReorderMismatch(
+            return Err(DomainError::Validation(
                 "field_ids contains duplicate ids".to_string(),
             ));
         }
         if existing_ids != submitted_ids {
-            return Err(DomainError::CustomFieldReorderMismatch(
+            return Err(DomainError::Validation(
                 "field_ids must be exactly the tenant's current set of custom field ids"
                     .to_string(),
             ));

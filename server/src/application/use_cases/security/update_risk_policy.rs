@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory, use_cases::security::views::RiskPolicyView,
@@ -38,8 +39,16 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<RiskPolicyView, DomainError> {
+    pub async fn execute(
+        &self,
+        actor: &Actor,
+        command: Command,
+    ) -> Result<RiskPolicyView, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         let mut policy = uow
             .tenant_risk_policy_repository()

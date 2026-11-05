@@ -132,7 +132,7 @@ mod tests {
             .execute(command(&ctx, "123456"))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::MfaEnrollmentNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -153,6 +153,6 @@ mod tests {
             .execute(command(&ctx, &current_code()))
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::MfaEnrollmentNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

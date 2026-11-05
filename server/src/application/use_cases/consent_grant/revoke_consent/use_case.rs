@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -24,8 +25,12 @@ impl UseCase {
     //   1. mark the consent grant revoked → forces a fresh consent prompt next time;
     //   2. revoke the user's live refresh tokens for that client → cuts off access
     //      now, instead of waiting for them to expire.
-    pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<(), DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         // Confirm the user belongs to this tenant before touching anything.
         uow.user_repository()
@@ -33,7 +38,7 @@ impl UseCase {
             .await?
             .filter(|u| u.tenant_id() == command.tenant_id)
             .ok_or_else(|| {
-                DomainError::UserNotFound(format!("User with id {} not found", command.user_id))
+                DomainError::NotFound(format!("User with id {} not found", command.user_id))
             })?;
 
         uow.consent_grant_repository()

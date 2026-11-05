@@ -90,10 +90,13 @@ mod tests {
         let (clients, use_case) = setup(tenant_id, Some(&client));
 
         use_case
-            .execute(Command {
-                tenant_id,
-                id: client.id(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    id: client.id(),
+                },
+            )
             .await
             .unwrap();
 
@@ -114,12 +117,15 @@ mod tests {
         let (_, use_case) = setup(tenant_id, None);
 
         let err = use_case
-            .execute(Command {
-                tenant_id,
-                id: Uuid::now_v7(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    id: Uuid::now_v7(),
+                },
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::OAuthClientNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

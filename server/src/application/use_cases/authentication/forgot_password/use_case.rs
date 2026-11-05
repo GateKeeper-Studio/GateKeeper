@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 use uuid::Uuid;
 
+use crate::application::shared::token_policy::RESET_TOKEN_TTL_MINUTES;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -15,7 +16,6 @@ use crate::{
 
 // 30 minutes is a comfortable window to receive the email and click the link,
 // while keeping a forgotten or leaked link short-lived.
-const RESET_TOKEN_TTL_MINUTES: i64 = 30;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -68,7 +68,7 @@ impl UseCase {
             .find_by_id(tenant_id)
             .await?
             .filter(|t| t.is_active())
-            .ok_or_else(|| DomainError::TenantNotFound(format!("tenant {tenant_id} not found")))?;
+            .ok_or_else(|| DomainError::NotFound(format!("tenant {tenant_id} not found")))?;
 
         // 2. Self-service password reset must be enabled for the tenant. Silently
         //    succeed if not — the feature state is not an enumerable secret.

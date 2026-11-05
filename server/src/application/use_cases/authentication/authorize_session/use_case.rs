@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::shared::token_policy::AUTH_CODE_TTL_SECONDS;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -16,7 +17,6 @@ use crate::{
 
 // Authorization codes are deliberately short-lived (single-use credential),
 // matching the rest of the OAuth flow.
-const AUTH_CODE_TTL_SECONDS: i64 = 60;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -92,7 +92,7 @@ impl UseCase {
             .map(|c| c.should_change_password())
             .unwrap_or(false)
         {
-            return Err(DomainError::PasswordChangeError(
+            return Err(DomainError::Validation(
                 "password change required before authorization".to_string(),
             ));
         }

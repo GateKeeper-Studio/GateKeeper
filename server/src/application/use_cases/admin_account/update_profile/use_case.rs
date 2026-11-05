@@ -24,7 +24,7 @@ impl UseCase {
             .find_by_id(command.admin_id)
             .await?
             .ok_or_else(|| {
-                DomainError::UserNotFound(format!("admin {} not found", command.admin_id))
+                DomainError::NotFound(format!("admin {} not found", command.admin_id))
             })?;
 
         admin.rename(command.name);

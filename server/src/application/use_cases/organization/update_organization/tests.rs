@@ -34,12 +34,15 @@ mod tests {
         let use_case = UseCase::new(uow_factory);
 
         let response = use_case
-            .execute(Command {
-                organization_id: id,
-                name: "New".to_string(),
-                description: Some("renamed".to_string()),
-                is_active: false,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    organization_id: id,
+                    name: "New".to_string(),
+                    description: Some("renamed".to_string()),
+                    is_active: false,
+                },
+            )
             .await
             .unwrap();
 

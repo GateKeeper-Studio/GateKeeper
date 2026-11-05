@@ -141,6 +141,6 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

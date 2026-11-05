@@ -2,16 +2,17 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use serde_json::json;
-use uuid::Uuid;
 
 use crate::{
     application::{
         ports::{
-            audit_logger::AuditLogger, token_signer::TokenSigner, unit_of_work::UnitOfWorkFactory,
+            audit_logger::AuditLogger, password_hasher::PasswordHasher, token_signer::TokenSigner,
+            unit_of_work::UnitOfWorkFactory,
         },
+        shared::token_policy::REFRESH_TOKEN_TTL_DAYS,
         use_cases::oauth::{
             token_exchange::{command::Command, response::Response},
-            user_claims::resolve_user_claims,
+            token_service::{TokenGrant, TokenMinter, authenticate_client},
         },
     },
     domain::{
@@ -22,20 +23,14 @@ use crate::{
         },
         errors::DomainError,
     },
-    utils::{
-        oauth_crypto::{generate_opaque_token, sha256_hex, verify_pkce},
-        password_hasher::compare_password,
-    },
+    utils::oauth_crypto::{generate_opaque_token, sha256_hex, verify_pkce},
 };
-
-const ACCESS_TOKEN_TTL_SECONDS: i64 = 900; // 15 minutes
-const REFRESH_TOKEN_TTL_DAYS: i64 = 30;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
-    signer: Arc<dyn TokenSigner>,
-    issuer: String,
+    minter: TokenMinter,
     audit_logger: Arc<dyn AuditLogger>,
+    password_hasher: Arc<dyn PasswordHasher>,
 }
 
 impl UseCase {
@@ -44,12 +39,13 @@ impl UseCase {
         signer: Arc<dyn TokenSigner>,
         issuer: String,
         audit_logger: Arc<dyn AuditLogger>,
+        password_hasher: Arc<dyn PasswordHasher>,
     ) -> Self {
         Self {
             unit_of_work_factory,
-            signer,
-            issuer,
+            minter: TokenMinter::new(signer, issuer),
             audit_logger,
+            password_hasher,
         }
     }
 
@@ -62,31 +58,14 @@ impl UseCase {
 
         // 1. Authenticate the client. Confidential ⇒ verify secret with the tenant
         //    pepper; public ⇒ PKCE is the only proof (checked below).
-        let client = uow
-            .oauth_client_repository()
-            .find_by_client_id(command.tenant_id, &command.client_id)
-            .await?
-            .filter(|c| c.is_active())
-            .ok_or_else(|| DomainError::InvalidClient("unknown or inactive client".to_string()))?;
-
-        if client.is_confidential() {
-            let tenant = uow
-                .tenant_repository()
-                .find_by_id(command.tenant_id)
-                .await?
-                .ok_or_else(|| DomainError::InvalidClient("unknown tenant".to_string()))?;
-
-            let presented = command.client_secret.as_deref().unwrap_or("");
-            let valid = match client.client_secret_hash() {
-                Some(hash) => compare_password(hash, presented, tenant.password_hash_secret()),
-                None => false,
-            };
-            if !valid {
-                return Err(DomainError::InvalidClient(
-                    "invalid client secret".to_string(),
-                ));
-            }
-        }
+        let client = authenticate_client(
+            &*uow,
+            self.password_hasher.as_ref(),
+            command.tenant_id,
+            &command.client_id,
+            command.client_secret.as_deref(),
+        )
+        .await?;
 
         // 2. Look the code up BY HASH and enforce single use atomically.
         let code = uow
@@ -131,56 +110,22 @@ impl UseCase {
             .await?;
 
         // 5. Sign tokens with the tenant's ACTIVE signing key (kid stamped in header).
-        let key = uow
-            .signing_key_repository()
-            .find_active(command.tenant_id)
-            .await?
-            .ok_or_else(|| DomainError::InfrastructureError("no active signing key".to_string()))?;
-
-        // Authorization context: the role and group names this user holds in the
-        // tenant, embedded so resource servers can make RBAC decisions from the
-        // access token and clients can read them off the id_token after sign-in.
-        let (roles, groups) = resolve_user_claims(&*uow, command.tenant_id, code.user_id()).await?;
-
         let scopes: Vec<String> = code.scopes().to_vec();
-        let scope_str = scopes.join(" ");
-        let iat = now.timestamp();
-        let exp = iat + ACCESS_TOKEN_TTL_SECONDS;
-
-        let access_claims = json!({
-          "iss": self.issuer,
-          "sub": code.user_id().to_string(),
-          "aud": client.client_id(),
-          "tid": command.tenant_id.to_string(),
-          "scope": scope_str,
-          "roles": roles,
-          "groups": groups,
-          "iat": iat,
-          "exp": exp,
-          "jti": Uuid::now_v7().to_string(),
-        });
-        let access_token = self.signer.sign(&key, &access_claims).await?;
-
-        // OIDC: issue an id_token only when the openid scope was granted.
-        let id_token = if scopes.iter().any(|s| s == "openid") {
-            let mut id_claims = json!({
-              "iss": self.issuer,
-              "sub": code.user_id().to_string(),
-              "aud": client.client_id(),
-              "roles": roles,
-              "groups": groups,
-              "iat": iat,
-              "exp": exp,
-            });
-            // OIDC: echo the nonce back only when the client supplied one. An empty
-            // nonce claim is improper and would fail a strict client's replay check.
-            if !code.nonce().is_empty() {
-                id_claims["nonce"] = json!(code.nonce());
-            }
-            Some(self.signer.sign(&key, &id_claims).await?)
-        } else {
-            None
-        };
+        let tokens = self
+            .minter
+            .mint(
+                &*uow,
+                TokenGrant {
+                    tenant_id: command.tenant_id,
+                    user_id: code.user_id(),
+                    client: &client,
+                    scopes: &scopes,
+                    nonce: Some(code.nonce()),
+                    now,
+                },
+            )
+            .await?;
+        let scope_str = tokens.scope.clone();
 
         // 6. Issue + store a rotating refresh token (store the hash only).
         let raw_refresh = generate_opaque_token();
@@ -209,11 +154,11 @@ impl UseCase {
         let _ = self.audit_logger.record(event).await;
 
         Ok(Response {
-            access_token,
-            id_token,
+            access_token: tokens.access_token,
+            id_token: tokens.id_token,
             refresh_token: raw_refresh,
             token_type: "Bearer".to_string(),
-            expires_in: ACCESS_TOKEN_TTL_SECONDS,
+            expires_in: tokens.expires_in,
             scope: scope_str,
         })
     }

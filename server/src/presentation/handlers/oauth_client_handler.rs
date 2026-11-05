@@ -43,7 +43,11 @@ pub async fn create_oauth_client(
     payload.tenant_id = tenant_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_oauth_client.execute(payload).await?;
+    let response = state
+        .oauth_clients
+        .create_oauth_client
+        .execute(&principal.actor(), payload)
+        .await?;
     admin_action(
         &state,
         tenant_id,
@@ -68,7 +72,11 @@ pub async fn list_oauth_clients(
         page: params.page,
         page_size: params.page_size,
     };
-    let response = state.list_oauth_clients.execute(query).await?;
+    let response = state
+        .oauth_clients
+        .list_oauth_clients
+        .execute(query)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -79,7 +87,11 @@ pub async fn get_oauth_client_by_id(
     Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = get_oauth_client_by_id::query::Query { tenant_id, id };
-    let response = state.get_oauth_client_by_id.execute(query).await?;
+    let response = state
+        .oauth_clients
+        .get_oauth_client_by_id
+        .execute(query)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -98,7 +110,11 @@ pub async fn update_oauth_client(
     payload.id = id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_oauth_client.execute(payload).await?;
+    let response = state
+        .oauth_clients
+        .update_oauth_client
+        .execute(&principal.actor(), payload)
+        .await?;
     admin_action(
         &state,
         tenant_id,
@@ -118,11 +134,18 @@ pub async fn update_oauth_client(
 // once (the old secret is invalidated immediately). 400 for public clients.
 pub async fn rotate_oauth_client_secret(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = rotate_oauth_client_secret::command::Command { tenant_id, id };
-    let response = state.rotate_oauth_client_secret.execute(command).await?;
+    let response = state
+        .oauth_clients
+        .rotate_oauth_client_secret
+        .execute(&principal.actor(), command)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -137,7 +160,11 @@ pub async fn delete_oauth_client(
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = delete_oauth_client::command::Command { tenant_id, id };
-    state.delete_oauth_client.execute(command).await?;
+    state
+        .oauth_clients
+        .delete_oauth_client
+        .execute(&principal.actor(), command)
+        .await?;
     admin_action(
         &state,
         tenant_id,

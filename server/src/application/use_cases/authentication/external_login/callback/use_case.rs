@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
+use crate::application::shared::token_policy::AUTH_CODE_TTL_SECONDS;
 use crate::{
     application::{
         ports::{
@@ -34,7 +36,6 @@ use crate::{
 };
 
 // Mirrors the credential flow's single-use authorization code TTL.
-const AUTH_CODE_TTL_SECONDS: i64 = 60;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -85,13 +86,12 @@ impl UseCase {
             .external_identity_provider_repository()
             .find_by_id(tenant_id, flow.external_provider_id())
             .await?
-            .ok_or_else(|| {
-                DomainError::ExternalIdentityProviderNotFound("external provider not found".into())
-            })?;
+            .ok_or_else(|| DomainError::NotFound("external provider not found".into()))?;
 
-        let secret = self
-            .secret_cipher
-            .decrypt(provider.provider_client_secret_encrypted())?;
+        let secret = self.secret_cipher.decrypt(
+            provider.provider_client_secret_encrypted(),
+            SecretContext::new(SecretPurpose::ExternalIdpClientSecret, provider.tenant_id()),
+        )?;
 
         let profile = self
             .provider_client
@@ -227,11 +227,9 @@ impl UseCase {
             .email
             .as_deref()
             .filter(|e| !e.is_empty())
-            .ok_or_else(|| {
-                DomainError::ExternalProviderError("the provider did not return an email".into())
-            })?;
+            .ok_or_else(|| DomainError::Upstream("the provider did not return an email".into()))?;
         if !profile.email_verified {
-            return Err(DomainError::ExternalProviderError(
+            return Err(DomainError::Upstream(
                 "the provider email is not verified".into(),
             ));
         }

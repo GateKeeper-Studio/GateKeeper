@@ -53,7 +53,7 @@ pub fn validate_custom_field_values(
         Some(Value::Null) => None,
         Some(Value::Object(map)) => Some(map),
         Some(_) => {
-            return Err(DomainError::InvalidCustomFieldValue(
+            return Err(DomainError::Validation(
                 "custom field values must be a JSON object".to_string(),
             ));
         }
@@ -62,7 +62,7 @@ pub fn validate_custom_field_values(
     // Nothing submitted: only valid if no active field is required.
     let Some(input_object) = input_object else {
         if let Some(missing) = active.iter().find(|d| d.is_required()) {
-            return Err(DomainError::InvalidCustomFieldValue(format!(
+            return Err(DomainError::Validation(format!(
                 "'{}' is required",
                 any_label(missing)
             )));
@@ -73,7 +73,7 @@ pub fn validate_custom_field_values(
     // Allow-list: reject any key that isn't a known, active field.
     for key in input_object.keys() {
         if !active.iter().any(|d| d.field_key() == key) {
-            return Err(DomainError::InvalidCustomFieldValue(format!(
+            return Err(DomainError::Validation(format!(
                 "unknown custom field '{key}'"
             )));
         }
@@ -88,7 +88,7 @@ pub fn validate_custom_field_values(
 
         if is_blank {
             if definition.is_required() {
-                return Err(DomainError::InvalidCustomFieldValue(format!(
+                return Err(DomainError::Validation(format!(
                     "'{}' is required",
                     any_label(definition)
                 )));
@@ -107,10 +107,10 @@ pub fn validate_custom_field_values(
 
     let result = Value::Object(output);
     let size = serde_json::to_vec(&result)
-        .map_err(|e| DomainError::InvalidCustomFieldValue(format!("failed to serialize: {e}")))?
+        .map_err(|e| DomainError::Validation(format!("failed to serialize: {e}")))?
         .len();
     if size > MAX_TOTAL_PAYLOAD_BYTES {
-        return Err(DomainError::InvalidCustomFieldValue(
+        return Err(DomainError::Validation(
             "custom field values exceed the maximum allowed size".to_string(),
         ));
     }
@@ -127,13 +127,13 @@ fn validate_one(definition: &CustomFieldDefinition, value: &Value) -> Result<Val
                 return Err(type_error(definition, "a string"));
             };
             if s.chars().any(|c| c.is_control()) {
-                return Err(DomainError::InvalidCustomFieldValue(format!(
+                return Err(DomainError::Validation(format!(
                     "'{}' contains invalid control characters",
                     any_label(definition)
                 )));
             }
             if s.chars().count() > MAX_TEXT_VALUE_LEN {
-                return Err(DomainError::InvalidCustomFieldValue(format!(
+                return Err(DomainError::Validation(format!(
                     "'{}' exceeds the maximum length of {MAX_TEXT_VALUE_LEN} characters",
                     any_label(definition)
                 )));
@@ -146,7 +146,7 @@ fn validate_one(definition: &CustomFieldDefinition, value: &Value) -> Result<Val
             };
             if let Some(f) = n.as_f64() {
                 if !f.is_finite() {
-                    return Err(DomainError::InvalidCustomFieldValue(format!(
+                    return Err(DomainError::Validation(format!(
                         "'{}' must be a finite number",
                         any_label(definition)
                     )));
@@ -165,7 +165,7 @@ fn validate_one(definition: &CustomFieldDefinition, value: &Value) -> Result<Val
                 return Err(type_error(definition, "a date string (YYYY-MM-DD)"));
             };
             if NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err() {
-                return Err(DomainError::InvalidCustomFieldValue(format!(
+                return Err(DomainError::Validation(format!(
                     "'{}' must be a valid date in YYYY-MM-DD format",
                     any_label(definition)
                 )));
@@ -186,7 +186,7 @@ fn validate_one(definition: &CustomFieldDefinition, value: &Value) -> Result<Val
                 .iter()
                 .any(|entry| entry.values().any(|opt| opt == s))
             {
-                return Err(DomainError::InvalidCustomFieldValue(format!(
+                return Err(DomainError::Validation(format!(
                     "'{}' must be one of the allowed options",
                     any_label(definition)
                 )));
@@ -197,7 +197,7 @@ fn validate_one(definition: &CustomFieldDefinition, value: &Value) -> Result<Val
 }
 
 fn type_error(definition: &CustomFieldDefinition, expected: &str) -> DomainError {
-    DomainError::InvalidCustomFieldValue(format!("'{}' must be {expected}", any_label(definition)))
+    DomainError::Validation(format!("'{}' must be {expected}", any_label(definition)))
 }
 
 #[cfg(test)]
@@ -261,7 +261,7 @@ mod tests {
     fn required_field_missing_is_rejected() {
         let defs = vec![field("nickname", CustomFieldType::Text, None, true)];
         let err = validate_custom_field_values(&defs, None).unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[test]
@@ -269,7 +269,7 @@ mod tests {
         let defs = vec![field("nickname", CustomFieldType::Text, None, false)];
         let raw = json!({"nickname": "gabs", "sneaky": "value"});
         let err = validate_custom_field_values(&defs, Some(raw)).unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[test]
@@ -277,7 +277,7 @@ mod tests {
         let defs = vec![field("bio", CustomFieldType::Text, None, false)];
         let raw = json!({"bio": "a".repeat(MAX_TEXT_VALUE_LEN + 1)});
         let err = validate_custom_field_values(&defs, Some(raw)).unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[test]
@@ -290,7 +290,7 @@ mod tests {
         )];
         let raw = json!({"size": "<script>alert(1)</script>"});
         let err = validate_custom_field_values(&defs, Some(raw)).unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[test]
@@ -298,7 +298,7 @@ mod tests {
         let defs = vec![field("bio", CustomFieldType::Text, None, false)];
         let raw = json!({"bio": "hello\u{0000}world"});
         let err = validate_custom_field_values(&defs, Some(raw)).unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[test]
@@ -306,7 +306,7 @@ mod tests {
         let defs = vec![field("birthday", CustomFieldType::Date, None, false)];
         let raw = json!({"birthday": "not-a-date"});
         let err = validate_custom_field_values(&defs, Some(raw)).unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[test]
@@ -324,7 +324,7 @@ mod tests {
         let _ = &defs; // keep single-field fixture referenced for clarity
         let err =
             validate_custom_field_values(&defs_many, Some(Value::Object(raw_map))).unwrap_err();
-        assert!(matches!(err, DomainError::InvalidCustomFieldValue(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[test]

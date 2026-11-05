@@ -251,7 +251,7 @@ impl EmailProviderRepository for DbEmailProviderRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::EmailProviderNotFound(
+            Err(DomainError::NotFound(
                 "Email provider not found".to_string(),
             ))
         } else {
@@ -272,7 +272,7 @@ impl EmailProviderRepository for DbEmailProviderRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::EmailProviderNotFound(
+            Err(DomainError::NotFound(
                 "Email provider not found".to_string(),
             ))
         } else {

@@ -51,7 +51,7 @@ pub async fn authorize(
         nonce: params.nonce,
     };
 
-    let validated = state.authorize_request.execute(query).await?;
+    let validated = state.oauth.authorize_request.execute(query).await?;
 
     Ok((
         StatusCode::OK,

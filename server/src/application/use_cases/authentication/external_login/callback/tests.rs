@@ -377,7 +377,7 @@ mod tests {
         let err = h.use_case.execute(command()).await.unwrap_err();
         assert!(matches!(
             err,
-            crate::domain::errors::DomainError::ExternalProviderError(_)
+            crate::domain::errors::DomainError::Upstream(_)
         ));
     }
 

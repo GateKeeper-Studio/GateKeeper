@@ -7,6 +7,7 @@ use lettre::{
     transport::smtp::authentication::Credentials,
 };
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
 use crate::{
     application::ports::{email_sender::EmailSender, secret_cipher::SecretCipher},
     domain::{
@@ -37,7 +38,10 @@ impl SmtpEmailSender {
         &self,
         provider: &EmailProvider,
     ) -> Result<(Mailbox, AsyncSmtpTransport<Tokio1Executor>), DomainError> {
-        let password = self.secret_cipher.decrypt(provider.password_encrypted())?;
+        let password = self.secret_cipher.decrypt(
+            provider.password_encrypted(),
+            SecretContext::new(SecretPurpose::SmtpPassword, provider.tenant_id()),
+        )?;
         let from = build_mailbox(provider.from_email(), provider.from_name())?;
         let transport = build_transport(provider, password)?;
         Ok((from, transport))
@@ -64,11 +68,17 @@ impl SmtpEmailSender {
                 text_body.to_string(),
                 html_body.to_string(),
             ))
-            .map_err(|e| DomainError::EmailProviderError(format!("failed to build email: {e}")))?;
+            .map_err(|e| {
+                tracing::warn!("building email failed: {e}");
+                DomainError::Upstream("the email could not be built".to_string())
+            })?;
 
         transport.send(email).await.map_err(|e| {
             tracing::error!("SMTP send failed: {e}");
-            DomainError::EmailProviderError(format!("failed to send email: {e}"))
+            DomainError::Upstream(
+                "the SMTP server did not accept the message — check the provider credentials"
+                    .to_string(),
+            )
         })?;
 
         Ok(())
@@ -90,11 +100,17 @@ impl SmtpEmailSender {
             .to(to_mailbox)
             .subject(subject)
             .body(text_body.to_string())
-            .map_err(|e| DomainError::EmailProviderError(format!("failed to build email: {e}")))?;
+            .map_err(|e| {
+                tracing::warn!("building email failed: {e}");
+                DomainError::Upstream("the email could not be built".to_string())
+            })?;
 
         transport.send(email).await.map_err(|e| {
             tracing::error!("SMTP send failed: {e}");
-            DomainError::EmailProviderError(format!("failed to send email: {e}"))
+            DomainError::Upstream(
+                "the SMTP server did not accept the message — check the provider credentials"
+                    .to_string(),
+            )
         })?;
 
         Ok(())
@@ -119,7 +135,7 @@ impl EmailSender for SmtpEmailSender {
         };
 
         if !provider.is_active() {
-            return Err(DomainError::EmailProviderError(
+            return Err(DomainError::Validation(
                 "the selected email provider is inactive".to_string(),
             ));
         }
@@ -134,7 +150,7 @@ impl EmailSender for SmtpEmailSender {
         to: &str,
     ) -> Result<(), DomainError> {
         let Some(provider) = provider else {
-            return Err(DomainError::EmailProviderError(
+            return Err(DomainError::Validation(
                 "no email provider configured to test".to_string(),
             ));
         };
@@ -148,7 +164,7 @@ impl EmailSender for SmtpEmailSender {
 // Parses a recipient address into a mailbox, mapping failures to a domain error.
 fn parse_recipient(to: &str) -> Result<Mailbox, DomainError> {
     to.parse()
-        .map_err(|_| DomainError::EmailProviderError(format!("invalid recipient address: {to}")))
+        .map_err(|_| DomainError::Validation(format!("invalid recipient address: {to}")))
 }
 
 // "Name <email>" when a display name is set, otherwise the bare address.
@@ -158,7 +174,7 @@ fn build_mailbox(email: &str, name: Option<&str>) -> Result<Mailbox, DomainError
         _ => email.to_string(),
     };
     raw.parse()
-        .map_err(|_| DomainError::EmailProviderError(format!("invalid from address: {email}")))
+        .map_err(|_| DomainError::Validation(format!("invalid from address: {email}")))
 }
 
 fn build_transport(
@@ -177,7 +193,7 @@ fn build_transport(
     };
 
     let port = u16::try_from(provider.port())
-        .map_err(|_| DomainError::EmailProviderError("invalid SMTP port".to_string()))?;
+        .map_err(|_| DomainError::Validation("invalid SMTP port".to_string()))?;
 
     Ok(builder
         .port(port)
@@ -187,5 +203,5 @@ fn build_transport(
 
 fn map_smtp_build_error(e: lettre::transport::smtp::Error) -> DomainError {
     tracing::error!("SMTP transport build failed: {e}");
-    DomainError::EmailProviderError(format!("failed to connect to SMTP host: {e}"))
+    DomainError::Upstream("could not connect to the SMTP host".to_string())
 }

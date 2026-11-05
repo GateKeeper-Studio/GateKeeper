@@ -21,7 +21,7 @@ The other half — the controls themselves — lives in code (`src/`) and the da
 | Retention purges (WI-03) | `purge_expired_data` use case (refresh tokens/sessions/auth codes), `POST /admin/maintenance/purge`, self-service `PUT /me/profile` | ✅ |
 | Broad audit emission (WI-02) | login success/failure, access-denied, token issued/refreshed/reuse, all admin CUD (tenant/user/role/group/oauth-client + assignments + consent), all DSR events | ✅ |
 | Dashboard compliance UI | Audit Log page, Compliance (purge) page, user **Privacy tab** (export/erase/policy), `audit.ts`/`compliance.ts` services, bearer-token attach in `api.ts` | ✅ |
-| Dashboard admin **sign-in** | `admin_users` table + `POST /admin/login` (HS256 token) → `src/presentation/handlers/admin_auth_handler.rs`, `use_cases/admin_auth/login`, HS256 branch in `middleware/auth.rs`; dashboard `/login` page + `setAccessToken` storage + `dashboard/+layout.ts` guard + logout; bootstrap via `cargo run --bin create_admin`. `REQUIRE_ADMIN_AUTH=true` enforced. | ✅ |
+| Dashboard admin **sign-in** | `admin_users` table + `POST /admin/login` (HS256 token) → `src/presentation/handlers/admin_auth_handler.rs`, `use_cases/admin_auth/login`, HS256 branch in `middleware/auth.rs`; dashboard `/login` page + `setAccessToken` storage + `dashboard/+layout.ts` guard + logout; bootstrap via `cargo run --bin create_admin`. Admin guard always enforced (the `REQUIRE_ADMIN_AUTH` toggle was removed). | ✅ |
 | Password/email-flow audit emission | register, confirm/reset/change password | 🟡 not yet (login + admin CUD done) |
 
 ## Documents in this directory

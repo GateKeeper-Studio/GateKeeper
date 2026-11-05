@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -19,8 +20,12 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<(), DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         // Confirm the provider exists and belongs to the client in the path.
         uow.external_identity_provider_repository()
@@ -28,7 +33,7 @@ impl UseCase {
             .await?
             .filter(|p| p.oauth_client_id() == command.oauth_client_id)
             .ok_or_else(|| {
-                DomainError::ExternalIdentityProviderNotFound(format!(
+                DomainError::NotFound(format!(
                     "External identity provider {} not found",
                     command.id
                 ))

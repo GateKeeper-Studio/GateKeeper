@@ -64,7 +64,13 @@ mod tests {
         let tenant = make_tenant();
         let (group_repo, use_case) = setup(&tenant);
 
-        let response = use_case.execute(make_command(tenant.id())).await.unwrap();
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(response.name, "Engineering");
         assert_eq!(response.description, Some("The eng team".to_string()));
@@ -80,7 +86,10 @@ mod tests {
         let mut command = make_command(tenant.id());
         command.description = Some("   ".into());
 
-        let response = use_case.execute(command).await.unwrap();
+        let response = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap();
 
         assert_eq!(response.description, None);
     }
@@ -91,11 +100,14 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(make_command(Uuid::new_v4()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(Uuid::new_v4()),
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -112,10 +124,65 @@ mod tests {
             .insert(existing.id(), existing);
 
         let err = use_case
-            .execute(make_command(tenant.id()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::GroupAlreadyExists(_)));
+        assert!(matches!(err, DomainError::Conflict(_)));
+    }
+
+    // ── Authorization inside the use case (not only at the HTTP guard) ────────
+
+    #[tokio::test]
+    async fn an_admin_of_another_tenant_cannot_create_a_group_here() {
+        let tenant = make_tenant();
+        let (group_repo, use_case) = setup(&tenant);
+        let intruder = crate::application::shared::actor::Actor::TenantAdmin {
+            tenant_id: Uuid::now_v7(),
+            user_id: Uuid::now_v7(),
+        };
+
+        let err = use_case
+            .execute(&intruder, make_command(tenant.id()))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::AccessDenied(_)));
+        assert!(group_repo.memory.data.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_end_user_cannot_use_an_admin_use_case() {
+        let tenant = make_tenant();
+        let (_, use_case) = setup(&tenant);
+        let user = crate::application::shared::actor::Actor::User {
+            tenant_id: tenant.id(),
+            user_id: Uuid::now_v7(),
+        };
+
+        let err = use_case
+            .execute(&user, make_command(tenant.id()))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::AccessDenied(_)));
+    }
+
+    #[tokio::test]
+    async fn the_tenants_own_admin_may_create_a_group() {
+        let tenant = make_tenant();
+        let (_, use_case) = setup(&tenant);
+        let admin = crate::application::shared::actor::Actor::TenantAdmin {
+            tenant_id: tenant.id(),
+            user_id: Uuid::now_v7(),
+        };
+        assert!(
+            use_case
+                .execute(&admin, make_command(tenant.id()))
+                .await
+                .is_ok()
+        );
     }
 }

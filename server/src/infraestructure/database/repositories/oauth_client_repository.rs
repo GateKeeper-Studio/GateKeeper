@@ -467,9 +467,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
     .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::OAuthClientNotFound(
-                "OAuth client not found".to_string(),
-            ))
+            Err(DomainError::NotFound("OAuth client not found".to_string()))
         } else {
             Ok(())
         }
@@ -494,9 +492,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::OAuthClientNotFound(
-                "OAuth client not found".to_string(),
-            ))
+            Err(DomainError::NotFound("OAuth client not found".to_string()))
         } else {
             Ok(())
         }
@@ -515,9 +511,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::OAuthClientNotFound(
-                "OAuth client not found".to_string(),
-            ))
+            Err(DomainError::NotFound("OAuth client not found".to_string()))
         } else {
             Ok(())
         }
@@ -594,10 +588,17 @@ mod tests {
             true,
             organization.id(),
         );
-        DbTenantRepository::with_tx(tx.clone())
-            .add(&tenant)
-            .await
-            .unwrap();
+        DbTenantRepository::with_tx(
+            tx.clone(),
+            std::sync::Arc::new(
+                crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::new(
+                    [0u8; 32],
+                ),
+            ),
+        )
+        .add(&tenant)
+        .await
+        .unwrap();
 
         let client = OAuthClient::new(
             tenant.id(),
@@ -674,6 +675,6 @@ mod tests {
 
         let err = repo.update_secret_hash(&client).await.unwrap_err();
 
-        assert!(matches!(err, DomainError::OAuthClientNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

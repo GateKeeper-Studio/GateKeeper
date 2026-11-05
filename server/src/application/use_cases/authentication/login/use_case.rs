@@ -3,6 +3,10 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 use serde_json::Value;
 
+use crate::application::ports::password_hasher::PasswordHasher;
+use crate::application::shared::token_policy::{
+    MFA_CODE_TTL_MINUTES, WEBAUTHN_CHALLENGE_TTL_MINUTES,
+};
 use crate::{
     application::{
         ports::{
@@ -27,16 +31,11 @@ use crate::{
         },
         errors::DomainError,
     },
-    utils::{
-        oauth_crypto::{generate_numeric_code, generate_opaque_token, sha256_hex},
-        password_hasher::compare_password,
-    },
+    utils::oauth_crypto::{generate_numeric_code, generate_opaque_token, sha256_hex},
 };
 
 // The session's idle/absolute windows live in `session_policy` — `refresh_session`
 // slides the idle one and must agree with us about both.
-const MFA_CODE_TTL_MINUTES: i64 = 10;
-const WEBAUTHN_CHALLENGE_TTL_MINUTES: i64 = 5;
 
 // OAuth 2.1 mandates PKCE with S256; plain/none are rejected at the door.
 const REQUIRED_CODE_CHALLENGE_METHOD: &str = "S256";
@@ -94,6 +93,7 @@ pub struct UseCase {
     templated_email: Arc<TemplatedEmailSender>,
     webauthn: Arc<dyn WebauthnService>,
     risk_engine: Arc<dyn RiskEngine>,
+    password_hasher: Arc<dyn PasswordHasher>,
 }
 
 impl UseCase {
@@ -102,12 +102,14 @@ impl UseCase {
         templated_email: Arc<TemplatedEmailSender>,
         webauthn: Arc<dyn WebauthnService>,
         risk_engine: Arc<dyn RiskEngine>,
+        password_hasher: Arc<dyn PasswordHasher>,
     ) -> Self {
         Self {
             unit_of_work_factory,
             templated_email,
             webauthn,
             risk_engine,
+            password_hasher,
         }
     }
 
@@ -178,7 +180,7 @@ impl UseCase {
             .tenant_repository()
             .find_by_id(tenant_id)
             .await?
-            .ok_or_else(|| DomainError::TenantNotFound(format!("tenant {tenant_id} not found")))?;
+            .ok_or_else(|| DomainError::NotFound(format!("tenant {tenant_id} not found")))?;
 
         // PRE-AUTHENTICATION risk gate: if the IP is under an active block, refuse
         //    before spending an Argon2 verification. The attempt is still recorded.
@@ -225,18 +227,21 @@ impl UseCase {
             None => None,
         };
 
-        let credentials_valid = if let Some(creds) = &credentials {
-            // Argon2 verification is CPU/memory heavy — run it off the async worker.
-            let password_hash = creds.password_hash().to_string();
-            let password = command.password.clone();
-            let secret = tenant.password_hash_secret().to_string();
-            tokio::task::spawn_blocking(move || {
-                compare_password(&password_hash, &password, &secret)
-            })
-            .await
-            .map_err(|_| DomainError::AuthenticationError("authentication failed".to_string()))?
-        } else {
-            false
+        // Argon2 runs behind the `PasswordHasher` port (bounded, off the async
+        // workers). An unknown or inactive account still pays one verification
+        // against a dummy hash, so response time does not reveal which emails are
+        // registered.
+        let credentials_valid = match &credentials {
+            Some(creds) => {
+                self.password_hasher
+                    .verify(
+                        creds.password_hash(),
+                        &command.password,
+                        tenant.password_hash_secret(),
+                    )
+                    .await
+            }
+            None => self.password_hasher.verify_dummy(&command.password).await,
         };
 
         // POST-AUTHENTICATION risk evaluation. Records the login_event + signals on

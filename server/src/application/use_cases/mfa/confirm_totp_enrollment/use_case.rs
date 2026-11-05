@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -38,13 +39,14 @@ impl UseCase {
             .await?
             .filter(|e| e.tenant_id() == command.tenant_id && !e.is_confirmed())
             .ok_or_else(|| {
-                DomainError::MfaEnrollmentNotFound(
-                    "no pending authenticator enrollment".to_string(),
-                )
+                DomainError::NotFound("no pending authenticator enrollment".to_string())
             })?;
 
         let encrypted = enrollment.secret_enc().ok_or_else(invalid)?;
-        let secret_base32 = self.secret_cipher.decrypt(encrypted)?;
+        let secret_base32 = self.secret_cipher.decrypt(
+            encrypted,
+            SecretContext::new(SecretPurpose::TotpSeed, enrollment.tenant_id()),
+        )?;
         let secret = base32::decode(base32::Alphabet::Rfc4648 { padding: false }, &secret_base32)
             .ok_or_else(invalid)?;
         let matched_step =

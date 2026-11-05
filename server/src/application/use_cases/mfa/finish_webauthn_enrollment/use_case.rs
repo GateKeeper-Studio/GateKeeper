@@ -80,7 +80,7 @@ impl UseCase {
             .await?
             .is_some()
         {
-            return Err(DomainError::MfaEnrollmentConflict(
+            return Err(DomainError::Conflict(
                 "this passkey is already registered".to_string(),
             ));
         }

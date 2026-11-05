@@ -54,7 +54,7 @@ impl UseCase {
             .user_repository
             .find_by_id_with_profile(user_id)
             .await?
-            .ok_or_else(|| DomainError::UserNotFound(format!("user {user_id} not found")))?;
+            .ok_or_else(|| DomainError::NotFound(format!("user {user_id} not found")))?;
 
         // 3. Return only the claims the granted scopes allow.
         let has = |scope: &str| verified.scopes.iter().any(|s| s == scope);

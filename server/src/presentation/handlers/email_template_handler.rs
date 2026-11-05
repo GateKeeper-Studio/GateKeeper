@@ -33,7 +33,7 @@ pub async fn list_email_templates(
     TenantScope { tenant_id, .. }: TenantScope,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_email_templates::query::Query { tenant_id };
-    let response = state.list_email_templates.execute(query).await?;
+    let response = state.email.list_email_templates.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -48,14 +48,17 @@ pub async fn get_email_template(
         tenant_id,
         template_type,
     };
-    let response = state.get_email_template.execute(query).await?;
+    let response = state.email.get_email_template.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
 // PUT /tenants/:tenant_id/email-templates/:template_type  (admin)
 pub async fn update_email_template(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, template_type)): Path<(Uuid, String)>,
     AppJson(mut payload): AppJson<update_email_template::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -63,14 +66,21 @@ pub async fn update_email_template(
     payload.template_type = parse_template_type(&template_type)?;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_email_template.execute(payload).await?;
+    let response = state
+        .email
+        .update_email_template
+        .execute(&principal.actor(), payload)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
 // DELETE /tenants/:tenant_id/email-templates/:template_type  (admin) — reset to default
 pub async fn reset_email_template(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, template_type)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let template_type = parse_template_type(&template_type)?;
@@ -78,7 +88,11 @@ pub async fn reset_email_template(
         tenant_id,
         template_type,
     };
-    let response = state.reset_email_template.execute(command).await?;
+    let response = state
+        .email
+        .reset_email_template
+        .execute(&principal.actor(), command)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -94,6 +108,6 @@ pub async fn preview_email_template(
     payload.template_type = parse_template_type(&template_type)?;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.preview_email_template.execute(payload).await?;
+    let response = state.email.preview_email_template.execute(payload).await?;
     Ok((StatusCode::OK, Json(response)))
 }

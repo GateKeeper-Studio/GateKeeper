@@ -40,7 +40,7 @@ impl UseCase {
             .await?
             .filter(|u| u.tenant_id() == query.tenant_id)
             .ok_or_else(|| {
-                DomainError::UserNotFound(format!("User with id {} not found", query.user_id))
+                DomainError::NotFound(format!("User with id {} not found", query.user_id))
             })?;
 
         let grants = self

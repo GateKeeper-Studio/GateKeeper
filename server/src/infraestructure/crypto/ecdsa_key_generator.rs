@@ -7,6 +7,7 @@ use p256::{
 use rand_core::OsRng;
 use uuid::Uuid;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
 use crate::{
     application::ports::{secret_cipher::SecretCipher, signing_key_generator::SigningKeyGenerator},
     domain::{
@@ -45,7 +46,10 @@ impl SigningKeyGenerator for EcdsaKeyGenerator {
             .to_string();
 
         // Seal the private key at rest — the DB only ever sees ciphertext.
-        let private_key_sealed = self.cipher.encrypt(&private_key_pem)?;
+        let private_key_sealed = self.cipher.encrypt(
+            &private_key_pem,
+            SecretContext::new(SecretPurpose::SigningKey, tenant_id),
+        )?;
 
         // Public half as a JWK object: {"kty":"EC","crv":"P-256","x":..,"y":..}. The
         // /jwks.json endpoint stamps in `kid`, `alg`, and `use` when it serves this.
@@ -114,7 +118,11 @@ mod tests {
         // exercises the whole keygen → seal → unseal → jsonwebtoken chain that the
         // token endpoint depends on.
         let token = JwtSigningService::new(Arc::clone(&cipher))
-            .sign(&key, &json!({ "sub": "abc", "exp": 9_999_999_999i64 }))
+            .sign(
+                &key,
+                &json!({ "sub": "abc", "exp": 9_999_999_999i64 }),
+                crate::application::ports::token_signer::TokenType::Access,
+            )
             .await
             .expect("generated key should produce a signable JWT");
 
@@ -150,15 +158,15 @@ mod tests {
             .await
             .expect("connect to database");
 
-        let tenants = DbTenantRepository::new(pool.clone());
-        let signing_keys = DbSigningKeyRepository::new(pool.clone());
         // Seal new keys with the same AES-256-GCM key the server runs with, so the
         // token endpoint can unseal them.
         let cipher: Arc<dyn SecretCipher> = Arc::new(
             crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::new(
-                crate::infraestructure::config::resolve_email_encryption_key(),
+                crate::infraestructure::config::resolve_secrets_encryption_key(),
             ),
         );
+        let tenants = DbTenantRepository::new(pool.clone(), Arc::clone(&cipher));
+        let signing_keys = DbSigningKeyRepository::new(pool.clone());
         let generator = EcdsaKeyGenerator::new(cipher);
 
         let all = tenants.find_all(1, 10_000).await.expect("list tenants");
@@ -191,64 +199,6 @@ mod tests {
         );
     }
 
-    // One-off ops re-seal: encrypts any signing key whose `private_key_encrypted`
-    // column is still a plaintext PKCS#8 PEM (written before keys were sealed at
-    // rest). The signer transparently accepts both plaintext and sealed keys, so
-    // this closes the at-rest exposure with no downtime. Run against the live DB:
-    //
-    //   cargo test --lib reseal_plaintext_signing_keys -- --ignored --nocapture
-    //
-    // Idempotent: rows that are already sealed (not a PEM) are skipped. It must run
-    // with the SAME EMAIL_ENCRYPTION_KEY the server uses, or the signer won't be able
-    // to unseal afterwards.
-    #[tokio::test]
-    #[ignore = "touches the live database; run manually as an ops step"]
-    async fn reseal_plaintext_signing_keys() {
-        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-        let pool = sqlx::PgPool::connect(&database_url)
-            .await
-            .expect("connect to database");
-
-        let cipher = crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::new(
-            crate::infraestructure::config::resolve_email_encryption_key(),
-        );
-
-        // Every key across every tenant and status — even retired keys are a
-        // disclosure risk while their private half sits in the clear.
-        let rows = sqlx::query!("SELECT id, kid, private_key_encrypted FROM signing_keys")
-            .fetch_all(&pool)
-            .await
-            .expect("load signing keys");
-
-        let total = rows.len();
-        let mut resealed = 0;
-        for row in rows {
-            if !row.private_key_encrypted.starts_with("-----BEGIN") {
-                println!("key kid={} already sealed — skipping", row.kid);
-                continue;
-            }
-            let sealed = cipher
-                .encrypt(&row.private_key_encrypted)
-                .expect("seal private key");
-            sqlx::query!(
-                "UPDATE signing_keys SET private_key_encrypted = $2 WHERE id = $1",
-                row.id,
-                sealed,
-            )
-            .execute(&pool)
-            .await
-            .expect("persist sealed key");
-            resealed += 1;
-            println!("sealed key kid={}", row.kid);
-        }
-        println!("done: {resealed} of {total} key(s) sealed");
-    }
-
-    // End-to-end proof, against the live DB, that the token endpoint now signs
-    // instead of 500ing: provision a confirmed user, then run login → authorize →
-    // token_exchange in-process and assert real JWTs come out.
-    //
-    //   cargo test --lib end_to_end_token_issuance -- --ignored --nocapture
     #[tokio::test]
     #[ignore = "touches the live database; run manually to verify the token flow"]
     async fn end_to_end_token_issuance() {
@@ -300,7 +250,12 @@ mod tests {
         // Resolve a real tenant that actually has an ACTIVE signing key, rather than a
         // hardcoded id — proving the token endpoint signs with whatever (now sealed)
         // key sits in the DB.
-        let tenants = DbTenantRepository::new(pool.clone());
+        let cipher: Arc<dyn SecretCipher> = Arc::new(
+            crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::new(
+                crate::infraestructure::config::resolve_secrets_encryption_key(),
+            ),
+        );
+        let tenants = DbTenantRepository::new(pool.clone(), Arc::clone(&cipher));
         let signing_keys = DbSigningKeyRepository::new(pool.clone());
         let all_tenants = tenants.find_all(1, 10_000).await.expect("list tenants");
         let mut chosen = None;
@@ -376,13 +331,8 @@ mod tests {
             .expect("insert test user");
 
         let uow_factory: Arc<dyn UnitOfWorkFactory> =
-            Arc::new(DbUnitOfWorkFactory::new(pool.clone()));
-        let cipher: Arc<dyn SecretCipher> = Arc::new(
-            crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::new(
-                crate::infraestructure::config::resolve_email_encryption_key(),
-            ),
-        );
-        let signer: Arc<dyn TokenSigner> = Arc::new(JwtSigningService::new(cipher));
+            Arc::new(DbUnitOfWorkFactory::new(pool.clone(), Arc::clone(&cipher)));
+        let signer: Arc<dyn TokenSigner> = Arc::new(JwtSigningService::new(Arc::clone(&cipher)));
 
         // A real PKCE pair: keep the verifier, derive the challenge.
         let code_verifier = "e2e-code-verifier-0123456789-0123456789-0123456789";
@@ -394,6 +344,7 @@ mod tests {
             crate::testing::templated_email_support::recording_templated_email_sender().0,
             Arc::new(crate::testing::fake_webauthn_service::FakeWebauthnService::new()),
             Arc::new(crate::testing::fake_risk_engine::FakeRiskEngine::allow()),
+            crate::testing::password_hasher::test_password_hasher(),
         );
         let login_res = login_uc
             .execute(login::command::Command {
@@ -432,6 +383,7 @@ mod tests {
             Arc::clone(&signer),
             issuer,
             Arc::new(crate::testing::fake_audit_logger::FakeAuditLogger::new()),
+            crate::testing::password_hasher::test_password_hasher(),
         );
         let tokens = token_uc
             .execute(token_exchange::command::Command {

@@ -62,6 +62,11 @@ pub enum ApiError {
     // keys off the `title` to route them to the confirm-email screen, so this
     // carries a structured `{ title, message }` body rather than the bare `{ error }`.
     EmailNotConfirmed(String),
+    // A destructive self-service action needs the current password (step-up).
+    StepUpRequired(String),
+    // An external system (SMTP server, social identity provider) failed. The
+    // message is a fixed description; the raw upstream error is only logged.
+    BadGateway(String),
     Validation(ValidationErrors),
     Internal,
 }
@@ -95,6 +100,16 @@ impl IntoResponse for ApiError {
             ApiError::EmailNotConfirmed(msg) => (
                 StatusCode::FORBIDDEN,
                 Json(json!({ "title": "E-mail not confirmed", "message": msg })),
+            )
+                .into_response(),
+            ApiError::StepUpRequired(msg) => (
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "step_up_required", "error_description": msg })),
+            )
+                .into_response(),
+            ApiError::BadGateway(msg) => (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "error": "upstream_error", "error_description": msg })),
             )
                 .into_response(),
             ApiError::Validation(errors) => {
@@ -135,55 +150,28 @@ impl IntoResponse for ApiError {
 impl From<DomainError> for ApiError {
     fn from(err: DomainError) -> Self {
         match err {
-            DomainError::LoginRequired(message) => ApiError::Redirected(message),
+            DomainError::NotFound(message) => ApiError::NotFound(message),
+            DomainError::Conflict(message) => ApiError::Conflict(message),
+            DomainError::Validation(message)
+            | DomainError::InvalidRequest(message)
+            | DomainError::InvalidScope(message)
+            | DomainError::InvalidGrant(message) => ApiError::BadRequest(message),
+            DomainError::AuthenticationError(message)
+            | DomainError::InvalidClient(message)
+            | DomainError::UnauthorizedClient(message)
+            | DomainError::MfaError(message) => ApiError::Unauthorized(message),
             DomainError::AccessDenied(message) => ApiError::Forbidden(message),
-            DomainError::UnauthorizedClient(message) => ApiError::Unauthorized(message),
-            DomainError::InvalidClient(message) => ApiError::Unauthorized(message),
-            DomainError::AuthenticationError(message) => ApiError::Unauthorized(message),
-            DomainError::OAuthClientNotFound(message) => ApiError::NotFound(message),
-            // OAuth protocol error codes that are client mistakes, not server faults.
-            DomainError::InvalidRequest(message) => ApiError::BadRequest(message),
-            DomainError::InvalidScope(message) => ApiError::BadRequest(message),
-            DomainError::InvalidGrant(message) => ApiError::BadRequest(message),
-            DomainError::UserNotFound(message) => ApiError::NotFound(message),
-            DomainError::UserAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::TenantNotFound(message) => ApiError::NotFound(message),
-            DomainError::TenantAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::OrganizationNotFound(message) => ApiError::NotFound(message),
-            DomainError::OrganizationAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::GroupNotFound(message) => ApiError::NotFound(message),
-            DomainError::GroupAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::RoleNotFound(message) => ApiError::NotFound(message),
-            DomainError::RoleAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::InvalidEmail(message) => ApiError::BadRequest(message),
-            DomainError::InvalidFirstName(message) => ApiError::BadRequest(message),
-            DomainError::InvalidLastName(message) => ApiError::BadRequest(message),
-            DomainError::ConsentRequired(message) => ApiError::Redirected(message),
-            DomainError::EmailVerificationError(message) => ApiError::BadRequest(message),
-            DomainError::EmailNotConfirmed(message) => ApiError::EmailNotConfirmed(message),
-            DomainError::MfaError(message) => ApiError::Unauthorized(message),
-            DomainError::MfaEnrollmentNotFound(message) => ApiError::NotFound(message),
-            DomainError::MfaEnrollmentConflict(message) => ApiError::Conflict(message),
-            DomainError::PasswordResetError(message) => ApiError::BadRequest(message),
-            DomainError::PasswordChangeError(message) => ApiError::BadRequest(message),
-            DomainError::SecurityBlockNotFound(message) => ApiError::NotFound(message),
-            DomainError::EmailProviderNotFound(message) => ApiError::NotFound(message),
-            DomainError::EmailProviderError(message) => ApiError::BadRequest(message),
-            DomainError::WebhookSubscriptionNotFound(message) => ApiError::NotFound(message),
-            DomainError::ExternalIdentityProviderNotFound(message) => ApiError::NotFound(message),
-            DomainError::ExternalIdentityProviderAlreadyExists(message) => {
-                ApiError::Conflict(message)
+            DomainError::StepUpRequired(message) => ApiError::StepUpRequired(message),
+            DomainError::LoginRequired(message) | DomainError::ConsentRequired(message) => {
+                ApiError::Redirected(message)
             }
-            DomainError::ExternalProviderError(message) => ApiError::BadRequest(message),
-            DomainError::EmailTemplateError(message) => ApiError::BadRequest(message),
-            DomainError::CustomFieldNotFound(message) => ApiError::NotFound(message),
-            DomainError::CustomFieldKeyAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::CustomFieldLimitReached(message) => ApiError::BadRequest(message),
-            DomainError::InvalidCustomFieldValue(message) => ApiError::BadRequest(message),
-            DomainError::CustomFieldReorderMismatch(message) => ApiError::BadRequest(message),
+            DomainError::EmailNotConfirmed(message) => ApiError::EmailNotConfirmed(message),
+            DomainError::Upstream(message) => ApiError::BadGateway(message),
             // The client only ever sees a generic 500, so record the real cause here;
             // otherwise the server log has nothing but "500 Internal Server Error".
-            other => {
+            other @ (DomainError::UserInactive(_)
+            | DomainError::PasswordHashingError(_)
+            | DomainError::InfrastructureError(_)) => {
                 tracing::error!(error = ?other, "unhandled domain error mapped to 500");
                 ApiError::Internal
             }

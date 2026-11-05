@@ -139,15 +139,18 @@ mod tests {
         let use_case = UseCase::new(factory, Arc::new(StubSecretCipher));
 
         let view = use_case
-            .execute(Command {
-                tenant_id,
-                oauth_client_id,
-                id: provider_id,
-                client_id: "new-id".to_string(),
-                client_secret: None,
-                redirect_uri: "https://idp.example.com/cb/github".to_string(),
-                is_active: false,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    oauth_client_id,
+                    id: provider_id,
+                    client_id: "new-id".to_string(),
+                    client_secret: None,
+                    redirect_uri: "https://idp.example.com/cb/github".to_string(),
+                    is_active: false,
+                },
+            )
             .await
             .unwrap();
 
@@ -171,7 +174,10 @@ mod tests {
         let (use_case, providers) = setup(&client, &[provider]);
 
         let err = use_case
-            .execute(deactivate(tenant_id, client.id(), provider_id))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                deactivate(tenant_id, client.id(), provider_id),
+            )
             .await
             .unwrap_err();
 
@@ -190,7 +196,10 @@ mod tests {
         let (use_case, providers) = setup(&client, &[first, second]);
 
         use_case
-            .execute(deactivate(tenant_id, client.id(), first_id))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                deactivate(tenant_id, client.id(), first_id),
+            )
             .await
             .unwrap();
 
@@ -215,7 +224,10 @@ mod tests {
         let (use_case, _) = setup(&client, &[provider]);
 
         let view = use_case
-            .execute(deactivate(tenant_id, client.id(), provider_id))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                deactivate(tenant_id, client.id(), provider_id),
+            )
             .await
             .unwrap();
         assert!(!view.is_active);

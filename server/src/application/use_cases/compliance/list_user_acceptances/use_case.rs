@@ -44,7 +44,7 @@ impl UseCase {
             .find_by_id(user_id)
             .await?
             .filter(|u| u.tenant_id() == tenant_id)
-            .ok_or_else(|| DomainError::UserNotFound(format!("user {user_id} not found")))?;
+            .ok_or_else(|| DomainError::NotFound(format!("user {user_id} not found")))?;
 
         let rows = self
             .policy_acceptance_repository

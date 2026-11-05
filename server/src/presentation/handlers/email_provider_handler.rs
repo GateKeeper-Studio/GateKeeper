@@ -29,13 +29,20 @@ pub struct PaginationParams {
 // POST /tenants/:tenant_id/email-providers
 pub async fn create_email_provider(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     AppJson(mut payload): AppJson<create_email_provider::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = tenant_id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.create_email_provider.execute(payload).await?;
+    let response = state
+        .email
+        .create_email_provider
+        .execute(&principal.actor(), payload)
+        .await?;
     Ok((StatusCode::CREATED, Json(response)))
 }
 
@@ -50,7 +57,7 @@ pub async fn list_email_providers(
         page: params.page,
         page_size: params.page_size,
     };
-    let response = state.list_email_providers.execute(query).await?;
+    let response = state.email.list_email_providers.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -61,14 +68,17 @@ pub async fn get_email_provider_by_id(
     Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = get_email_provider_by_id::query::Query { tenant_id, id };
-    let response = state.get_email_provider_by_id.execute(query).await?;
+    let response = state.email.get_email_provider_by_id.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
 // PUT /tenants/:tenant_id/email-providers/:id
 pub async fn update_email_provider(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, id)): Path<(Uuid, Uuid)>,
     AppJson(mut payload): AppJson<update_email_provider::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -76,7 +86,11 @@ pub async fn update_email_provider(
     payload.id = id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_email_provider.execute(payload).await?;
+    let response = state
+        .email
+        .update_email_provider
+        .execute(&principal.actor(), payload)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -87,7 +101,10 @@ pub async fn update_email_provider(
 // (e.g. a 535 auth rejection) is surfaced as a 400 with the SMTP message.
 pub async fn send_test_email(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, id)): Path<(Uuid, Uuid)>,
     AppJson(mut payload): AppJson<send_test_email::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -95,17 +112,28 @@ pub async fn send_test_email(
     payload.id = id;
     payload.validate().map_err(ApiError::Validation)?;
 
-    state.send_test_email.execute(payload).await?;
+    state
+        .email
+        .send_test_email
+        .execute(&principal.actor(), payload)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 // DELETE /tenants/:tenant_id/email-providers/:id
 pub async fn delete_email_provider(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = delete_email_provider::command::Command { tenant_id, id };
-    state.delete_email_provider.execute(command).await?;
+    state
+        .email
+        .delete_email_provider
+        .execute(&principal.actor(), command)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }

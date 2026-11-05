@@ -56,6 +56,7 @@ mod tests {
             refresh_repo.clone(),
             Arc::new(FakeAdminTokenIssuer::new()),
             PEPPER.to_string(),
+            crate::testing::password_hasher::test_password_hasher(),
         );
         Ctx {
             use_case,

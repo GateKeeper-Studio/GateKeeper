@@ -38,6 +38,7 @@ pub async fn get_security_overview(
     Query(params): Query<RangeParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .get_security_overview
         .execute(get_overview::Query {
             tenant_id,
@@ -70,6 +71,7 @@ pub async fn list_login_events(
     Query(params): Query<LoginEventParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .list_login_events
         .execute(list_login_events::Query {
             tenant_id,
@@ -96,6 +98,7 @@ pub async fn get_login_event(
     Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .get_login_event
         .execute(get_login_event::Query { tenant_id, id })
         .await?
@@ -122,6 +125,7 @@ pub async fn list_my_login_events(
     Query(params): Query<MyLoginEventParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .list_login_events
         .execute(list_login_events::Query {
             tenant_id: principal.tenant_id,
@@ -148,6 +152,7 @@ pub async fn list_suspicious_ips(
     Query(params): Query<RangeParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .list_suspicious_ips
         .execute(list_suspicious_ips::Query {
             tenant_id,
@@ -166,6 +171,7 @@ pub async fn list_attacked_users(
     Query(params): Query<RangeParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .list_attacked_users
         .execute(list_attacked_users::Query {
             tenant_id,
@@ -183,6 +189,7 @@ pub async fn get_risk_policy(
     TenantScope { tenant_id, .. }: TenantScope,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .get_risk_policy
         .execute(get_risk_policy::Query { tenant_id })
         .await?;
@@ -215,21 +222,25 @@ pub async fn update_risk_policy(
     AppJson(body): AppJson<RiskPolicyBody>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .update_risk_policy
-        .execute(update_risk_policy::Command {
-            tenant_id,
-            enabled: body.enabled,
-            failed_ip_threshold: body.failed_ip_threshold,
-            failed_user_threshold: body.failed_user_threshold,
-            password_spraying_user_threshold: body.password_spraying_user_threshold,
-            tenant_attack_threshold: body.tenant_attack_threshold,
-            medium_risk_threshold: body.medium_risk_threshold,
-            high_risk_threshold: body.high_risk_threshold,
-            critical_risk_threshold: body.critical_risk_threshold,
-            require_mfa_on_high_risk: body.require_mfa_on_high_risk,
-            block_on_critical_risk: body.block_on_critical_risk,
-            temporary_block_minutes: body.temporary_block_minutes,
-        })
+        .execute(
+            &principal.actor(),
+            update_risk_policy::Command {
+                tenant_id,
+                enabled: body.enabled,
+                failed_ip_threshold: body.failed_ip_threshold,
+                failed_user_threshold: body.failed_user_threshold,
+                password_spraying_user_threshold: body.password_spraying_user_threshold,
+                tenant_attack_threshold: body.tenant_attack_threshold,
+                medium_risk_threshold: body.medium_risk_threshold,
+                high_risk_threshold: body.high_risk_threshold,
+                critical_risk_threshold: body.critical_risk_threshold,
+                require_mfa_on_high_risk: body.require_mfa_on_high_risk,
+                block_on_critical_risk: body.block_on_critical_risk,
+                temporary_block_minutes: body.temporary_block_minutes,
+            },
+        )
         .await?;
     admin_action(
         &state,
@@ -262,14 +273,18 @@ pub async fn block_ip(
     AppJson(body): AppJson<BlockIpBody>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .security
         .block_ip
-        .execute(block_ip::Command {
-            tenant_id,
-            ip_address: body.ip_address,
-            reason: body.reason,
-            minutes: body.minutes,
-            created_by: principal.actor_id(),
-        })
+        .execute(
+            &principal.actor(),
+            block_ip::Command {
+                tenant_id,
+                ip_address: body.ip_address,
+                reason: body.reason,
+                minutes: body.minutes,
+                created_by: principal.actor_id(),
+            },
+        )
         .await?;
     admin_action(
         &state,
@@ -295,11 +310,15 @@ pub async fn unblock_ip(
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     state
+        .security
         .unblock_ip
-        .execute(unblock_ip::Command {
-            tenant_id,
-            block_id,
-        })
+        .execute(
+            &principal.actor(),
+            unblock_ip::Command {
+                tenant_id,
+                block_id,
+            },
+        )
         .await?;
     admin_action(
         &state,

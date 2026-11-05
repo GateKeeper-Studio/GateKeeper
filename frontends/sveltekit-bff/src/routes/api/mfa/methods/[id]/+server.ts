@@ -13,7 +13,12 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   return json(renamed);
 };
 
-export const DELETE: RequestHandler = async ({ locals, params }) => {
-  await idpFetch(locals, `/me/mfa/methods/${params.id}`, { method: 'DELETE' });
+// The IdP requires `current_password` (step-up) to remove a factor; forward it.
+export const DELETE: RequestHandler = async ({ locals, params, request }) => {
+  const body = await request.json().catch(() => ({}));
+  await idpFetch(locals, `/me/mfa/methods/${params.id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ current_password: body?.current_password ?? null })
+  });
   return new Response(null, { status: 204 });
 };

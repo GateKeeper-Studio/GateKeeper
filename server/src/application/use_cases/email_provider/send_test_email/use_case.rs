@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::email_sender::EmailSender,
@@ -36,14 +37,17 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<(), DomainError> {
+        actor
+            .authorize_tenant_admin_for(self.tenant_repository.as_ref(), command.tenant_id)
+            .await?;
         if self
             .tenant_repository
             .find_by_id(command.tenant_id)
             .await?
             .is_none()
         {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 command.tenant_id
             )));
@@ -54,10 +58,7 @@ impl UseCase {
             .find_by_id(command.tenant_id, command.id)
             .await?
             .ok_or_else(|| {
-                DomainError::EmailProviderNotFound(format!(
-                    "Email provider {} not found",
-                    command.id
-                ))
+                DomainError::NotFound(format!("Email provider {} not found", command.id))
             })?;
 
         self.email_sender

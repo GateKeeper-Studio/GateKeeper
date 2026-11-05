@@ -130,6 +130,7 @@ mod tests {
             Arc::new(FakeTokenSigner::new()),
             "https://auth.test".to_string(),
             Arc::new(audit.clone()),
+            crate::testing::password_hasher::test_password_hasher(),
         );
 
         Ctx {
@@ -275,6 +276,7 @@ mod tests {
             Arc::new(FakeTokenSigner::new()),
             "https://auth.test".to_string(),
             Arc::new(FakeAuditLogger::new()),
+            crate::testing::password_hasher::test_password_hasher(),
         );
 
         let response = use_case.execute(make_command(tenant_id)).await.unwrap();
@@ -342,6 +344,7 @@ mod tests {
             Arc::new(signer),
             "https://auth.test".to_string(),
             Arc::new(FakeAuditLogger::new()),
+            crate::testing::password_hasher::test_password_hasher(),
         );
 
         let response = use_case.execute(make_command(tenant_id)).await.unwrap();
@@ -454,6 +457,7 @@ mod tests {
                     Arc::new(FakeTokenSigner::new()),
                     "https://auth.test".to_string(),
                     Arc::new(FakeAuditLogger::new()),
+                    crate::testing::password_hasher::test_password_hasher(),
                 ),
                 rotate: RotateUseCase::new(factory),
                 codes,
@@ -533,10 +537,13 @@ mod tests {
 
             let rotated = ctx
                 .rotate
-                .execute(RotateCommand {
-                    tenant_id: ctx.tenant_id,
-                    id: ctx.client_db_id,
-                })
+                .execute(
+                    &crate::application::shared::actor::Actor::System,
+                    RotateCommand {
+                        tenant_id: ctx.tenant_id,
+                        id: ctx.client_db_id,
+                    },
+                )
                 .await
                 .unwrap();
 

@@ -314,7 +314,7 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::OAuthClientNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -333,7 +333,7 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::OAuthClientNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -352,6 +352,6 @@ mod tests {
             })
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

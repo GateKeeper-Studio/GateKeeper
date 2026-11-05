@@ -64,11 +64,14 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-                appearance: appearance("#7C3AED", "lg", "dark"),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                    appearance: appearance("#7C3AED", "lg", "dark"),
+                },
+            )
             .await
             .unwrap();
 
@@ -98,11 +101,14 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-                appearance: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                    appearance: None,
+                },
+            )
             .await
             .unwrap();
 
@@ -121,15 +127,18 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-                appearance: Some(AppearanceInput {
-                    primary_color: Some("#123abc".to_string()),
-                    radius: None,
-                    default_mode: None,
-                }),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                    appearance: Some(AppearanceInput {
+                        primary_color: Some("#123abc".to_string()),
+                        radius: None,
+                        default_mode: None,
+                    }),
+                },
+            )
             .await
             .unwrap();
 
@@ -150,11 +159,14 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-                appearance: appearance("red; }", "md", "system"),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                    appearance: appearance("red; }", "md", "system"),
+                },
+            )
             .await
             .unwrap_err();
 
@@ -173,11 +185,14 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-                appearance: appearance("#7C3AED", "gigantic", "system"),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                    appearance: appearance("#7C3AED", "gigantic", "system"),
+                },
+            )
             .await
             .unwrap_err();
 
@@ -189,14 +204,17 @@ mod tests {
         let (_, use_case) = setup();
 
         let err = use_case
-            .execute(Command {
-                tenant_id: Uuid::new_v4(),
-                organization_id: Uuid::new_v4(),
-                appearance: appearance("#7C3AED", "md", "system"),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: Uuid::new_v4(),
+                    organization_id: Uuid::new_v4(),
+                    appearance: appearance("#7C3AED", "md", "system"),
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

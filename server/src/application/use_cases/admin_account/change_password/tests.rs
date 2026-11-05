@@ -33,14 +33,18 @@ mod tests {
     async fn changes_the_password_when_current_is_correct() {
         let (repo, id) = setup();
 
-        UseCase::new(repo.clone(), PEPPER.to_string())
-            .execute(Command {
-                admin_id: id,
-                current_password: CURRENT.to_string(),
-                new_password: "a-brand-new-password".to_string(),
-            })
-            .await
-            .unwrap();
+        UseCase::new(
+            repo.clone(),
+            PEPPER.to_string(),
+            crate::testing::password_hasher::test_password_hasher(),
+        )
+        .execute(Command {
+            admin_id: id,
+            current_password: CURRENT.to_string(),
+            new_password: "a-brand-new-password".to_string(),
+        })
+        .await
+        .unwrap();
 
         let stored = &repo.admins.lock().unwrap()[0];
         assert!(compare_password(
@@ -55,13 +59,17 @@ mod tests {
     async fn rejects_a_wrong_current_password() {
         let (repo, id) = setup();
 
-        let result = UseCase::new(repo.clone(), PEPPER.to_string())
-            .execute(Command {
-                admin_id: id,
-                current_password: "not-the-password".to_string(),
-                new_password: "a-brand-new-password".to_string(),
-            })
-            .await;
+        let result = UseCase::new(
+            repo.clone(),
+            PEPPER.to_string(),
+            crate::testing::password_hasher::test_password_hasher(),
+        )
+        .execute(Command {
+            admin_id: id,
+            current_password: "not-the-password".to_string(),
+            new_password: "a-brand-new-password".to_string(),
+        })
+        .await;
 
         assert!(result.is_err());
         // Password unchanged.

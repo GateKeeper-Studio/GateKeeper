@@ -24,7 +24,7 @@ pub fn validate_localized_text(
     let mut cleaned = HashMap::new();
     for (locale, value) in map {
         if !is_supported_locale(&locale) {
-            return Err(DomainError::InvalidCustomFieldValue(format!(
+            return Err(DomainError::Validation(format!(
                 "{label}: unsupported locale '{locale}'"
             )));
         }
@@ -33,7 +33,7 @@ pub fn validate_localized_text(
             continue;
         }
         if value.chars().count() > max_len {
-            return Err(DomainError::InvalidCustomFieldValue(format!(
+            return Err(DomainError::Validation(format!(
                 "{label}: text for '{locale}' must be at most {max_len} characters"
             )));
         }
@@ -42,7 +42,7 @@ pub fn validate_localized_text(
 
     if let Some(required) = required_locale {
         if !cleaned.contains_key(required) {
-            return Err(DomainError::InvalidCustomFieldValue(format!(
+            return Err(DomainError::Validation(format!(
                 "{label} must include the tenant's default language ('{required}')"
             )));
         }
@@ -76,7 +76,7 @@ pub fn validate_localized_options(
 
     let options = options.unwrap_or_default();
     if options.is_empty() || options.len() > MAX_OPTIONS {
-        return Err(DomainError::InvalidCustomFieldValue(format!(
+        return Err(DomainError::Validation(format!(
             "a select field must declare between 1 and {MAX_OPTIONS} options"
         )));
     }
@@ -94,7 +94,7 @@ pub fn validate_localized_options(
     deduped.sort();
     deduped.dedup();
     if deduped.len() != required_values.len() {
-        return Err(DomainError::InvalidCustomFieldValue(
+        return Err(DomainError::Validation(
             "options must not contain duplicates".to_string(),
         ));
     }

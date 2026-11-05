@@ -39,7 +39,7 @@ impl UseCase {
             .await?
             .is_none()
         {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 query.tenant_id
             )));

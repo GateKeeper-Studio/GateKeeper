@@ -5,7 +5,7 @@ pub fn parse_encryption(value: &str) -> Result<SmtpEncryption, DomainError> {
         "starttls" => Ok(SmtpEncryption::StartTls),
         "tls" => Ok(SmtpEncryption::Tls),
         "none" => Ok(SmtpEncryption::None),
-        other => Err(DomainError::EmailProviderError(format!(
+        other => Err(DomainError::Validation(format!(
             "invalid encryption '{other}' (expected starttls | tls | none)"
         ))),
     }
@@ -16,7 +16,7 @@ pub fn validate_port(port: i32) -> Result<(), DomainError> {
     if (1..=65535).contains(&port) {
         Ok(())
     } else {
-        Err(DomainError::EmailProviderError(format!(
+        Err(DomainError::Validation(format!(
             "invalid SMTP port: {port}"
         )))
     }

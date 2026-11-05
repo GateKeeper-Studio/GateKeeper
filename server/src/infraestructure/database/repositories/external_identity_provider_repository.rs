@@ -193,7 +193,7 @@ impl ExternalIdentityProviderRepository for DbExternalIdentityProviderRepository
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::ExternalIdentityProviderNotFound(
+            Err(DomainError::NotFound(
                 "External identity provider not found".to_string(),
             ))
         } else {
@@ -214,7 +214,7 @@ impl ExternalIdentityProviderRepository for DbExternalIdentityProviderRepository
         .map_err(map_sqlx_error)?;
 
         if result.rows_affected() == 0 {
-            Err(DomainError::ExternalIdentityProviderNotFound(
+            Err(DomainError::NotFound(
                 "External identity provider not found".to_string(),
             ))
         } else {
@@ -233,7 +233,7 @@ fn map_sqlx_error(e: sqlx::Error) -> DomainError {
 fn map_insert_error(e: sqlx::Error) -> DomainError {
     if let sqlx::Error::Database(db_err) = &e {
         if db_err.is_unique_violation() {
-            return DomainError::ExternalIdentityProviderAlreadyExists(
+            return DomainError::Conflict(
                 "This provider is already configured for the client".to_string(),
             );
         }

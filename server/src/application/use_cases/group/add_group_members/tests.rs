@@ -82,11 +82,14 @@ mod tests {
         let u2 = seed_user(&user_repo, tenant.id());
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                group_id,
-                user_ids: vec![u1, u2],
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    group_id,
+                    user_ids: vec![u1, u2],
+                },
+            )
             .await
             .unwrap();
 
@@ -105,11 +108,14 @@ mod tests {
         group_repo.members.lock().unwrap().insert((group_id, u1));
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                group_id,
-                user_ids: vec![u1],
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    group_id,
+                    user_ids: vec![u1],
+                },
+            )
             .await
             .unwrap();
 
@@ -125,15 +131,18 @@ mod tests {
         let foreign_user = seed_user(&user_repo, other.id());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                group_id,
-                user_ids: vec![foreign_user],
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    group_id,
+                    user_ids: vec![foreign_user],
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -143,14 +152,17 @@ mod tests {
         let u1 = seed_user(&user_repo, tenant.id());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                group_id: Uuid::new_v4(),
-                user_ids: vec![u1],
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    group_id: Uuid::new_v4(),
+                    user_ids: vec![u1],
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::GroupNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

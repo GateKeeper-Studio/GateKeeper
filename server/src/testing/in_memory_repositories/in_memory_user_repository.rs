@@ -150,8 +150,8 @@ impl UserRepository for InMemoryUserRepository {
                 .or_else(|| data.get(&user_id).cloned())
         };
 
-        let user = existing
-            .ok_or_else(|| DomainError::UserNotFound(format!("user {user_id} not found")))?;
+        let user =
+            existing.ok_or_else(|| DomainError::NotFound(format!("user {user_id} not found")))?;
 
         // Rebuild the row with PII scrubbed, deactivated, profile/credentials dropped.
         let scrubbed = User::reconstruct(

@@ -27,12 +27,10 @@ impl UseCase {
                 "refresh_token".to_string(),
             ],
             code_challenge_methods_supported: vec!["S256".to_string()],
-            scopes_supported: vec![
-                "openid".to_string(),
-                "profile".to_string(),
-                "email".to_string(),
-                "offline_access".to_string(),
-            ],
+            scopes_supported: crate::domain::entities::scope::SUPPORTED_SCOPES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             token_endpoint_auth_methods_supported: vec![
                 "client_secret_basic".to_string(),
                 "client_secret_post".to_string(),

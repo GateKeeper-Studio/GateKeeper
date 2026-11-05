@@ -49,8 +49,24 @@ mod tests {
         Arc<InMemoryConsentGrantRepository>,
         UseCase,
     ) {
-        let tenant_id = Uuid::now_v7();
+        let tenant = crate::domain::entities::tenant::Tenant::new(
+            "Acme".into(),
+            None,
+            "pepper".into(),
+            true,
+            true,
+            true,
+            Uuid::now_v7(),
+        );
+        let tenant_id = tenant.id();
         let user_id = Uuid::now_v7();
+        let tenants = Arc::new(InMemoryTenantRepository::new());
+        tenants
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(tenant_id, tenant);
 
         let users = Arc::new(InMemoryUserRepository::new());
         users
@@ -69,11 +85,8 @@ mod tests {
             .unwrap()
             .insert(grant.id(), grant);
 
-        let factory = InMemoryUnitOfWorkFactory::new(
-            users.clone(),
-            Arc::new(InMemoryTenantRepository::new()),
-        )
-        .with_consent_grant_repository(consents.clone());
+        let factory = InMemoryUnitOfWorkFactory::new(users.clone(), tenants)
+            .with_consent_grant_repository(consents.clone());
 
         let use_case = UseCase::new(Arc::new(factory));
         (tenant_id, user_id, users, consents, use_case)
@@ -84,7 +97,10 @@ mod tests {
         let (tenant_id, user_id, users, consents, use_case) = setup();
 
         use_case
-            .execute(Command { tenant_id, user_id })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command { tenant_id, user_id },
+            )
             .await
             .unwrap();
 
@@ -103,7 +119,10 @@ mod tests {
         users.legal_holds.lock().unwrap().insert(user_id);
 
         let err = use_case
-            .execute(Command { tenant_id, user_id })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command { tenant_id, user_id },
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, DomainError::AccessDenied(_)));
@@ -118,12 +137,44 @@ mod tests {
         let (_tenant_id, user_id, _users, _consents, use_case) = setup();
         let other_tenant = Uuid::now_v7();
         let err = use_case
-            .execute(Command {
-                tenant_id: other_tenant,
-                user_id,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: other_tenant,
+                    user_id,
+                },
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn another_user_cannot_erase_this_account() {
+        // The rule is enforced in the use case, not only by the HTTP guard.
+        let (tenant_id, user_id, _, _, use_case) = setup();
+        let actor = crate::application::shared::actor::Actor::User {
+            tenant_id,
+            user_id: Uuid::now_v7(),
+        };
+        let err = use_case
+            .execute(&actor, Command { tenant_id, user_id })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::AccessDenied(_)));
+    }
+
+    #[tokio::test]
+    async fn an_admin_of_another_tenant_cannot_erase_this_account() {
+        let (tenant_id, user_id, _, _, use_case) = setup();
+        let actor = crate::application::shared::actor::Actor::TenantAdmin {
+            tenant_id: Uuid::now_v7(),
+            user_id: Uuid::now_v7(),
+        };
+        let err = use_case
+            .execute(&actor, Command { tenant_id, user_id })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::AccessDenied(_)));
     }
 }

@@ -161,7 +161,10 @@ mod tests {
         let (clients, use_case) = setup(tenant_id, Some(&client));
 
         let view = use_case
-            .execute(command(tenant_id, client.id()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id, client.id()),
+            )
             .await
             .unwrap();
         assert_eq!(view.name, "New Name");
@@ -189,7 +192,10 @@ mod tests {
         cmd.allowed_languages = vec!["en".to_string(), "pt-br".to_string()];
         cmd.default_language = "pt-br".to_string();
 
-        let view = use_case.execute(cmd).await.unwrap();
+        let view = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap();
         assert_eq!(
             view.allowed_languages,
             vec!["en".to_string(), "pt-br".to_string()]
@@ -208,7 +214,9 @@ mod tests {
         cmd.default_language = "es".to_string();
 
         assert!(matches!(
-            use_case.execute(cmd).await,
+            use_case
+                .execute(&crate::application::shared::actor::Actor::System, cmd)
+                .await,
             Err(DomainError::InvalidRequest(_))
         ));
     }
@@ -223,7 +231,10 @@ mod tests {
         cmd.tos_uri = Some("https://app.example.com/terms".to_string());
         cmd.policy_uri = Some(" https://app.example.com/privacy ".to_string());
 
-        let view = use_case.execute(cmd).await.unwrap();
+        let view = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap();
 
         assert_eq!(
             view.tos_uri.as_deref(),
@@ -249,7 +260,10 @@ mod tests {
         let mut cmd = command(tenant_id, client.id());
         cmd.tos_uri = Some("data:text/html,owned".to_string());
 
-        let err = use_case.execute(cmd).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 
@@ -269,7 +283,10 @@ mod tests {
             ..Default::default()
         });
 
-        let view = use_case.execute(cmd).await.unwrap();
+        let view = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap();
         let appearance = view
             .login_appearance
             .expect("appearance should be present in the view");
@@ -306,7 +323,10 @@ mod tests {
             ..Default::default()
         });
 
-        let err = use_case.execute(cmd).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 
@@ -316,10 +336,13 @@ mod tests {
         let (_, use_case) = setup(tenant_id, None);
 
         let err = use_case
-            .execute(command(tenant_id, Uuid::now_v7()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id, Uuid::now_v7()),
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::OAuthClientNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     // Turning external-login-only on with nothing to sign in through would leave the
@@ -334,7 +357,10 @@ mod tests {
         let mut cmd = command(tenant_id, client.id());
         cmd.external_login_only = true;
 
-        let err = use_case.execute(cmd).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 
@@ -349,7 +375,10 @@ mod tests {
         let mut cmd = command(tenant_id, client.id());
         cmd.external_login_only = true;
 
-        let err = use_case.execute(cmd).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 
@@ -363,7 +392,10 @@ mod tests {
         let mut cmd = command(tenant_id, client.id());
         cmd.external_login_only = true;
 
-        let view = use_case.execute(cmd).await.unwrap();
+        let view = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap();
         assert!(view.external_login_only);
 
         let stored = clients.memory.data.lock().unwrap();
@@ -381,7 +413,10 @@ mod tests {
         let (clients, use_case, _) = setup_with_providers(tenant_id, Some(&client), &[]);
 
         let view = use_case
-            .execute(command(tenant_id, client.id()))
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id, client.id()),
+            )
             .await
             .unwrap();
         assert!(!view.external_login_only);
@@ -399,7 +434,10 @@ mod tests {
         let mut cmd = command(tenant_id, client.id());
         cmd.redirect_uris = vec!["not-a-uri".to_string()];
 
-        let err = use_case.execute(cmd).await.unwrap_err();
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 }

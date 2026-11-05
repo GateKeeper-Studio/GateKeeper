@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::application::ports::unit_of_work::UnitOfWorkFactory;
+use crate::application::shared::actor::Actor;
 use crate::application::use_cases::organization::update_organization::{
     command::Command, response::Response,
 };
@@ -17,7 +18,10 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
+        // Tenant records belong to an organization: only its platform admins (or
+        // the system) may manage them. See `application/shared/actor.rs`.
+        actor.authorize_organization(command.organization_id)?;
         let uow = self.unit_of_work_factory.begin().await?;
 
         let mut organization = uow
@@ -25,7 +29,7 @@ impl UseCase {
             .find_by_id(command.organization_id)
             .await?
             .ok_or_else(|| {
-                DomainError::OrganizationNotFound(format!(
+                DomainError::NotFound(format!(
                     "Organization with id {} not found",
                     command.organization_id
                 ))

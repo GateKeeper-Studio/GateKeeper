@@ -37,14 +37,17 @@ pub async fn get_legal_document(
         tenant_id,
         document_type,
     };
-    let response = state.get_legal_document.execute(query).await?;
+    let response = state.legal.get_legal_document.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
 // PUT /tenants/:tenant_id/legal/:doc_type  (admin)
 pub async fn update_legal_document(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, doc_type)): Path<(Uuid, String)>,
     AppJson(mut payload): AppJson<update_legal_document::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -52,14 +55,21 @@ pub async fn update_legal_document(
     payload.document_type = parse_doc_type(&doc_type)?;
     payload.validate().map_err(ApiError::Validation)?;
 
-    let response = state.update_legal_document.execute(payload).await?;
+    let response = state
+        .legal
+        .update_legal_document
+        .execute(&principal.actor(), payload)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
 // DELETE /tenants/:tenant_id/legal/:doc_type  (admin) — reset to default
 pub async fn reset_legal_document(
     State(state): State<AppState>,
-    TenantScope { tenant_id, .. }: TenantScope,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     Path((_, doc_type)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let document_type = parse_doc_type(&doc_type)?;
@@ -67,7 +77,11 @@ pub async fn reset_legal_document(
         tenant_id,
         document_type,
     };
-    let response = state.reset_legal_document.execute(command).await?;
+    let response = state
+        .legal
+        .reset_legal_document
+        .execute(&principal.actor(), command)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -81,7 +95,7 @@ pub async fn get_public_legal_document(
         client_id,
         document_type,
     };
-    let response = state.get_public_legal_document.execute(query).await?;
+    let response = state.legal.get_public_legal_document.execute(query).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 

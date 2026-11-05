@@ -129,10 +129,14 @@ server/
     │   │                       #   AesGcmSecretCipher, WebauthnRsService
     │   └── email/              #   SmtpEmailSender, LogEmailSender (dev fallback)
     │
+    ├── bootstrap.rs            # composition root: builds infra + use cases → AppState
+    │
     ├── presentation/           # ── HTTP ─────────────────────────────────────────
-    │   ├── routes.rs           #   create_router + AppState (the composition root)
+    │   ├── routes.rs           #   router(): which route sits behind which guard
+    │   ├── state.rs            #   AppState, grouped per feature (Arc per group)
     │   ├── handlers/           #   one file per resource; one fn per endpoint
-    │   ├── middleware/auth.rs  #   require_admin / require_auth, AuthPrincipal, RBAC
+    │   ├── middleware/auth.rs  #   Authenticator, require_admin / require_auth, TenantScope
+    │   ├── middleware/client_ip.rs # TRUSTED_PROXIES-aware client IP + limiter key
     │   ├── audit_emit.rs       #   helpers to emit audit events from handlers
     │   └── errors.rs           #   ApiError (IntoResponse + From<DomainError>)
     │
@@ -251,12 +255,17 @@ and assembles the router.
   stamps the `kid` in the JWT header; the verifier selects the key by `kid` from the
   tenant's **published** keys (the basis of `/.well-known/jwks.json`).
 - **Platform-admin tokens** are **HS256** JWTs signed with the server-wide
-  `JWT_SECRET` (`AdminTokenService`) — deliberately separate from tenant keys.
+  `ADMIN_TOKEN_SIGNING_KEY` (`AdminTokenService`, `kid` for rotation) — separate from
+  tenant keys AND from the admin password pepper.
 - **Opaque credentials** (authorization codes, refresh tokens, session/MFA/reset/
   change tokens) are random, returned once, and persisted only as a **SHA-256 hash**.
-- **Passwords**: Argon2id with a per-tenant pepper (`tenant.password_hash_secret()`);
-  admin passwords peppered with `JWT_SECRET`.
-- **SMTP passwords**: AES-256-GCM via `AesGcmSecretCipher`, decrypted only at send.
+- **Passwords**: Argon2id with a per-tenant pepper (`tenant.password_hash_secret()`,
+  server-generated, sealed at rest by `DbTenantRepository`); admin passwords peppered
+  with `ADMIN_PASSWORD_PEPPER`.
+- **Secrets at rest** (SMTP passwords, webhook secrets, TOTP seeds, signing keys,
+  peppers): AES-256-GCM via `AesGcmSecretCipher`, format `v1:<key_id>:…`, bound to
+  purpose + tenant (AAD), key ring for rotation; legacy values are re-sealed at startup
+  (`secret_reseal.rs`).
 
 ---
 

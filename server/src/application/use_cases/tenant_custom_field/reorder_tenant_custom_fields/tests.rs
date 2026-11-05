@@ -67,10 +67,13 @@ mod tests {
         let use_case = use_case_for(fields.clone());
 
         use_case
-            .execute(Command {
-                tenant_id,
-                field_ids: new_order.clone(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    field_ids: new_order.clone(),
+                },
+            )
             .await
             .unwrap();
 
@@ -87,14 +90,17 @@ mod tests {
         let use_case = use_case_for(fields.clone());
 
         let err = use_case
-            .execute(Command {
-                tenant_id,
-                field_ids: vec![ids[0], ids[1]],
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    field_ids: vec![ids[0], ids[1]],
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::CustomFieldReorderMismatch(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
         let data = fields.memory.data.lock().unwrap();
         for (index, id) in ids.iter().enumerate() {
             assert_eq!(data.get(id).unwrap().display_order(), index as i32);
@@ -108,14 +114,17 @@ mod tests {
         let use_case = use_case_for(fields);
 
         let err = use_case
-            .execute(Command {
-                tenant_id,
-                field_ids: vec![ids[0], ids[1], Uuid::now_v7()],
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    field_ids: vec![ids[0], ids[1], Uuid::now_v7()],
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::CustomFieldReorderMismatch(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 
     #[tokio::test]
@@ -125,13 +134,16 @@ mod tests {
         let use_case = use_case_for(fields);
 
         let err = use_case
-            .execute(Command {
-                tenant_id,
-                field_ids: vec![ids[0], ids[0]],
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    field_ids: vec![ids[0], ids[0]],
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::CustomFieldReorderMismatch(_)));
+        assert!(matches!(err, DomainError::Validation(_)));
     }
 }

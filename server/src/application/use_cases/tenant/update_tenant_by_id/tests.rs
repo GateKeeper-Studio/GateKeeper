@@ -55,16 +55,19 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-                name: "Updated Name".to_string(),
-                description: Some("Updated description".to_string()),
-                is_active: false,
-                can_self_register: false,
-                can_self_forgot_password: false,
-                default_language: "es".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                    name: "Updated Name".to_string(),
+                    description: Some("Updated description".to_string()),
+                    is_active: false,
+                    can_self_register: false,
+                    can_self_forgot_password: false,
+                    default_language: "es".to_string(),
+                },
+            )
             .await
             .unwrap();
 
@@ -93,16 +96,19 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-                name: "Persisted Name".to_string(),
-                description: None,
-                is_active: true,
-                can_self_register: false,
-                can_self_forgot_password: true,
-                default_language: "en".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                    name: "Persisted Name".to_string(),
+                    description: None,
+                    is_active: true,
+                    can_self_register: false,
+                    can_self_forgot_password: true,
+                    default_language: "en".to_string(),
+                },
+            )
             .await
             .unwrap();
 
@@ -118,20 +124,23 @@ mod tests {
         let (_, use_case) = setup();
 
         let err = use_case
-            .execute(Command {
-                tenant_id: Uuid::new_v4(),
-                organization_id: Uuid::new_v4(),
-                name: "Any Name".to_string(),
-                description: None,
-                is_active: true,
-                can_self_register: false,
-                can_self_forgot_password: false,
-                default_language: "en".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: Uuid::new_v4(),
+                    organization_id: Uuid::new_v4(),
+                    name: "Any Name".to_string(),
+                    description: None,
+                    is_active: true,
+                    can_self_register: false,
+                    can_self_forgot_password: false,
+                    default_language: "en".to_string(),
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -146,20 +155,23 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: Uuid::now_v7(),
-                name: "Unauthorized change".to_string(),
-                description: None,
-                is_active: true,
-                can_self_register: false,
-                can_self_forgot_password: false,
-                default_language: "en".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: Uuid::now_v7(),
+                    name: "Unauthorized change".to_string(),
+                    description: None,
+                    is_active: true,
+                    can_self_register: false,
+                    can_self_forgot_password: false,
+                    default_language: "en".to_string(),
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
         assert_eq!(
             tenant_repo
                 .memory
@@ -185,16 +197,19 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-                name: "Any Name".to_string(),
-                description: None,
-                is_active: true,
-                can_self_register: false,
-                can_self_forgot_password: false,
-                default_language: "fr".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                    name: "Any Name".to_string(),
+                    description: None,
+                    is_active: true,
+                    can_self_register: false,
+                    can_self_forgot_password: false,
+                    default_language: "fr".to_string(),
+                },
+            )
             .await
             .unwrap_err();
 

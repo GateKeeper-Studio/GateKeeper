@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
+use crate::application::shared::actor::Actor;
 use crate::{
+    application::shared::client_secret::hash_client_secret,
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
         use_cases::oauth_client::{
@@ -19,7 +21,7 @@ use crate::{
         entities::oauth_client::{ClientType, MfaPolicy, OAuthClient},
         errors::DomainError,
     },
-    utils::{oauth_crypto::generate_opaque_token, password_hasher::hash_password},
+    utils::oauth_crypto::generate_opaque_token,
 };
 
 pub struct UseCase {
@@ -33,18 +35,19 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         let tenant = uow
             .tenant_repository()
             .find_by_id(command.tenant_id)
             .await?
             .ok_or_else(|| {
-                DomainError::TenantNotFound(format!(
-                    "Tenant with id {} not found",
-                    command.tenant_id
-                ))
+                DomainError::NotFound(format!("Tenant with id {} not found", command.tenant_id))
             })?;
 
         let client_type = parse_client_type(&command.client_type)?;
@@ -69,25 +72,11 @@ impl UseCase {
         let client_id = Uuid::now_v7();
 
         // Confidential clients receive a secret; we return it once and store only its
-        // Argon2 hash (with the tenant pepper, matching token-endpoint verification).
+        // keyed hash (HMAC-SHA-256 with the tenant pepper — see `client_secret.rs`).
         let (client_secret_hash, raw_secret) = match client_type {
             ClientType::Confidential => {
                 let raw = generate_opaque_token();
-                let secret = raw.clone();
-                let pepper = tenant.password_hash_secret().to_string();
-                // Argon2 is CPU/memory heavy — keep it off the async worker.
-                let hash = tokio::task::spawn_blocking(move || hash_password(&secret, &pepper))
-                    .await
-                    .map_err(|_| {
-                        DomainError::PasswordHashingError(
-                            "failed to hash client secret".to_string(),
-                        )
-                    })?
-                    .map_err(|_| {
-                        DomainError::PasswordHashingError(
-                            "failed to hash client secret".to_string(),
-                        )
-                    })?;
+                let hash = hash_client_secret(&raw, tenant.password_hash_secret());
                 (Some(hash), Some(raw))
             }
             ClientType::Public => (None, None),

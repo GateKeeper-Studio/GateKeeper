@@ -26,6 +26,7 @@ pub async fn jwks(
     Query(params): Query<JwksParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .oauth
         .jwks
         .execute(jwks::query::Query {
             tenant_id: params.tenant_id,
@@ -41,7 +42,11 @@ pub async fn jwks(
 //
 // The OIDC discovery document. Static-ish; cacheable.
 pub async fn discovery(State(state): State<AppState>) -> Result<impl IntoResponse, ApiError> {
-    let response = state.discovery.execute(discovery::query::Query).await?;
+    let response = state
+        .oauth
+        .discovery
+        .execute(discovery::query::Query)
+        .await?;
     Ok((
         [(header::CACHE_CONTROL, "public, max-age=3600")],
         Json(response),

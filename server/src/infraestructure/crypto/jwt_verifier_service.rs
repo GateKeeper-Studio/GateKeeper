@@ -35,6 +35,17 @@ impl TokenVerifier for JwtVerifierService {
         let header = decode_header(token)
             .map_err(|_| DomainError::AccessDenied("malformed token header".to_string()))?;
 
+        // Only access tokens are bearer credentials. `application/at+jwt` is the
+        // media-type spelling RFC 9068 also allows.
+        let is_access_token = header.typ.as_deref().is_some_and(|t| {
+            t.eq_ignore_ascii_case("at+jwt") || t.eq_ignore_ascii_case("application/at+jwt")
+        });
+        if !is_access_token {
+            return Err(DomainError::AccessDenied(
+                "token is not an access token".to_string(),
+            ));
+        }
+
         let kid = header
             .kid
             .ok_or_else(|| DomainError::AccessDenied("token missing kid".to_string()))?;

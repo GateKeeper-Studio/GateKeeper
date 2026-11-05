@@ -84,13 +84,16 @@ mod tests {
             .insert(user.id(), user.clone());
 
         let response = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id: user.id(),
-                first_name: "NewFirst".to_string(),
-                last_name: "NewLast".to_string(),
-                display_name: Some("New Display".to_string()),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id: user.id(),
+                    first_name: "NewFirst".to_string(),
+                    last_name: "NewLast".to_string(),
+                    display_name: Some("New Display".to_string()),
+                },
+            )
             .await
             .unwrap();
 
@@ -114,13 +117,16 @@ mod tests {
             .insert(user.id(), user.clone());
 
         use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id: user.id(),
-                first_name: "Persisted".to_string(),
-                last_name: "Name".to_string(),
-                display_name: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id: user.id(),
+                    first_name: "Persisted".to_string(),
+                    last_name: "Name".to_string(),
+                    display_name: None,
+                },
+            )
             .await
             .unwrap();
 
@@ -136,17 +142,20 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id: Uuid::new_v4(),
-                first_name: "First".to_string(),
-                last_name: "Last".to_string(),
-                display_name: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id: Uuid::new_v4(),
+                    first_name: "First".to_string(),
+                    last_name: "Last".to_string(),
+                    display_name: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -155,17 +164,20 @@ mod tests {
         let (_, use_case) = setup(&tenant);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: Uuid::new_v4(),
-                user_id: Uuid::new_v4(),
-                first_name: "First".to_string(),
-                last_name: "Last".to_string(),
-                display_name: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: Uuid::new_v4(),
+                    user_id: Uuid::new_v4(),
+                    first_name: "First".to_string(),
+                    last_name: "Last".to_string(),
+                    display_name: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -183,17 +195,20 @@ mod tests {
             .insert(user.id(), user.clone());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id: user.id(),
-                first_name: "First".to_string(),
-                last_name: "Last".to_string(),
-                display_name: None,
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id: user.id(),
+                    first_name: "First".to_string(),
+                    last_name: "Last".to_string(),
+                    display_name: None,
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     // ── Outbound events ────────────────────────────────────────────────────────
@@ -207,13 +222,16 @@ mod tests {
         user_repo.memory.data.lock().unwrap().insert(user_id, user);
 
         use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id,
-                display_name: Some("Renamed".to_string()),
-                first_name: "New".to_string(),
-                last_name: "Name".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id,
+                    display_name: Some("Renamed".to_string()),
+                    first_name: "New".to_string(),
+                    last_name: "Name".to_string(),
+                },
+            )
             .await
             .unwrap();
 
@@ -239,16 +257,19 @@ mod tests {
         let (_, use_case, outbox) = setup_with_outbox(&tenant);
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                user_id: Uuid::now_v7(),
-                display_name: None,
-                first_name: "New".to_string(),
-                last_name: "Name".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    user_id: Uuid::now_v7(),
+                    display_name: None,
+                    first_name: "New".to_string(),
+                    last_name: "Name".to_string(),
+                },
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::UserNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
 
         assert_eq!(outbox.memory.data.lock().unwrap().len(), 0);
     }

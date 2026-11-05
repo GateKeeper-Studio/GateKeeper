@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+use crate::application::shared::actor::Actor;
 use crate::{
+    application::shared::client_secret::hash_client_secret,
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
         use_cases::oauth_client::{
@@ -9,7 +11,7 @@ use crate::{
         },
     },
     domain::errors::DomainError,
-    utils::{oauth_crypto::generate_opaque_token, password_hasher::hash_password},
+    utils::oauth_crypto::generate_opaque_token,
 };
 
 pub struct UseCase {
@@ -23,18 +25,19 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         let tenant = uow
             .tenant_repository()
             .find_by_id(command.tenant_id)
             .await?
             .ok_or_else(|| {
-                DomainError::TenantNotFound(format!(
-                    "Tenant with id {} not found",
-                    command.tenant_id
-                ))
+                DomainError::NotFound(format!("Tenant with id {} not found", command.tenant_id))
             })?;
 
         let mut client = uow
@@ -42,7 +45,7 @@ impl UseCase {
             .find_by_id(command.tenant_id, command.id)
             .await?
             .ok_or_else(|| {
-                DomainError::OAuthClientNotFound(format!("OAuth client {} not found", command.id))
+                DomainError::NotFound(format!("OAuth client {} not found", command.id))
             })?;
 
         // Only confidential clients have a secret. Public clients authenticate with
@@ -53,21 +56,12 @@ impl UseCase {
             ));
         }
 
-        // Generate a new secret, hash it with the tenant pepper (matching the
-        // token-endpoint verification and the create flow), and return the raw value
+        // Generate a new secret, store its keyed hash (HMAC-SHA-256 with the tenant
+        // pepper, see `client_secret.rs`) — rotating also moves a legacy Argon2 hash to
+        // the fast format — and return the raw value
         // exactly once. The old secret is invalidated the moment we store the new hash.
         let raw_secret = generate_opaque_token();
-        let secret = raw_secret.clone();
-        let pepper = tenant.password_hash_secret().to_string();
-        // Argon2 is CPU/memory heavy — keep it off the async worker.
-        let hash = tokio::task::spawn_blocking(move || hash_password(&secret, &pepper))
-            .await
-            .map_err(|_| {
-                DomainError::PasswordHashingError("failed to hash client secret".to_string())
-            })?
-            .map_err(|_| {
-                DomainError::PasswordHashingError("failed to hash client secret".to_string())
-            })?;
+        let hash = hash_client_secret(&raw_secret, tenant.password_hash_secret());
 
         client.rotate_secret_hash(hash);
 

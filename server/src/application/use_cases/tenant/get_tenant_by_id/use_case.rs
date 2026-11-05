@@ -18,7 +18,7 @@ impl UseCase {
             .find_by_id_for_organization(query.tenant_id, query.organization_id)
             .await?
             .ok_or_else(|| {
-                DomainError::TenantNotFound(format!("Tenant with id {} not found", query.tenant_id))
+                DomainError::NotFound(format!("Tenant with id {} not found", query.tenant_id))
             })?;
 
         Ok(Response {

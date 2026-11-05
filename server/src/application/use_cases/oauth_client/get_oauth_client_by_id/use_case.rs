@@ -36,7 +36,7 @@ impl UseCase {
             .await?
             .is_none()
         {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 query.tenant_id
             )));
@@ -46,9 +46,7 @@ impl UseCase {
             .oauth_client_repository
             .find_by_id(query.tenant_id, query.id)
             .await?
-            .ok_or_else(|| {
-                DomainError::OAuthClientNotFound(format!("OAuth client {} not found", query.id))
-            })?;
+            .ok_or_else(|| DomainError::NotFound(format!("OAuth client {} not found", query.id)))?;
 
         Ok(ClientView::from_entity(&client))
     }

@@ -28,7 +28,7 @@ pub async fn send_email_otp(
     State(state): State<AppState>,
     Json(payload): Json<send_email_otp::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    state.send_mfa_email_otp.execute(payload).await?;
+    state.mfa.send_mfa_email_otp.execute(payload).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -36,7 +36,7 @@ pub async fn verify_email_otp(
     State(state): State<AppState>,
     Json(payload): Json<verify_email_otp::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let response = state.verify_mfa_email_otp.execute(payload).await?;
+    let response = state.mfa.verify_mfa_email_otp.execute(payload).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -44,7 +44,7 @@ pub async fn verify_totp(
     State(state): State<AppState>,
     Json(payload): Json<verify_totp::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let response = state.verify_mfa_totp.execute(payload).await?;
+    let response = state.mfa.verify_mfa_totp.execute(payload).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -52,7 +52,7 @@ pub async fn start_webauthn_login(
     State(state): State<AppState>,
     Json(payload): Json<start_webauthn_login::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let response = state.start_mfa_webauthn_login.execute(payload).await?;
+    let response = state.mfa.start_mfa_webauthn_login.execute(payload).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -60,7 +60,7 @@ pub async fn verify_webauthn(
     State(state): State<AppState>,
     Json(payload): Json<verify_webauthn::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let response = state.verify_mfa_webauthn.execute(payload).await?;
+    let response = state.mfa.verify_mfa_webauthn.execute(payload).await?;
     Ok((StatusCode::OK, Json(response)))
 }
 
@@ -73,6 +73,7 @@ pub async fn list_my_mfa_methods(
     principal: AuthPrincipal,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .mfa
         .list_my_mfa_methods
         .execute(list_my_mfa_methods::query::Query {
             tenant_id: principal.tenant_id,
@@ -89,7 +90,7 @@ pub async fn set_preferred_mfa_method(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = principal.tenant_id;
     payload.user_id = principal.user_id;
-    state.set_preferred_mfa_method.execute(payload).await?;
+    state.mfa.set_preferred_mfa_method.execute(payload).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -98,6 +99,7 @@ pub async fn start_totp_enrollment(
     principal: AuthPrincipal,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .mfa
         .start_totp_enrollment
         .execute(start_totp_enrollment::command::Command {
             tenant_id: principal.tenant_id,
@@ -115,7 +117,7 @@ pub async fn confirm_totp_enrollment(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = principal.tenant_id;
     payload.user_id = principal.user_id;
-    let response = state.confirm_totp_enrollment.execute(payload).await?;
+    let response = state.mfa.confirm_totp_enrollment.execute(payload).await?;
 
     let event = AuditEvent::new(
         Some(principal.tenant_id),
@@ -136,6 +138,7 @@ pub async fn start_webauthn_enrollment(
     principal: AuthPrincipal,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
+        .mfa
         .start_webauthn_enrollment
         .execute(start_webauthn_enrollment::command::Command {
             tenant_id: principal.tenant_id,
@@ -153,7 +156,11 @@ pub async fn finish_webauthn_enrollment(
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = principal.tenant_id;
     payload.user_id = principal.user_id;
-    let response = state.finish_webauthn_enrollment.execute(payload).await?;
+    let response = state
+        .mfa
+        .finish_webauthn_enrollment
+        .execute(payload)
+        .await?;
 
     let event = AuditEvent::new(
         Some(principal.tenant_id),
@@ -169,13 +176,17 @@ pub async fn finish_webauthn_enrollment(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
+// Step-up: the body must carry `current_password` (see `step_up.rs`).
 pub async fn delete_my_mfa_enrollment(
     State(state): State<AppState>,
     principal: AuthPrincipal,
     ctx: RequestContext,
     Path(enrollment_id): Path<Uuid>,
+    body: Option<axum::Json<crate::presentation::handlers::step_up::StepUpBody>>,
 ) -> Result<impl IntoResponse, ApiError> {
+    crate::presentation::handlers::step_up::confirm(&state, &principal, body).await?;
     state
+        .mfa
         .delete_my_mfa_enrollment
         .execute(delete_my_mfa_enrollment::command::Command {
             tenant_id: principal.tenant_id,
@@ -207,6 +218,6 @@ pub async fn rename_my_mfa_enrollment(
     payload.tenant_id = principal.tenant_id;
     payload.user_id = principal.user_id;
     payload.enrollment_id = enrollment_id;
-    let response = state.rename_my_mfa_enrollment.execute(payload).await?;
+    let response = state.mfa.rename_my_mfa_enrollment.execute(payload).await?;
     Ok((StatusCode::OK, Json(response)))
 }

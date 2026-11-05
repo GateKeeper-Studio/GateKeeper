@@ -36,7 +36,7 @@ impl UseCase {
             .await?
             .is_none()
         {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 query.tenant_id
             )));
@@ -47,7 +47,7 @@ impl UseCase {
             .find_by_id(query.tenant_id, query.id)
             .await?
             .ok_or_else(|| {
-                DomainError::EmailProviderNotFound(format!("Email provider {} not found", query.id))
+                DomainError::NotFound(format!("Email provider {} not found", query.id))
             })?;
 
         Ok(ProviderView::from_entity(&provider))

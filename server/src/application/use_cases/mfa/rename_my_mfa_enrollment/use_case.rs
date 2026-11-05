@@ -34,9 +34,7 @@ impl UseCase {
             .find_by_id(command.tenant_id, command.enrollment_id)
             .await?
             .filter(|e| e.user_id() == command.user_id)
-            .ok_or_else(|| {
-                DomainError::MfaEnrollmentNotFound("enrollment not found".to_string())
-            })?;
+            .ok_or_else(|| DomainError::NotFound("enrollment not found".to_string()))?;
 
         enrollment.rename(name);
         uow.mfa_enrollment_repository().update(&enrollment).await?;

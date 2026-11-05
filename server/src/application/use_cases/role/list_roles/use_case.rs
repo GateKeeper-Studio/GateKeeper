@@ -30,7 +30,7 @@ impl UseCase {
     pub async fn execute(&self, query: Query) -> Result<PagedContent<Response>, DomainError> {
         let tenant = self.tenant_repository.find_by_id(query.tenant_id).await?;
         if tenant.is_none() {
-            return Err(DomainError::TenantNotFound(format!(
+            return Err(DomainError::NotFound(format!(
                 "Tenant with id {} not found",
                 query.tenant_id
             )));

@@ -120,7 +120,7 @@ impl WebhookSubscriptionRepository for InMemoryWebhookSubscriptionRepository {
             .into_iter()
             .any(|s| s.id() == subscription.id() && s.tenant_id() == subscription.tenant_id());
         if !exists {
-            return Err(DomainError::WebhookSubscriptionNotFound(
+            return Err(DomainError::NotFound(
                 "Webhook subscription not found".to_string(),
             ));
         }
@@ -138,7 +138,7 @@ impl WebhookSubscriptionRepository for InMemoryWebhookSubscriptionRepository {
             .into_iter()
             .any(|s| s.id() == id && s.tenant_id() == tenant_id);
         if !exists {
-            return Err(DomainError::WebhookSubscriptionNotFound(
+            return Err(DomainError::NotFound(
                 "Webhook subscription not found".to_string(),
             ));
         }

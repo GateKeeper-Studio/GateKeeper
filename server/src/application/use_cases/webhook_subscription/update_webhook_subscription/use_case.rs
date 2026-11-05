@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -32,18 +34,19 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         let mut subscription = uow
             .webhook_subscription_repository()
             .find_by_id(command.tenant_id, command.id)
             .await?
             .ok_or_else(|| {
-                DomainError::WebhookSubscriptionNotFound(format!(
-                    "Webhook subscription {} not found",
-                    command.id
-                ))
+                DomainError::NotFound(format!("Webhook subscription {} not found", command.id))
             })?;
 
         let url = command.url.trim().to_string();
@@ -61,7 +64,11 @@ impl UseCase {
 
         let raw_secret = if command.rotate_secret {
             let secret = generate_opaque_token();
-            subscription.rotate_secret(self.secret_cipher.encrypt(&secret)?);
+            let sealed = self.secret_cipher.encrypt(
+                &secret,
+                SecretContext::new(SecretPurpose::WebhookSecret, subscription.tenant_id()),
+            )?;
+            subscription.rotate_secret(sealed);
             Some(secret)
         } else {
             None

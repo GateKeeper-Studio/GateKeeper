@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::application::ports::password_hasher::PasswordHasher;
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -17,32 +19,37 @@ use crate::{
         },
         errors::DomainError,
     },
-    utils::password_hasher::hash_password,
 };
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
+    password_hasher: Arc<dyn PasswordHasher>,
 }
 
 impl UseCase {
-    pub fn new(unit_of_work_factory: Arc<dyn UnitOfWorkFactory>) -> Self {
+    pub fn new(
+        unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
+        password_hasher: Arc<dyn PasswordHasher>,
+    ) -> Self {
         Self {
             unit_of_work_factory,
+            password_hasher,
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         let tenant = uow
             .tenant_repository()
             .find_by_id(command.tenant_id)
             .await?
             .ok_or_else(|| {
-                DomainError::TenantNotFound(format!(
-                    "Tenant with id {} not found",
-                    command.tenant_id
-                ))
+                DomainError::NotFound(format!("Tenant with id {} not found", command.tenant_id))
             })?;
 
         let is_user_already_exists = uow
@@ -51,7 +58,7 @@ impl UseCase {
             .await?;
 
         if is_user_already_exists {
-            return Err(DomainError::UserAlreadyExists(format!(
+            return Err(DomainError::Conflict(format!(
                 "User with email {} already exists",
                 command.email
             )));
@@ -63,19 +70,12 @@ impl UseCase {
             user.verify_email();
         }
 
-        // Argon2 is intentionally CPU/memory heavy; run it off the async worker so
-        // it doesn't stall other tasks on this Tokio thread.
-        let password = command.temporary_password.clone();
-        let secret = tenant.password_hash_secret().to_string();
-        let hashed_password =
-            tokio::task::spawn_blocking(move || hash_password(&password, &secret))
-                .await
-                .map_err(|_| {
-                    DomainError::PasswordHashingError("Failed to hash password".to_string())
-                })?
-                .map_err(|_| {
-                    DomainError::PasswordHashingError("Failed to hash password".to_string())
-                })?;
+        // Argon2id runs behind the `PasswordHasher` port: bounded and off the async
+        // workers.
+        let hashed_password = self
+            .password_hasher
+            .hash(&command.temporary_password, tenant.password_hash_secret())
+            .await?;
 
         let user_credentials = UserCredentials::new(
             user.id(),

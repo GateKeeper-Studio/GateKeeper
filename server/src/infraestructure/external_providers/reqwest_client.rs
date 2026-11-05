@@ -309,8 +309,11 @@ struct GithubEmail {
     verified: bool,
 }
 
+// The detail (status, URL, parse error) is for operators and goes to the log; the
+// caller — often an end user mid-sign-in — gets a fixed message.
 fn provider_err(msg: impl Into<String>) -> DomainError {
-    DomainError::ExternalProviderError(msg.into())
+    tracing::warn!("external identity provider error: {}", msg.into());
+    DomainError::Upstream("the external identity provider request failed".to_string())
 }
 
 // RFC 3986 percent-encoding for query values (space -> %20, ':' -> %3A). Used to

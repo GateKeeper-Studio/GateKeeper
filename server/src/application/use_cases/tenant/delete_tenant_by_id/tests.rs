@@ -58,10 +58,13 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: tenant.organization_id(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: tenant.organization_id(),
+                },
+            )
             .await
             .unwrap();
 
@@ -74,14 +77,17 @@ mod tests {
         let (_, use_case) = setup();
 
         let err = use_case
-            .execute(Command {
-                tenant_id: Uuid::new_v4(),
-                organization_id: Uuid::new_v4(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: Uuid::new_v4(),
+                    organization_id: Uuid::new_v4(),
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 
     #[tokio::test]
@@ -96,14 +102,17 @@ mod tests {
             .insert(tenant.id(), tenant.clone());
 
         let err = use_case
-            .execute(Command {
-                tenant_id: tenant.id(),
-                organization_id: Uuid::now_v7(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id: tenant.id(),
+                    organization_id: Uuid::now_v7(),
+                },
+            )
             .await
             .unwrap_err();
 
-        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
         assert!(tenant_repo.find_by_id(tenant.id()).await.unwrap().is_some());
     }
 }

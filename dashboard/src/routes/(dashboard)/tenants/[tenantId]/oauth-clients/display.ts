@@ -11,7 +11,9 @@ const SCOPE_LABELS: Record<string, string> = {
 	openid: 'OpenID',
 	profile: 'Profile',
 	email: 'Email',
-	offline_access: 'Offline access'
+	offline_access: 'Offline access',
+	account: 'Account management (/me)',
+	admin: 'Tenant admin API'
 };
 
 export function scopeLabel(scope: string): string {
@@ -21,7 +23,19 @@ export function scopeLabel(scope: string): string {
 // The scopes/grants the form offers as checkboxes. `openid` is effectively
 // mandatory for OIDC; the rest are opt-in. Anything else can still be added as a
 // custom scope on the form.
-export const KNOWN_SCOPES = ['openid', 'profile', 'email', 'offline_access'] as const;
+//
+// `account` and `admin` open the identity provider's OWN APIs: a token reaches
+// `/me/*` only with `account`, and the tenant-admin API only with `admin` (plus an
+// admin role). Grant them only to first-party apps you trust with that power —
+// never to a third-party relying party.
+export const KNOWN_SCOPES = [
+	'openid',
+	'profile',
+	'email',
+	'offline_access',
+	'account',
+	'admin'
+] as const;
 export const KNOWN_GRANT_TYPES = ['authorization_code', 'refresh_token', 'client_credentials'] as const;
 
 const GRANT_LABELS: Record<string, string> = {

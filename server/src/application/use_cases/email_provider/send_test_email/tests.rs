@@ -82,11 +82,14 @@ mod tests {
     async fn sends_test_email_to_recipient() {
         let (use_case, emails, tenant_id, provider_id) = seed(true);
         use_case
-            .execute(Command {
-                tenant_id,
-                id: provider_id,
-                to: "dest@example.com".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    id: provider_id,
+                    to: "dest@example.com".to_string(),
+                },
+            )
             .await
             .unwrap();
 
@@ -102,11 +105,14 @@ mod tests {
         // validated up front.
         let (use_case, emails, tenant_id, provider_id) = seed(false);
         use_case
-            .execute(Command {
-                tenant_id,
-                id: provider_id,
-                to: "dest@example.com".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    id: provider_id,
+                    to: "dest@example.com".to_string(),
+                },
+            )
             .await
             .unwrap();
 
@@ -117,13 +123,16 @@ mod tests {
     async fn unknown_provider_is_not_found() {
         let (use_case, _emails, tenant_id, _) = seed(true);
         let err = use_case
-            .execute(Command {
-                tenant_id,
-                id: Uuid::now_v7(),
-                to: "dest@example.com".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    id: Uuid::now_v7(),
+                    to: "dest@example.com".to_string(),
+                },
+            )
             .await
             .unwrap_err();
-        assert!(matches!(err, DomainError::EmailProviderNotFound(_)));
+        assert!(matches!(err, DomainError::NotFound(_)));
     }
 }

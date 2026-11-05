@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
+use crate::application::shared::actor::Actor;
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -29,12 +31,20 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<ExternalProviderView, DomainError> {
+    pub async fn execute(
+        &self,
+        actor: &Actor,
+        command: Command,
+    ) -> Result<ExternalProviderView, DomainError> {
         let provider_kind = ExternalProviderKind::parse(&command.provider).ok_or_else(|| {
             DomainError::InvalidRequest(format!("unsupported provider '{}'", command.provider))
         })?;
 
         let uow = self.unit_of_work_factory.begin().await?;
+        // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
+        actor
+            .authorize_tenant_admin_for(uow.tenant_repository().as_ref(), command.tenant_id)
+            .await?;
 
         // The client must exist under this tenant.
         let client = uow
@@ -42,14 +52,17 @@ impl UseCase {
             .find_by_id(command.tenant_id, command.oauth_client_id)
             .await?
             .ok_or_else(|| {
-                DomainError::OAuthClientNotFound(format!(
+                DomainError::NotFound(format!(
                     "OAuth client {} not found",
                     command.oauth_client_id
                 ))
             })?;
 
         // The provider secret is encrypted before it ever touches the DB.
-        let secret_encrypted = self.secret_cipher.encrypt(&command.client_secret)?;
+        let secret_encrypted = self.secret_cipher.encrypt(
+            &command.client_secret,
+            SecretContext::new(SecretPurpose::ExternalIdpClientSecret, command.tenant_id),
+        )?;
 
         let provider = ExternalIdentityProvider::new(
             client.id(),

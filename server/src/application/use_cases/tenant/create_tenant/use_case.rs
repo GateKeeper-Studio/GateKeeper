@@ -3,8 +3,10 @@ use std::sync::Arc;
 use crate::application::ports::{
     signing_key_generator::SigningKeyGenerator, unit_of_work::UnitOfWorkFactory,
 };
+use crate::application::shared::actor::Actor;
 use crate::application::use_cases::tenant::create_tenant::{command::Command, response::Response};
 use crate::domain::{entities::tenant::Tenant, errors::DomainError};
+use crate::utils::oauth_crypto::generate_opaque_token;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -22,14 +24,17 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
+    pub async fn execute(&self, actor: &Actor, command: Command) -> Result<Response, DomainError> {
+        // Tenant records belong to an organization: only its platform admins (or
+        // the system) may manage them. See `application/shared/actor.rs`.
+        actor.authorize_organization(command.organization_id)?;
         let uow = self.unit_of_work_factory.begin().await?;
 
         uow.organization_repository()
             .find_by_id(command.organization_id)
             .await?
             .ok_or_else(|| {
-                DomainError::OrganizationNotFound(format!(
+                DomainError::NotFound(format!(
                     "Organization with id {} not found",
                     command.organization_id
                 ))
@@ -41,16 +46,19 @@ impl UseCase {
             .await?;
 
         if already_exists {
-            return Err(DomainError::TenantAlreadyExists(format!(
+            return Err(DomainError::Conflict(format!(
                 "Tenant with name '{}' already exists",
                 command.name
             )));
         }
 
+        // The password pepper is generated here, never supplied by the caller: it
+        // must be long and random, and nobody needs to know it. 32 random bytes,
+        // sealed at rest by the repository.
         let tenant = Tenant::new(
             command.name,
             command.description,
-            command.password_hash_secret,
+            generate_opaque_token(),
             true, // is_active
             command.can_self_register,
             command.can_self_forgot_password,

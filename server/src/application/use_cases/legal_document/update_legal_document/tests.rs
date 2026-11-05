@@ -19,14 +19,17 @@ mod tests {
     async fn stores_and_returns_customized_document() {
         let repo = Arc::new(InMemoryLegalDocumentRepository::new());
         let tenant_id = Uuid::now_v7();
-        let use_case = UseCase::new(Arc::clone(&repo) as Arc<dyn LegalDocumentRepository>);
+        let use_case = UseCase::new(Arc::clone(&repo) as Arc<dyn LegalDocumentRepository>, Arc::new(crate::testing::in_memory_repositories::in_memory_tenant_repository::InMemoryTenantRepository::new()));
 
         let response = use_case
-            .execute(Command {
-                tenant_id,
-                document_type: LegalDocumentType::TermsOfService,
-                markdown_content: "# Our terms".to_string(),
-            })
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                Command {
+                    tenant_id,
+                    document_type: LegalDocumentType::TermsOfService,
+                    markdown_content: "# Our terms".to_string(),
+                },
+            )
             .await
             .unwrap();
 
