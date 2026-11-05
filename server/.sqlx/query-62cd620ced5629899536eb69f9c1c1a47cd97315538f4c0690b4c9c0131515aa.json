@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE consent_grants\n          SET revoked_at = now(), updated_at = now()\n          WHERE user_id = $1 AND client_id = $2 AND revoked_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "62cd620ced5629899536eb69f9c1c1a47cd97315538f4c0690b4c9c0131515aa"
+}

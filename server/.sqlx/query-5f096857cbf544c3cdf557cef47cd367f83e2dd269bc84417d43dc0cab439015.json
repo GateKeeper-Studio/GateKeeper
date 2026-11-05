@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO mfa_challenges (id, tenant_id, user_id, auth_session_id, purpose, method,\n            code_hash, state_json, attempts, consumed_at, expires_at, created_at)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Jsonb",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5f096857cbf544c3cdf557cef47cd367f83e2dd269bc84417d43dc0cab439015"
+}

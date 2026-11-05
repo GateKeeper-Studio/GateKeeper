@@ -66,16 +66,23 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }
 
     fn setup(consumed: bool, expired: bool) -> Ctx {
+        setup_ext(consumed, expired, false)
+    }
+
+    fn setup_ext(consumed: bool, expired: bool, external_login_only: bool) -> Ctx {
         let tenant_id = Uuid::now_v7();
         let client_uuid = Uuid::parse_str(CLIENT_ID).unwrap();
 
         let clients = Arc::new(InMemoryOAuthClientRepository::new());
-        let client = make_client(tenant_id);
+        let mut client = make_client(tenant_id);
+        client.set_external_login_only(external_login_only);
         clients
             .memory
             .data
@@ -93,7 +100,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
             Utc::now(),
             None,
         );
@@ -181,6 +187,23 @@ mod tests {
             .unwrap()
             .password_hash()
             .to_string()
+    }
+
+    // An external-login-only client mints no reset tokens; a still-valid one issued
+    // before the flag was turned on is refused rather than redeemed.
+    #[tokio::test]
+    async fn refuses_for_an_external_login_only_client() {
+        let ctx = setup_ext(false, false, true);
+        let before = current_hash(&ctx);
+
+        let err = ctx
+            .use_case
+            .execute(command(&ctx, RAW_TOKEN))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::AccessDenied(_)));
+        assert_eq!(current_hash(&ctx), before);
     }
 
     #[tokio::test]

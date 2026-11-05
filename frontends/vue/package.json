@@ -1,0 +1,22 @@
+{
+  "name": "gatekeeper-vue-example",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "check": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@gatekeeper/vue": "file:../../packages/gatekeeper-vue",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.1.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vue-tsc": "^2.1.0"
+  }
+}

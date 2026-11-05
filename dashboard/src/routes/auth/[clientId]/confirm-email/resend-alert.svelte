@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 
 	import { resendConfirmEmailApi } from '$lib/services/auth/resend-confirm-email';
+	import { m } from '$lib/paraglide/messages.js';
 
 	const clientId = page.params.clientId as string;
 	const email = page.url.searchParams.get('email') || '';
@@ -22,7 +23,7 @@
 		}
 
 		isLoading = false;
-		toast.success('Confirmation code sent successfully');
+		toast.success(m.auth_confirm_email_resend_success());
 	}
 </script>
 
@@ -30,7 +31,7 @@
 	class="flex flex-col items-center justify-center rounded-sm bg-gray-50 p-3 shadow-sm dark:bg-gray-900"
 >
 	<p class="text-sm text-muted-foreground">
-		It seems you are trying to sign in. Please confirm your e-mail before signing in.
+		{m.auth_confirm_email_resend_notice()}
 	</p>
 
 	<button
@@ -39,6 +40,6 @@
 		disabled={isLoading}
 		class="mt-2 text-sm font-semibold text-primary hover:underline disabled:pointer-events-none"
 	>
-		{isLoading ? 'Sending...' : 'Click here to resend the confirmation code'}
+		{isLoading ? m.auth_confirm_email_resend_sending() : m.auth_confirm_email_resend_button()}
 	</button>
 </div>

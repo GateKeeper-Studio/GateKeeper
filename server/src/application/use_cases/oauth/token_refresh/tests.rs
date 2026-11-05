@@ -6,9 +6,16 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        application::use_cases::oauth::token_refresh::{command::Command, use_case::UseCase},
+        application::{
+            ports::risk_engine::RiskEngine,
+            use_cases::oauth::token_refresh::{
+                command::Command,
+                use_case::{DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS, UseCase},
+            },
+        },
         domain::{
             entities::{
+                login_event::RiskDecision,
                 oauth_client::{ClientType, MfaPolicy, OAuthClient},
                 refresh_token::RefreshToken,
                 signing_key::{SigningAlgorithm, SigningKey},
@@ -17,6 +24,7 @@ mod tests {
         },
         testing::{
             fake_audit_logger::FakeAuditLogger,
+            fake_risk_engine::FakeRiskEngine,
             in_memory_repositories::{
                 in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
                 in_memory_refresh_token_repository::InMemoryRefreshTokenRepository,
@@ -45,6 +53,13 @@ mod tests {
     }
 
     fn build(seed: impl FnOnce(Uuid, Uuid) -> Vec<RefreshToken>) -> Ctx {
+        build_with_risk(seed, Arc::new(FakeRiskEngine::allow()))
+    }
+
+    fn build_with_risk(
+        seed: impl FnOnce(Uuid, Uuid) -> Vec<RefreshToken>,
+        risk_engine: Arc<dyn RiskEngine>,
+    ) -> Ctx {
         let tenant_id = Uuid::now_v7();
 
         let client = OAuthClient::new(
@@ -62,6 +77,8 @@ mod tests {
             ],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         );
         let client_internal_id = client.id();
@@ -109,6 +126,8 @@ mod tests {
             Arc::new(FakeTokenSigner::new()),
             "https://auth.test".to_string(),
             Arc::new(FakeAuditLogger::new()),
+            DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS,
+            risk_engine,
         );
 
         Ctx {
@@ -126,6 +145,8 @@ mod tests {
             client_id: client_id().to_string(),
             client_secret: None,
             refresh_token: raw.to_string(),
+            ip_address: None,
+            user_agent: None,
         }
     }
 
@@ -215,6 +236,105 @@ mod tests {
             .filter(|t| t.family_id() == ctx.family_id && t.is_active(Utc::now()))
             .count();
         assert_eq!(live_count, 0);
+    }
+
+    #[tokio::test]
+    async fn replay_within_leeway_reissues_without_revoking_the_family() {
+        // A token rotated *just now* (inside the leeway window) presented again is a
+        // legitimate concurrent refresh / retry, not theft: it must succeed and leave the
+        // family intact instead of revoking it.
+        let ctx = build(|tenant_id, client_id| {
+            let family_id = Uuid::now_v7();
+            let user_id = Uuid::now_v7();
+            let rotated = RefreshToken::reconstruct(
+                Uuid::now_v7(),
+                tenant_id,
+                sha256_hex(RAW_REFRESH),
+                client_id,
+                user_id,
+                vec!["openid".to_string()],
+                family_id,
+                Some(Utc::now()), // rotated within the leeway window
+                None,
+                Utc::now() + Duration::days(30),
+                Utc::now() - Duration::minutes(1),
+            );
+            let live_successor = RefreshToken::reconstruct(
+                Uuid::now_v7(),
+                tenant_id,
+                sha256_hex("successor"),
+                client_id,
+                user_id,
+                vec!["openid".to_string()],
+                family_id,
+                None,
+                None,
+                Utc::now() + Duration::days(30),
+                Utc::now(),
+            );
+            vec![rotated, live_successor]
+        });
+
+        let response = ctx
+            .use_case
+            .execute(command(ctx.tenant_id, RAW_REFRESH))
+            .await
+            .unwrap();
+
+        let data = ctx.refresh.memory.data.lock().unwrap();
+
+        // The reissued token is active and joined the same family.
+        let reissued = data
+            .values()
+            .find(|t| t.token_hash() == sha256_hex(&response.refresh_token))
+            .unwrap();
+        assert!(reissued.is_active(Utc::now()));
+        assert_eq!(reissued.family_id(), ctx.family_id);
+
+        // The family was NOT revoked: the pre-existing successor is still live, alongside
+        // the freshly issued sibling.
+        let live_count = data
+            .values()
+            .filter(|t| t.family_id() == ctx.family_id && t.is_active(Utc::now()))
+            .count();
+        assert_eq!(live_count, 2);
+    }
+
+    #[tokio::test]
+    async fn refresh_blocked_by_risk_is_rejected_without_rotating() {
+        // A refresh the Risk Engine decides to BLOCK (e.g. impossible travel or a
+        // blocked IP) must be refused — and, because the refusal happens before the
+        // mint step, the presented token stays active and un-rotated.
+        let ctx = build_with_risk(
+            |tenant_id, client_id| {
+                vec![RefreshToken::new(
+                    tenant_id,
+                    sha256_hex(RAW_REFRESH),
+                    client_id,
+                    Uuid::now_v7(),
+                    vec!["openid".to_string()],
+                    Utc::now() + Duration::days(30),
+                )]
+            },
+            Arc::new(FakeRiskEngine::with_decision(
+                RiskDecision::BlockTemporarily,
+            )),
+        );
+
+        let err = ctx
+            .use_case
+            .execute(command(ctx.tenant_id, RAW_REFRESH))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::InvalidGrant(_)));
+
+        let data = ctx.refresh.memory.data.lock().unwrap();
+        let presented = data
+            .values()
+            .find(|t| t.token_hash() == sha256_hex(RAW_REFRESH))
+            .unwrap();
+        assert!(presented.rotated_at().is_none());
+        assert!(presented.is_active(Utc::now()));
     }
 
     #[tokio::test]

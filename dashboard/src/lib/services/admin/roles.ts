@@ -1,4 +1,4 @@
-import { api } from '../base/api';
+import { adminApi as api } from '../base/admin-api';
 import { ApiError, type Result, type VoidResult } from '../types';
 import type { Paged } from './users';
 export type { Paged };
@@ -38,10 +38,7 @@ export async function getTenantRole(
 	fetchFn: typeof fetch = fetch
 ): Promise<Result<TenantRoleView>> {
 	try {
-		const data = await api.get<TenantRoleView>(
-			`/tenants/${tenantId}/roles/${roleId}`,
-			fetchFn
-		);
+		const data = await api.get<TenantRoleView>(`/tenants/${tenantId}/roles/${roleId}`, fetchFn);
 		return [data, null];
 	} catch (error) {
 		return [null, error as ApiError];
@@ -149,9 +146,7 @@ export async function listUserRoles(
 	userId: string
 ): Promise<Result<TenantRoleView[]>> {
 	try {
-		const data = await api.get<TenantRoleView[]>(
-			`/tenants/${tenantId}/users/${userId}/roles`
-		);
+		const data = await api.get<TenantRoleView[]>(`/tenants/${tenantId}/users/${userId}/roles`);
 		return [data, null];
 	} catch (error) {
 		return [null, error as ApiError];

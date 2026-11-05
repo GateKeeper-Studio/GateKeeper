@@ -1,4 +1,4 @@
-import { api } from '../base/api';
+import { adminApi as api } from '../base/admin-api';
 import { ApiError, type Result } from '../types';
 
 /** URL slug identifying a legal document. */

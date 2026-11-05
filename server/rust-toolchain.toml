@@ -1,0 +1,7 @@
+# Pin the toolchain so every developer and CI run compiles the crate with the
+# exact same rustc/std/tooling (memory-safety checklist §19). Bump this on purpose
+# — never let it drift. `minimal` profile + the two components we actually gate on.
+[toolchain]
+channel = "1.96.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"

@@ -28,44 +28,19 @@ impl Default for LogEmailSender {
 
 #[async_trait]
 impl EmailSender for LogEmailSender {
-    async fn send_verification_code(
+    async fn send(
         &self,
         _provider: Option<&EmailProvider>,
         to: &str,
-        code: &str,
+        subject: &str,
+        _html_body: &str,
+        text_body: &str,
     ) -> Result<(), DomainError> {
         tracing::info!(
           recipient = %to,
-          "[dev email] verification code (replace LogEmailSender with a real transport in production): {}",
-          code
-        );
-        Ok(())
-    }
-
-    async fn send_password_reset_link(
-        &self,
-        _provider: Option<&EmailProvider>,
-        to: &str,
-        link: &str,
-    ) -> Result<(), DomainError> {
-        tracing::info!(
-          recipient = %to,
-          "[dev email] password reset link (replace LogEmailSender with a real transport in production): {}",
-          link
-        );
-        Ok(())
-    }
-
-    async fn send_mfa_code(
-        &self,
-        _provider: Option<&EmailProvider>,
-        to: &str,
-        code: &str,
-    ) -> Result<(), DomainError> {
-        tracing::info!(
-          recipient = %to,
-          "[dev email] MFA sign-in code (replace LogEmailSender with a real transport in production): {}",
-          code
+          subject = %subject,
+          "[dev email] (replace LogEmailSender with a real transport in production): {}",
+          text_body
         );
         Ok(())
     }

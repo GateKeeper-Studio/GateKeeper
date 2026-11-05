@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM email_templates WHERE tenant_id = $1 AND template_type = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "31717531d50ab849e7bebfdc9870e9d63d2a989e3e8885fb7632a6da10763224"
+}

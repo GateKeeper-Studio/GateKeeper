@@ -32,7 +32,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
             Utc::now(),
             None,
         );

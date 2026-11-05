@@ -15,6 +15,7 @@ use crate::{
     },
     presentation::{
         errors::{ApiError, AppJson},
+        middleware::auth::TenantScope,
         routes::AppState,
     },
 };
@@ -28,7 +29,7 @@ pub struct PaginationParams {
 // POST /tenants/:tenant_id/email-providers
 pub async fn create_email_provider(
     State(state): State<AppState>,
-    Path(tenant_id): Path<Uuid>,
+    TenantScope { tenant_id, .. }: TenantScope,
     AppJson(mut payload): AppJson<create_email_provider::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = tenant_id;
@@ -41,7 +42,7 @@ pub async fn create_email_provider(
 // GET /tenants/:tenant_id/email-providers?page=1&page_size=10
 pub async fn list_email_providers(
     State(state): State<AppState>,
-    Path(tenant_id): Path<Uuid>,
+    TenantScope { tenant_id, .. }: TenantScope,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_email_providers::query::Query {
@@ -56,7 +57,8 @@ pub async fn list_email_providers(
 // GET /tenants/:tenant_id/email-providers/:id
 pub async fn get_email_provider_by_id(
     State(state): State<AppState>,
-    Path((tenant_id, id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = get_email_provider_by_id::query::Query { tenant_id, id };
     let response = state.get_email_provider_by_id.execute(query).await?;
@@ -66,7 +68,8 @@ pub async fn get_email_provider_by_id(
 // PUT /tenants/:tenant_id/email-providers/:id
 pub async fn update_email_provider(
     State(state): State<AppState>,
-    Path((tenant_id, id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
     AppJson(mut payload): AppJson<update_email_provider::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = tenant_id;
@@ -84,7 +87,8 @@ pub async fn update_email_provider(
 // (e.g. a 535 auth rejection) is surfaced as a 400 with the SMTP message.
 pub async fn send_test_email(
     State(state): State<AppState>,
-    Path((tenant_id, id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
     AppJson(mut payload): AppJson<send_test_email::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = tenant_id;
@@ -98,7 +102,8 @@ pub async fn send_test_email(
 // DELETE /tenants/:tenant_id/email-providers/:id
 pub async fn delete_email_provider(
     State(state): State<AppState>,
-    Path((tenant_id, id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = delete_email_provider::command::Command { tenant_id, id };
     state.delete_email_provider.execute(command).await?;

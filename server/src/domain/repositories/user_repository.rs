@@ -29,6 +29,13 @@ pub trait UserRepository: Send + Sync {
         email: &str,
     ) -> Result<bool, DomainError>;
 
+    // Which of the given users have a password credential. Used by the user
+    // listing to show login-method badges without hydrating every credential row.
+    async fn find_user_ids_with_password(
+        &self,
+        user_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, DomainError>;
+
     async fn delete_by_id(&self, user_id: Uuid) -> Result<(), DomainError>;
 
     // Right to erasure (WI-06): scrub PII in-place (email → tombstone, names cleared),

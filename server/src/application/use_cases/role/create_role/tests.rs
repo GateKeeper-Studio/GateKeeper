@@ -28,7 +28,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
         )
     }
 
@@ -55,8 +54,8 @@ mod tests {
     fn make_command(tenant_id: Uuid) -> Command {
         Command {
             tenant_id,
-            name: "Admin".into(),
-            description: Some("Administrators".into()),
+            name: "Editor".into(),
+            description: Some("Content editors".into()),
         }
     }
 
@@ -67,8 +66,8 @@ mod tests {
 
         let response = use_case.execute(make_command(tenant.id())).await.unwrap();
 
-        assert_eq!(response.name, "Admin");
-        assert_eq!(response.description, Some("Administrators".to_string()));
+        assert_eq!(response.name, "Editor");
+        assert_eq!(response.description, Some("Content editors".to_string()));
         assert_eq!(response.user_count, 0);
         assert_eq!(role_repo.memory.data.lock().unwrap().len(), 1);
     }
@@ -104,7 +103,7 @@ mod tests {
         let tenant = make_tenant();
         let (role_repo, use_case) = setup(&tenant);
 
-        let existing = Role::new(tenant.id(), "Admin".into(), None);
+        let existing = Role::new(tenant.id(), "Editor".into(), None);
         role_repo
             .memory
             .data
@@ -118,5 +117,38 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(err, DomainError::RoleAlreadyExists(_)));
+    }
+
+    // A role name is privilege-bearing: it lands in the access token's `roles`
+    // claim and the admin router authorizes on it. A tenant creating "admin" —
+    // the most natural role name there is — would otherwise be handing its own
+    // users the platform admin surface.
+    #[tokio::test]
+    async fn rejects_reserved_role_names() {
+        let tenant = make_tenant();
+        let (role_repo, use_case) = setup(&tenant);
+
+        for name in [
+            "admin",
+            "tenant_admin",
+            "Admin",
+            "TENANT_ADMIN",
+            "  admin  ",
+        ] {
+            let mut command = make_command(tenant.id());
+            command.name = name.into();
+
+            let err = use_case.execute(command).await.unwrap_err();
+
+            assert!(
+                matches!(err, DomainError::InvalidRequest(_)),
+                "{name:?} should be rejected as reserved, got {err:?}"
+            );
+        }
+
+        assert!(
+            role_repo.memory.data.lock().unwrap().is_empty(),
+            "no reserved role should have been persisted"
+        );
     }
 }

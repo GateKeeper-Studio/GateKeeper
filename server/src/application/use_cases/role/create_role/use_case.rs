@@ -5,7 +5,10 @@ use crate::{
         ports::unit_of_work::UnitOfWorkFactory,
         use_cases::role::create_role::{command::Command, response::Response},
     },
-    domain::{entities::role::Role, errors::DomainError},
+    domain::{
+        entities::role::{Role, is_reserved_role_name},
+        errors::DomainError,
+    },
 };
 
 pub struct UseCase {
@@ -34,6 +37,15 @@ impl UseCase {
         }
 
         let name = command.name.trim().to_string();
+
+        // A role name is privilege-bearing: it is embedded in the access token and
+        // the admin router authorizes on it. Letting a tenant create `admin` would
+        // let it grant its own users the admin surface.
+        if is_reserved_role_name(&name) {
+            return Err(DomainError::InvalidRequest(format!(
+                "Role name '{name}' is reserved and cannot be used"
+            )));
+        }
 
         let name_taken = uow
             .role_repository()

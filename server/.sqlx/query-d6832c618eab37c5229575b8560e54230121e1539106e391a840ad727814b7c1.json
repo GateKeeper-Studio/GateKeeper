@@ -1,0 +1,160 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, name, description, is_active, can_self_register,\n          can_self_forgot_password, password_hash_secret, organization_id,\n          created_at, updated_at, default_language,\n          appearance as \"appearance?: sqlx::types::Json<serde_json::Value>\"\n        FROM tenants\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "description",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "can_self_register",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "can_self_register"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "can_self_forgot_password",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "can_self_forgot_password"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "password_hash_secret",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "password_hash_secret"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "organization_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "organization_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "default_language",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "default_language"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "appearance?: sqlx::types::Json<serde_json::Value>",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "appearance"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "d6832c618eab37c5229575b8560e54230121e1539106e391a840ad727814b7c1"
+}

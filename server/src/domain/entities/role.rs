@@ -1,6 +1,30 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+/// Role names that grant access to the admin surface.
+///
+/// A user's roles are resolved from tenant RBAC and embedded in their access
+/// token; the auth layer authorizes the admin router by testing membership in
+/// this list (`presentation::middleware::auth::ADMIN_ROLES` re-exports it). That
+/// makes the names privilege-bearing, so tenants must not be able to mint them:
+/// a customer creating a role called `admin` — the most common role name there
+/// is — would otherwise hand that role's members the admin surface.
+///
+/// Lives in the domain because both the authorization check (presentation) and
+/// the creation rule (application) need it, and application may not depend on
+/// presentation.
+pub const ADMIN_ROLE_NAMES: [&str; 2] = ["admin", "tenant_admin"];
+
+/// Whether `name` collides with a privilege-bearing role name. Compared
+/// case-insensitively on the trimmed value, because that is how a near-miss
+/// would be attempted (`Admin`, `ADMIN`, `" admin "`).
+pub fn is_reserved_role_name(name: &str) -> bool {
+    let name = name.trim();
+    ADMIN_ROLE_NAMES
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(name))
+}
+
 // Role represents a tenant-scoped named permission set that users can be assigned to.
 #[derive(Debug, Clone)]
 pub struct Role {

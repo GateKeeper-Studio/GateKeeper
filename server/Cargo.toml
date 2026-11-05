@@ -6,6 +6,9 @@ edition = "2024"
 # bare `cargo run` ambiguous. Pin the default to the server so `cargo run` still
 # launches it; use `cargo run --bin create_admin` for the others.
 default-run = "web-api"
+# Proprietary, never published to a registry. Also signals cargo-deny to skip
+# license checks on our own crate (deny.toml [licenses] private.ignore).
+publish = false
 
 [dependencies]
 # ── HTTP framework ─────────────────────────────────────────────────────────────
@@ -34,7 +37,7 @@ serde_json = "1.0.150"
 # Tower provides the Service/Layer abstraction. tower-http adds HTTP-specific
 # middleware (CORS, tracing, compression, auth headers...).
 tower = "0.5.3"
-tower-http = { version = "0.6.11", features = ["cors", "trace", "compression-gzip"] }
+tower-http = { version = "0.6.11", features = ["cors", "trace", "compression-gzip", "timeout"] }
 
 # ── Database ──────────────────────────────────────────────────────────────────
 # sqlx is an async SQL library with compile-time query checking. "postgres"
@@ -113,10 +116,53 @@ aes-gcm = "0.10"
 # lettre is the async SMTP client used to deliver verification codes / reset
 # links through a tenant's configured SMTP provider. rustls (no OpenSSL) for TLS.
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "pool", "hostname", "tokio1-rustls-tls"] }
+
+# ── Outbound HTTP (external identity providers) ──────────────────────────────
+# reqwest calls Google/GitHub token + userinfo endpoints during social login.
+# rustls (no OpenSSL) to match the rest of the TLS stack; `json` for (de)serializing
+# the provider responses.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 base32 = "0.5"
 hmac = "0.12"
 sha1 = "0.10"
 webauthn-rs = { version = "0.5", features = ["danger-allow-state-serialisation"] }
+mrml = "6.0.1"
+html2text = "0.17.1"
+lol_html = "3.0.0"
+maxminddb = "0.29.0"
+
+# ── Rate limiting ────────────────────────────────────────────────────────────
+# GCRA (leaky-bucket) rate limiting as a Tower layer, keyed on client IP. An IdP
+# without it lets an attacker brute-force /admin/login and the MFA verification
+# endpoints at network speed. default-features is off deliberately: the default
+# set pulls in `tonic` (a whole gRPC stack) for its interceptor, which this
+# service has no use for.
+tower_governor = { version = "0.8", default-features = false, features = ["axum", "tracing"] }
+
+# ── Metrics ──────────────────────────────────────────────────────────────────
+# An IdP with no metrics gives you no way to alert on token-issuance latency,
+# error rate, pool exhaustion or audit-write failures — all of which were only
+# visible by grepping text logs. `metrics` is the facade; the Prometheus exporter
+# renders the registry.
+#
+# default-features is off deliberately: the defaults start their own HTTP listener
+# (and pull a push-gateway/protobuf stack with it). The registry is rendered by
+# `GET /metrics` on the existing Axum router instead, so it inherits the same
+# bind address, timeouts and TLS termination as everything else.
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.17", default-features = false }
+
+[profile.release]
+# This service's hot path is CPU-bound crypto — Argon2id on every login, ECDSA
+# P-256 signing on every token issued — so cross-crate inlining is worth the
+# longer build. `strip` drops symbols the container has no use for.
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+# Keep overflow checks on in release. This is an identity provider: a silent wrap
+# in a counter or expiry calculation is worse than a crash, and the cost is
+# negligible next to the crypto above.
+overflow-checks = true
 
 [dev-dependencies]
 # axum-test provides a test client that drives Axum apps in-process (no socket).

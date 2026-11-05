@@ -7,7 +7,10 @@ use uuid::Uuid;
 use crate::{
     application::{
         ports::{
-            audit_logger::AuditLogger, token_signer::TokenSigner, unit_of_work::UnitOfWorkFactory,
+            audit_logger::AuditLogger,
+            risk_engine::{RiskEngine, RiskEvaluationInput},
+            token_signer::TokenSigner,
+            unit_of_work::UnitOfWorkFactory,
         },
         use_cases::oauth::{
             token_refresh::{command::Command, response::Response},
@@ -18,6 +21,7 @@ use crate::{
         entities::{
             audit_action::{TOKEN_REFRESHED, TOKEN_REUSE_DETECTED},
             audit_event::{ActorType, AuditEvent, Outcome},
+            login_event::RiskDecision,
         },
         errors::DomainError,
     },
@@ -29,12 +33,24 @@ use crate::{
 
 const ACCESS_TOKEN_TTL_SECONDS: i64 = 900; // 15 minutes
 const REFRESH_TOKEN_TTL_DAYS: i64 = 30;
+/// Default grace window (seconds) after a token is rotated during which presenting it again
+/// is treated as a legitimate concurrent refresh / retry (reissue a sibling) rather than
+/// token reuse (revoke the whole family). Bounds how long a just-rotated token stays usable,
+/// so keep it small — the standard rotation-leeway tradeoff (cf. Auth0's reuse interval).
+/// Overridable per environment via `REFRESH_REUSE_LEEWAY_SECONDS` (see `routes.rs`).
+pub const DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS: i64 = 10;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
     signer: Arc<dyn TokenSigner>,
     issuer: String,
     audit_logger: Arc<dyn AuditLogger>,
+    // See DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS; injected so it's tunable per environment.
+    reuse_leeway_seconds: i64,
+    // Same engine the interactive login uses, so a refresh from a new country / an
+    // impossible-travel hop / a blocked IP is geo-enriched, recorded as a login event,
+    // and (on a critical decision) refused.
+    risk_engine: Arc<dyn RiskEngine>,
 }
 
 impl UseCase {
@@ -43,12 +59,16 @@ impl UseCase {
         signer: Arc<dyn TokenSigner>,
         issuer: String,
         audit_logger: Arc<dyn AuditLogger>,
+        reuse_leeway_seconds: i64,
+        risk_engine: Arc<dyn RiskEngine>,
     ) -> Self {
         Self {
             unit_of_work_factory,
             signer,
             issuer,
             audit_logger,
+            reuse_leeway_seconds,
+            risk_engine,
         }
     }
 
@@ -97,43 +117,93 @@ impl UseCase {
             return Err(DomainError::InvalidGrant("client mismatch".to_string()));
         }
 
-        // 3. Reuse detection: an inactive (already rotated/revoked/expired) token that
-        //    was rotated or revoked indicates theft — kill the entire family.
-        if !presented.is_active(now) {
-            if presented.rotated_at().is_some() || presented.revoked_at().is_some() {
-                uow.refresh_token_repository()
-                    .revoke_family(command.tenant_id, presented.family_id())
-                    .await?;
-                uow.commit().await?;
+        // 3. Reuse handling, with a short rotation leeway. An inactive token is normally
+        //    theft (already rotated) or dead (revoked/expired). BUT a token that was *just*
+        //    rotated and presented again within REFRESH_REUSE_LEEWAY_SECONDS is almost
+        //    always a legitimate concurrent refresh or a network retry racing the rotation
+        //    — not theft. In that window we reissue a sibling in the same family instead of
+        //    nuking it. Outside the window (or if revoked), keep the kill-the-family
+        //    behavior. A revoked token never gets grace.
+        let active = presented.is_active(now);
+        if !active {
+            let within_leeway = match presented.rotated_at() {
+                Some(rotated_at) => {
+                    presented.revoked_at().is_none()
+                        && now.signed_duration_since(rotated_at)
+                            <= Duration::seconds(self.reuse_leeway_seconds)
+                }
+                None => false,
+            };
 
-                // High-signal security event: an already-rotated/revoked token was
-                // presented — likely theft. The whole family was just revoked.
-                let event = AuditEvent::new(
-                    Some(command.tenant_id),
-                    ActorType::User,
-                    Some(presented.user_id()),
-                    TOKEN_REUSE_DETECTED,
-                    Outcome::Failure,
-                );
-                let _ = self.audit_logger.record(event).await;
+            if !within_leeway {
+                if presented.rotated_at().is_some() || presented.revoked_at().is_some() {
+                    uow.refresh_token_repository()
+                        .revoke_family(command.tenant_id, presented.family_id())
+                        .await?;
+                    uow.commit().await?;
+
+                    // High-signal security event: an already-rotated/revoked token was
+                    // presented outside the leeway — likely theft. The family was revoked.
+                    let event = AuditEvent::new(
+                        Some(command.tenant_id),
+                        ActorType::User,
+                        Some(presented.user_id()),
+                        TOKEN_REUSE_DETECTED,
+                        Outcome::Failure,
+                    );
+                    let _ = self.audit_logger.record(event).await;
+                }
+                return Err(DomainError::InvalidGrant(
+                    "refresh token reuse detected or expired".to_string(),
+                ));
             }
+        }
+
+        // 3b. Risk evaluation for the refresh (same engine as the interactive login):
+        //     geo-enrich, record a login_event so the refresh appears in the security
+        //     views, and refuse on a critical decision. This is a non-interactive path,
+        //     so we never attempt MFA step-up — only a temporary block forces the client
+        //     back to a full re-authentication. The engine persists on its own connection.
+        let risk = self
+            .risk_engine
+            .evaluate(RiskEvaluationInput {
+                tenant_id: command.tenant_id,
+                user_id: Some(presented.user_id()),
+                client_id: Some(client.id()),
+                username_normalized: None,
+                ip_address: command.ip_address.clone(),
+                user_agent: command.user_agent.clone(),
+                credentials_valid: true,
+                pre_auth_blocked: false,
+                failure_reason: None,
+                timestamp: now,
+            })
+            .await?;
+        if risk.decision == RiskDecision::BlockTemporarily {
             return Err(DomainError::InvalidGrant(
-                "refresh token reuse detected or expired".to_string(),
+                "refresh blocked by risk policy".to_string(),
             ));
         }
 
-        // 4. Rotate: mark the presented token rotated and mint its successor in the
-        //    same family.
+        // 4. Mint the successor. An active token rotates (the presented token is stamped
+        //    rotated_at and replaced). A within-leeway token is left untouched and instead
+        //    gets a fresh sibling in the same family, so its leeway window doesn't slide.
         let raw_new = generate_opaque_token();
-        let mut presented = presented;
-        let new_token = presented.rotate(
-            sha256_hex(&raw_new),
-            now + Duration::days(REFRESH_TOKEN_TTL_DAYS),
-            now,
-        );
-        uow.refresh_token_repository()
-            .rotate(&presented, &new_token)
-            .await?;
+        let new_hash = sha256_hex(&raw_new);
+        let new_expires_at = now + Duration::days(REFRESH_TOKEN_TTL_DAYS);
+
+        let new_token = if active {
+            let mut presented = presented;
+            let child = presented.rotate(new_hash, new_expires_at, now);
+            uow.refresh_token_repository()
+                .rotate(&presented, &child)
+                .await?;
+            child
+        } else {
+            let child = presented.reissue_within_family(new_hash, new_expires_at, now);
+            uow.refresh_token_repository().add(&child).await?;
+            child
+        };
 
         // 5. Re-mint the access (+ id) token with the active signing key.
         let key = uow
@@ -191,7 +261,7 @@ impl UseCase {
             TOKEN_REFRESHED,
             Outcome::Success,
         )
-        .with_metadata(serde_json::json!({ "client_id": client.client_id() }));
+        .with_metadata(serde_json::json!({ "client_id": client.client_id(), "grace": !active }));
         let _ = self.audit_logger.record(event).await;
 
         Ok(Response {

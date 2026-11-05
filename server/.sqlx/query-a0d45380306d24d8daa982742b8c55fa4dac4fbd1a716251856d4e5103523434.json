@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_profiles (user_id, display_name, first_name, last_name, custom_field_values)\n            VALUES ($1, $2, $3, $4, $5)\n            ON CONFLICT (user_id) DO UPDATE\n            SET display_name = EXCLUDED.display_name,\n                first_name = EXCLUDED.first_name,\n                last_name = EXCLUDED.last_name,\n                custom_field_values = EXCLUDED.custom_field_values\n          ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a0d45380306d24d8daa982742b8c55fa4dac4fbd1a716251856d4e5103523434"
+}

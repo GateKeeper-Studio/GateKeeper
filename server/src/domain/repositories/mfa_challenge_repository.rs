@@ -35,4 +35,11 @@ pub trait MfaChallengeRepository: Send + Sync {
         purpose: &MfaChallengePurpose,
         method: &MfaMethod,
     ) -> Result<(), DomainError>;
+
+    // Retention: hard-delete rows already past `expires_at`. Called by the
+    // background purge; idempotent, so concurrent runs are harmless.
+    async fn delete_expired(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, DomainError>;
 }

@@ -54,4 +54,37 @@ impl AdminUserRepository for InMemoryAdminUserRepository {
         self.admins.lock().unwrap().push(admin.clone());
         Ok(())
     }
+
+    async fn update(&self, admin: &AdminUser) -> Result<(), DomainError> {
+        let mut admins = self.admins.lock().unwrap();
+
+        // Reject an email already used by a *different* admin (mirrors the unique index).
+        if admins
+            .iter()
+            .any(|a| a.id() != admin.id() && a.email() == admin.email())
+        {
+            return Err(DomainError::UserAlreadyExists(
+                "an admin with that email already exists".to_string(),
+            ));
+        }
+
+        if let Some(slot) = admins.iter_mut().find(|a| a.id() == admin.id()) {
+            *slot = admin.clone();
+        }
+        Ok(())
+    }
+
+    async fn count_active_by_organization(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<i64, DomainError> {
+        let count = self
+            .admins
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|a| a.organization_id() == organization_id && a.is_active())
+            .count();
+        Ok(count as i64)
+    }
 }

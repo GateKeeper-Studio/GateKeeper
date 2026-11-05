@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::application::ports::unit_of_work::UnitOfWorkFactory;
 use crate::application::use_cases::tenant_user::delete_tenant_user_by_id::command::Command;
+use crate::application::use_cases::webhook::user_event_payload::user_deleted_event;
 use crate::domain::errors::DomainError;
 
 pub struct UseCase {
@@ -40,6 +41,13 @@ impl UseCase {
             })?;
 
         uow.user_repository().delete_by_id(user.id()).await?;
+
+        // Carries only the id: there is no user left to describe, and promising
+        // more than that would be a lie by the time a retry goes out hours later.
+        uow.outbox_event_repository()
+            .enqueue(&user_deleted_event(command.tenant_id, user.id()))
+            .await?;
+
         uow.commit().await?;
 
         Ok(())

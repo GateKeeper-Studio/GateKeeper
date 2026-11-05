@@ -17,12 +17,16 @@ const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60; // 8h
 // The claims carried by a platform-admin token. `roles` is always `["admin"]` so a
 // valid admin token satisfies the middleware's RBAC check; `tid` is intentionally
 // absent because admins are global. `typ: "admin"` documents the token class. `org`
-// is the admin's single organization — every org/subscription action is scoped to it.
+// is the admin's single organization, and organization actions are scoped to it.
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
     iss: String,
     sub: String,
     email: String,
+    // Display name, carried so the dashboard can show it without a round-trip.
+    // Defaults to empty when absent (older tokens) so verification stays lenient.
+    #[serde(default)]
+    name: String,
     org: String,
     roles: Vec<String>,
     typ: String,
@@ -55,6 +59,7 @@ impl AdminTokenIssuer for AdminTokenService {
         &self,
         admin_id: Uuid,
         email: &str,
+        name: &str,
         organization_id: Uuid,
     ) -> Result<IssuedAdminToken, DomainError> {
         let now = Utc::now().timestamp();
@@ -62,6 +67,7 @@ impl AdminTokenIssuer for AdminTokenService {
             iss: self.issuer.clone(),
             sub: admin_id.to_string(),
             email: email.to_string(),
+            name: name.to_string(),
             org: organization_id.to_string(),
             roles: vec!["admin".to_string()],
             typ: "admin".to_string(),
@@ -98,6 +104,7 @@ impl AdminTokenIssuer for AdminTokenService {
         Ok(AdminTokenClaims {
             admin_id,
             email: decoded.claims.email,
+            name: decoded.claims.name,
             organization_id,
         })
     }
@@ -113,11 +120,14 @@ mod tests {
         let id = Uuid::now_v7();
         let org = Uuid::now_v7();
 
-        let issued = svc.issue(id, "admin@example.com", org).unwrap();
+        let issued = svc
+            .issue(id, "admin@example.com", "Ada Admin", org)
+            .unwrap();
         let claims = svc.verify(&issued.token).unwrap();
 
         assert_eq!(claims.admin_id, id);
         assert_eq!(claims.email, "admin@example.com");
+        assert_eq!(claims.name, "Ada Admin");
         assert_eq!(claims.organization_id, org);
         assert!(issued.expires_in > 0);
     }
@@ -127,7 +137,12 @@ mod tests {
         let minter = AdminTokenService::new("secret-a", "http://localhost:8080".to_string());
         let verifier = AdminTokenService::new("secret-b", "http://localhost:8080".to_string());
         let issued = minter
-            .issue(Uuid::now_v7(), "admin@example.com", Uuid::now_v7())
+            .issue(
+                Uuid::now_v7(),
+                "admin@example.com",
+                "Ada Admin",
+                Uuid::now_v7(),
+            )
             .unwrap();
 
         assert!(verifier.verify(&issued.token).is_err());
@@ -138,7 +153,12 @@ mod tests {
         let minter = AdminTokenService::new("secret", "http://evil.example".to_string());
         let verifier = AdminTokenService::new("secret", "http://localhost:8080".to_string());
         let issued = minter
-            .issue(Uuid::now_v7(), "admin@example.com", Uuid::now_v7())
+            .issue(
+                Uuid::now_v7(),
+                "admin@example.com",
+                "Ada Admin",
+                Uuid::now_v7(),
+            )
             .unwrap();
 
         assert!(verifier.verify(&issued.token).is_err());

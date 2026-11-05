@@ -1,4 +1,4 @@
-import { api } from '../base/api';
+import { adminApi as api } from '../base/admin-api';
 import { ApiError, type Result, type VoidResult } from '../types';
 
 // Mirrors the IdP's tenant-user list/get projection (snake_case — that projection
@@ -9,8 +9,16 @@ export type TenantUserView = {
 	first_name: string;
 	last_name: string;
 	email: string;
+	// Tenant-defined custom field answers for this user, keyed by field_key.
+	// Populated by the single-user GET only.
+	custom_field_values?: Record<string, unknown> | null;
 	created_at: string;
 	updated_at: string | null;
+	// Login methods attached to the account. Populated by the list endpoint so the
+	// table can show that a native + social account are the same person; the
+	// single-user GET may omit them.
+	has_password?: boolean;
+	providers?: string[];
 };
 
 export type Paged<T> = { items: T[]; total: number; page: number; page_size: number };
@@ -41,10 +49,7 @@ export async function getTenantUser(
 	fetchFn: typeof fetch = fetch
 ): Promise<Result<TenantUserView>> {
 	try {
-		const data = await api.get<TenantUserView>(
-			`/tenants/${tenantId}/users/${userId}`,
-			fetchFn
-		);
+		const data = await api.get<TenantUserView>(`/tenants/${tenantId}/users/${userId}`, fetchFn);
 		return [data, null];
 	} catch (error) {
 		return [null, error as ApiError];

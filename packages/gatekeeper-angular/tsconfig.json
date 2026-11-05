@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@gatekeeper/spa-oauth": ["../gatekeeper-spa-oauth/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

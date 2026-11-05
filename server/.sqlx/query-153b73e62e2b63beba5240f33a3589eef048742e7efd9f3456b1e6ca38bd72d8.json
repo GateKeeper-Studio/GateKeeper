@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO mfa_enrollments (id, tenant_id, user_id, method, secret_enc, totp_last_step,\n            passkey_json, credential_id, name, confirmed_at, last_used_at, created_at)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Text",
+        "Int8",
+        "Jsonb",
+        "Text",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "153b73e62e2b63beba5240f33a3589eef048742e7efd9f3456b1e6ca38bd72d8"
+}

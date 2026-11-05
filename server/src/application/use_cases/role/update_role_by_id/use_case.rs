@@ -5,7 +5,7 @@ use crate::{
         ports::unit_of_work::UnitOfWorkFactory,
         use_cases::role::update_role_by_id::{command::Command, response::Response},
     },
-    domain::errors::DomainError,
+    domain::{entities::role::is_reserved_role_name, errors::DomainError},
 };
 
 pub struct UseCase {
@@ -43,6 +43,14 @@ impl UseCase {
             })?;
 
         let name = command.name.trim().to_string();
+
+        // Same rule as creation — renaming into a reserved name would otherwise be
+        // the obvious way around it.
+        if is_reserved_role_name(&name) {
+            return Err(DomainError::InvalidRequest(format!(
+                "Role name '{name}' is reserved and cannot be used"
+            )));
+        }
 
         if name != role.name() {
             let name_taken = uow

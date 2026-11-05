@@ -1,0 +1,233 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at,\n            mfa_required, mfa_verified_at, mfa_method,\n            pending_client_id, pending_redirect_uri, pending_scopes, pending_state,\n            pending_code_challenge, pending_code_challenge_method, pending_nonce,\n            expires_at, absolute_expires_at, created_at\n          FROM auth_sessions\n          WHERE tenant_id = $1 AND session_token_hash = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "session_token_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "session_token_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "authenticated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "authenticated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "mfa_required",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "mfa_required"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "mfa_verified_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "mfa_verified_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "mfa_method",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "mfa_method"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "pending_client_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "pending_client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "pending_redirect_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "pending_redirect_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "pending_scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "pending_scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "pending_state",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "pending_state"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "pending_code_challenge",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "pending_code_challenge"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "pending_code_challenge_method",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "pending_code_challenge_method"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "pending_nonce",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "pending_nonce"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "absolute_expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "absolute_expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "50a435204c06adad7af437f6a8b1a977ea350fe8b8fd80aea679c3ccb2cab026"
+}

@@ -31,7 +31,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
         )
     }
 
@@ -61,6 +60,7 @@ mod tests {
         use_case
             .execute(Command {
                 tenant_id: tenant.id(),
+                organization_id: tenant.organization_id(),
             })
             .await
             .unwrap();
@@ -76,10 +76,34 @@ mod tests {
         let err = use_case
             .execute(Command {
                 tenant_id: Uuid::new_v4(),
+                organization_id: Uuid::new_v4(),
             })
             .await
             .unwrap_err();
 
         assert!(matches!(err, DomainError::TenantNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn refuses_to_delete_tenant_from_another_organization() {
+        let (tenant_repo, use_case) = setup();
+        let tenant = make_tenant();
+        tenant_repo
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(tenant.id(), tenant.clone());
+
+        let err = use_case
+            .execute(Command {
+                tenant_id: tenant.id(),
+                organization_id: Uuid::now_v7(),
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert!(tenant_repo.find_by_id(tenant.id()).await.unwrap().is_some());
     }
 }

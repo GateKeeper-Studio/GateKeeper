@@ -31,7 +31,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
         )
     }
 
@@ -71,6 +70,11 @@ mod tests {
             email_provider_id: None,
             tos_uri: None,
             policy_uri: None,
+            initiate_login_uri: None,
+            login_appearance: None,
+            external_login_only: false,
+            allowed_languages: vec!["en".to_string()],
+            default_language: "en".to_string(),
             mfa_required: false,
             mfa_email_enabled: true,
             mfa_totp_enabled: true,

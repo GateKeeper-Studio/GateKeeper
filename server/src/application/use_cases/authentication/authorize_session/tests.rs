@@ -65,6 +65,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }
@@ -90,6 +92,9 @@ mod tests {
             "S256".to_string(),
             Some("n-1".to_string()),
             expires_at,
+            // These tests never exercise the ceiling; keep it well clear of the idle
+            // deadline so it is never the thing under test.
+            expires_at + Duration::hours(1),
         );
         if authenticated {
             session.authenticate(user_id, Utc::now());
@@ -122,7 +127,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
             Utc::now(),
             None,
         );

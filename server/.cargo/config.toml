@@ -1,6 +1,0 @@
-[env]
-# webauthn-rs links OpenSSL. The system has libssl.so.3 but no -devel package;
-# this prefix holds the matching headers (extracted from the openssl-devel RPM)
-# plus symlinks to the system libraries.
-OPENSSL_DIR = "/home/gsobral/.local/openssl-dev"
-OPENSSL_NO_VENDOR = "1"

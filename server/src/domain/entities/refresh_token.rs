@@ -105,6 +105,32 @@ impl RefreshToken {
         }
     }
 
+    // Issue another token in the SAME family WITHOUT mutating this one. Used for the
+    // rotation reuse-leeway: a just-rotated token presented again within the grace
+    // window yields a fresh sibling instead of tripping reuse detection. Because the
+    // presented token is left untouched, its `rotated_at` — and therefore the leeway
+    // window — never slides forward on repeated presentation.
+    pub fn reissue_within_family(
+        &self,
+        new_token_hash: String,
+        new_expires_at: DateTime<Utc>,
+        now: DateTime<Utc>,
+    ) -> RefreshToken {
+        RefreshToken {
+            id: Uuid::now_v7(),
+            tenant_id: self.tenant_id,
+            token_hash: new_token_hash,
+            client_id: self.client_id,
+            user_id: self.user_id,
+            scopes: self.scopes.clone(),
+            family_id: self.family_id,
+            rotated_at: None,
+            revoked_at: None,
+            expires_at: new_expires_at,
+            created_at: now,
+        }
+    }
+
     pub fn revoke(&mut self, now: DateTime<Utc>) {
         self.revoked_at = Some(now);
     }

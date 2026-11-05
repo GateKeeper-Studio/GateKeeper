@@ -1,0 +1,24 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "declaration": false,
+    "sourceMap": true,
+    "outDir": "dist/out-tsc",
+    "paths": {
+      "@gatekeeper/angular": ["../../packages/gatekeeper-angular/src/public-api.ts"]
+    }
+  },
+  "angularCompilerOptions": {
+    "strictTemplates": true
+  }
+}

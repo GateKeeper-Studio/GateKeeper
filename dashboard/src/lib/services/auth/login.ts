@@ -33,6 +33,10 @@ type Response = {
 	availableMfaMethods?: EMfaType[];
 	mfaEnrollmentRequired?: boolean;
 	enrollableMethods?: EMfaType[];
+	/** ISO-8601. The idle deadline; `refreshSessionApi` pushes it forward. */
+	sessionExpiresAt: string;
+	/** ISO-8601. The ceiling a refresh can never cross — when to stop offering one. */
+	sessionAbsoluteExpiresAt: string;
 };
 
 export async function loginApi(request: Request): Promise<Result<Response>> {

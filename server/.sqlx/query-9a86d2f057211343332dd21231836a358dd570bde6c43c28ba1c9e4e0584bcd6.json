@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(DISTINCT COALESCE(username_normalized, user_id::text))\n                   FROM \"login_events\"\n                   WHERE tenant_id = $1 AND ip_address = $2 AND created_at >= $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "9a86d2f057211343332dd21231836a358dd570bde6c43c28ba1c9e4e0584bcd6"
+}

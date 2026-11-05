@@ -20,30 +20,10 @@ pub enum DomainError {
     TenantNotFound(String),
     #[error("Tenant already exists: {0}")]
     TenantAlreadyExists(String),
-    #[error("Cannot delete the default tenant: {0}")]
-    CannotDeleteDefaultTenant(String),
-
     #[error("Organization not found: {0}")]
     OrganizationNotFound(String),
     #[error("Organization already exists: {0}")]
     OrganizationAlreadyExists(String),
-
-    #[error("Subscription not found: {0}")]
-    SubscriptionNotFound(String),
-    #[error("Organization already has a subscription: {0}")]
-    OrganizationAlreadyHasSubscription(String),
-    #[error("Subscription plan not found: {0}")]
-    SubscriptionPlanNotFound(String),
-    #[error("Subscription plan already exists: {0}")]
-    SubscriptionPlanAlreadyExists(String),
-    #[error("Subscription plan is inactive: {0}")]
-    SubscriptionPlanInactive(String),
-    #[error("Subscription plan is in use: {0}")]
-    SubscriptionPlanInUse(String),
-    #[error("Subscription limit reached: {0}")]
-    SubscriptionLimitReached(String),
-    #[error("Plan downgrade not allowed: {0}")]
-    PlanDowngradeNotAllowed(String),
 
     #[error("Group not found: {0}")]
     GroupNotFound(String),
@@ -55,6 +35,17 @@ pub enum DomainError {
     #[error("Role already exists: {0}")]
     RoleAlreadyExists(String),
 
+    #[error("Custom field not found: {0}")]
+    CustomFieldNotFound(String),
+    #[error("Custom field key already exists: {0}")]
+    CustomFieldKeyAlreadyExists(String),
+    #[error("Custom field limit reached: {0}")]
+    CustomFieldLimitReached(String),
+    #[error("Invalid custom field value: {0}")]
+    InvalidCustomFieldValue(String),
+    #[error("Custom field reorder mismatch: {0}")]
+    CustomFieldReorderMismatch(String),
+
     #[error("Authentication failed: {0}")]
     AuthenticationError(String),
 
@@ -63,6 +54,9 @@ pub enum DomainError {
 
     #[error("Infrastructure error: {0}")]
     InfrastructureError(String),
+
+    #[error("Security block not found: {0}")]
+    SecurityBlockNotFound(String),
 
     #[error("OAuth client not found: {0}")]
     OAuthClientNotFound(String),
@@ -107,4 +101,17 @@ pub enum DomainError {
     EmailProviderNotFound(String),
     #[error("Email provider error: {0}")]
     EmailProviderError(String),
+
+    #[error("Webhook subscription not found: {0}")]
+    WebhookSubscriptionNotFound(String),
+
+    #[error("External identity provider not found: {0}")]
+    ExternalIdentityProviderNotFound(String),
+    #[error("External identity provider already exists: {0}")]
+    ExternalIdentityProviderAlreadyExists(String),
+    #[error("External provider error: {0}")]
+    ExternalProviderError(String),
+
+    #[error("Email template error: {0}")]
+    EmailTemplateError(String),
 }

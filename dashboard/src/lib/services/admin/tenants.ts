@@ -1,4 +1,4 @@
-import { api } from '../base/api';
+import { adminApi as api } from '../base/admin-api';
 import { ApiError, type Result, type VoidResult } from '../types';
 
 // Mirrors the IdP's create-tenant Response (snake_case from the Rust API).
@@ -9,16 +9,25 @@ export type Tenant = {
 	is_active: boolean;
 	can_self_register: boolean;
 	can_self_forgot_password: boolean;
+	organization_id: string;
+	default_language: string;
 	created_at: string;
 };
 
 export type CreateTenantInput = {
-	subscriptionId: string;
 	name: string;
 	description?: string | null;
 	passwordHashSecret: string;
 	canSelfRegister: boolean;
 	canSelfForgotPassword: boolean;
+};
+
+// Per-tenant dashboard appearance (main color + component style tokens).
+// Stored server-side as a JSON blob on the tenant; null = the default theme.
+export type TenantAppearance = {
+	primaryColor: string; // hex, e.g. "#7C3AED"
+	radius: 'none' | 'sm' | 'md' | 'lg';
+	defaultMode: 'light' | 'dark' | 'system';
 };
 
 // Mirrors the IdP's list-tenants Response (camelCase — that projection renames).
@@ -29,6 +38,9 @@ export type TenantView = {
 	isActive: boolean;
 	canSelfRegister: boolean;
 	canSelfForgotPassword: boolean;
+	organizationId: string;
+	appearance: TenantAppearance | null;
+	defaultLanguage: string;
 	createdAt: string;
 	updatedAt: string | null;
 };
@@ -41,9 +53,9 @@ export type TenantDetail = {
 	is_active: boolean;
 	can_self_register: boolean;
 	can_self_forgot_password: boolean;
-	subscription_id: string;
-	// True for the subscription's "master" tenant, which cannot be deleted directly.
-	is_default: boolean;
+	organization_id: string;
+	appearance: TenantAppearance | null;
+	default_language: string;
 	created_at: string;
 	updated_at: string | null;
 };
@@ -54,6 +66,7 @@ export type UpdateTenantInput = {
 	isActive: boolean;
 	canSelfRegister: boolean;
 	canSelfForgotPassword: boolean;
+	defaultLanguage: string;
 };
 
 type Paged<T> = { items: T[]; total: number; page: number; page_size: number };
@@ -97,7 +110,8 @@ export async function updateTenant(
 			description: input.description,
 			is_active: input.isActive,
 			can_self_register: input.canSelfRegister,
-			can_self_forgot_password: input.canSelfForgotPassword
+			can_self_forgot_password: input.canSelfForgotPassword,
+			default_language: input.defaultLanguage
 		});
 		return [null];
 	} catch (error) {
@@ -105,8 +119,22 @@ export async function updateTenant(
 	}
 }
 
-// DELETE /tenants/{tenantId} — removes a tenant and everything under it (users,
-// clients, …). The subscription's default ("master") tenant cannot be deleted.
+// PUT /tenants/{tenantId}/appearance — saves the org's dashboard theme (main color
+// + style tokens) on the tenant. Pass `null` to revert to the default theme. Kept
+// separate from updateTenant so the appearance form doesn't resend name/flags.
+export async function updateTenantAppearance(
+	tenantId: string,
+	appearance: TenantAppearance | null
+): Promise<VoidResult> {
+	try {
+		await api.put(`/tenants/${tenantId}/appearance`, { appearance });
+		return [null];
+	} catch (error) {
+		return [error as ApiError];
+	}
+}
+
+// DELETE /tenants/{tenantId} — removes a tenant and everything under it.
 export async function deleteTenant(tenantId: string): Promise<VoidResult> {
 	try {
 		await api.delete(`/tenants/${tenantId}`);
@@ -126,7 +154,6 @@ export async function createTenant(
 		const data = await api.post<Tenant>(
 			'/tenants',
 			{
-				subscription_id: input.subscriptionId,
 				name: input.name,
 				description: input.description ?? null,
 				password_hash_secret: input.passwordHashSecret,

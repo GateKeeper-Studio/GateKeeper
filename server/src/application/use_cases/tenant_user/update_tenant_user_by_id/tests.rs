@@ -13,6 +13,7 @@ mod tests {
         },
         testing::{
             in_memory_repositories::{
+                in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
                 in_memory_tenant_repository::InMemoryTenantRepository,
                 in_memory_user_repository::InMemoryUserRepository,
             },
@@ -31,14 +32,25 @@ mod tests {
             true,                      // is_active
             true,                      // can_self_register
             true,                      // can_self_forgot_password
-            uuid::Uuid::now_v7(),      // subscription_id
-            false,                     // is_default
+            uuid::Uuid::now_v7(),      // organization_id
         )
     }
 
     fn setup(tenant: &Tenant) -> (Arc<InMemoryUserRepository>, UseCase) {
+        let (user_repo, use_case, _) = setup_with_outbox(tenant);
+        (user_repo, use_case)
+    }
+
+    fn setup_with_outbox(
+        tenant: &Tenant,
+    ) -> (
+        Arc<InMemoryUserRepository>,
+        UseCase,
+        Arc<InMemoryOutboxEventRepository>,
+    ) {
         let user_repo = Arc::new(InMemoryUserRepository::new());
         let tenant_repo = Arc::new(InMemoryTenantRepository::new());
+        let outbox = Arc::new(InMemoryOutboxEventRepository::new());
 
         tenant_repo
             .memory
@@ -47,14 +59,14 @@ mod tests {
             .unwrap()
             .insert(tenant.id(), tenant.clone());
 
-        let uow_factory = Arc::new(InMemoryUnitOfWorkFactory::new(
-            user_repo.clone(),
-            tenant_repo.clone(),
-        ));
+        let uow_factory = Arc::new(
+            InMemoryUnitOfWorkFactory::new(user_repo.clone(), tenant_repo.clone())
+                .with_outbox_event_repository(outbox.clone()),
+        );
 
         let use_case = UseCase::new(uow_factory);
 
-        (user_repo, use_case)
+        (user_repo, use_case, outbox)
     }
 
     // ── Tests ──────────────────────────────────────────────────────────────────
@@ -182,5 +194,62 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(err, DomainError::UserNotFound(_)));
+    }
+
+    // ── Outbound events ────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn enqueues_a_user_updated_event_carrying_the_new_profile() {
+        let tenant = make_tenant();
+        let (user_repo, use_case, outbox) = setup_with_outbox(&tenant);
+        let user = generate_user(tenant.id());
+        let user_id = user.id();
+        user_repo.memory.data.lock().unwrap().insert(user_id, user);
+
+        use_case
+            .execute(Command {
+                tenant_id: tenant.id(),
+                user_id,
+                display_name: Some("Renamed".to_string()),
+                first_name: "New".to_string(),
+                last_name: "Name".to_string(),
+            })
+            .await
+            .unwrap();
+
+        let stored = outbox.memory.data.lock().unwrap();
+        assert_eq!(stored.len(), 1);
+        let event = stored.values().next().unwrap();
+        assert_eq!(event.event_type().as_str(), "user.updated");
+
+        // The payload is frozen at enqueue time and must reflect the NEW values —
+        // a subscriber replaying this hours later still gets the right state.
+        let data = &event.payload()["data"];
+        assert_eq!(data["user_id"], user_id.to_string());
+        assert_eq!(data["display_name"], "Renamed");
+        assert_eq!(data["first_name"], "New");
+        assert_eq!(data["last_name"], "Name");
+        // user.updated carries no source — it is not a provisioning event.
+        assert!(data["source"].is_null());
+    }
+
+    #[tokio::test]
+    async fn a_failed_update_leaves_no_event_behind() {
+        let tenant = make_tenant();
+        let (_, use_case, outbox) = setup_with_outbox(&tenant);
+
+        let err = use_case
+            .execute(Command {
+                tenant_id: tenant.id(),
+                user_id: Uuid::now_v7(),
+                display_name: None,
+                first_name: "New".to_string(),
+                last_name: "Name".to_string(),
+            })
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::UserNotFound(_)));
+
+        assert_eq!(outbox.memory.data.lock().unwrap().len(), 0);
     }
 }

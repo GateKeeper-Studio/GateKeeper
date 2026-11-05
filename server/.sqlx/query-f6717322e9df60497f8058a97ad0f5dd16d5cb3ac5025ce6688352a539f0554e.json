@@ -1,0 +1,167 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, actor_type, actor_id, action, resource_type, resource_id,\n                 outcome, ip_address, user_agent, metadata, created_at\n          FROM \"audit_events\"\n          WHERE tenant_id = $1\n            AND ($2::text IS NULL OR action = $2)\n            AND ($3::uuid IS NULL OR actor_id = $3)\n            AND ($4::text IS NULL OR outcome = $4)\n            AND ($5::timestamptz IS NULL OR created_at >= $5)\n            AND ($6::timestamptz IS NULL OR created_at <= $6)\n          ORDER BY created_at DESC\n          LIMIT $7 OFFSET $8\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "actor_type",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "actor_type"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "actor_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "actor_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "action",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "action"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "resource_type",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "resource_type"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "resource_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "resource_id"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "outcome",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "outcome"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "ip_address",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "ip_address"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "user_agent",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "user_agent"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "metadata",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "metadata"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "audit_events",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "f6717322e9df60497f8058a97ad0f5dd16d5cb3ac5025ce6688352a539f0554e"
+}

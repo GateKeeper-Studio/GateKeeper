@@ -1,0 +1,136 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, oauth_client_id, tenant_id, provider, provider_client_id,\n            provider_client_secret_encrypted, redirect_uri, is_active, created_at, updated_at\n          FROM external_identity_providers\n          WHERE oauth_client_id = $1\n          ORDER BY created_at ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "oauth_client_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "oauth_client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "provider",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "provider_client_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "provider_client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "provider_client_secret_encrypted",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "provider_client_secret_encrypted"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "redirect_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "redirect_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "external_identity_providers",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "da9bc1ef7d95e5b3ac7c16947516d27756d341f1d08f90dc4562542de2a9bd40"
+}

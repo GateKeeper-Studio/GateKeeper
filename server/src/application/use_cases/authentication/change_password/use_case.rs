@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::{
@@ -38,6 +39,13 @@ impl UseCase {
             .ok_or_else(|| DomainError::InvalidClient("unknown or inactive client".to_string()))?;
         let tenant_id = client.tenant_id();
 
+        // 1b. An external-login-only client has no password path to force a change on.
+        if !client.allows_password_login() {
+            return Err(DomainError::AccessDenied(
+                "this application signs in with an external provider only".to_string(),
+            ));
+        }
+
         // 2. Generic error for every validation failure so an attacker cannot tell
         //    why a change attempt failed (unknown user, expired, consumed, wrong code).
         let invalid = || {
@@ -55,8 +63,14 @@ impl UseCase {
             .filter(|t| t.tenant_id() == tenant_id && t.is_redeemable(Utc::now()))
             .ok_or_else(invalid)?;
 
-        // 4. Hash comparison of the high-entropy secret (constant-time on the hash).
-        if sha256_hex(&command.change_password_code) != token.token_hash() {
+        // 4. Constant-time hash comparison of the high-entropy secret.
+        let submitted = sha256_hex(&command.change_password_code);
+        if submitted
+            .as_bytes()
+            .ct_eq(token.token_hash().as_bytes())
+            .unwrap_u8()
+            != 1
+        {
             return Err(invalid());
         }
 

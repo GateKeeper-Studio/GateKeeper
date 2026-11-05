@@ -31,6 +31,18 @@ const REFRESH_TOKEN_TTL_DAYS: i64 = 30;
 // Failures return a single generic error (`AuthenticationError`) so the response
 // cannot distinguish "unknown email" from "wrong password" from "deactivated
 // account" — no user enumeration.
+//
+// BRUTE-FORCE PROTECTION: this endpoint is covered by the strict per-IP rate-limit
+// bucket in `routes.rs` (10 burst, then one attempt every 2s), NOT by the adaptive
+// risk engine that guards tenant logins.
+//
+// The risk engine is tenant-scoped by construction — `RiskEvaluationInput.tenant_id`
+// is non-null and both `login_events` and `security_blocks` carry a NOT NULL foreign
+// key to `tenants` — while a platform admin belongs to an organization and has no
+// tenant. Extending it here means either a reserved sentinel tenant row or making
+// `tenant_id` nullable across those tables, their repositories and every velocity
+// query. That is a real change, not a wiring change, so it is tracked separately
+// rather than bolted on here.
 pub struct UseCase {
     admin_repository: Arc<dyn AdminUserRepository>,
     refresh_token_repository: Arc<dyn AdminRefreshTokenRepository>,
@@ -75,9 +87,12 @@ impl UseCase {
             return Err(invalid());
         }
 
-        let issued = self
-            .token_issuer
-            .issue(admin.id(), admin.email(), admin.organization_id())?;
+        let issued = self.token_issuer.issue(
+            admin.id(),
+            admin.email(),
+            admin.name(),
+            admin.organization_id(),
+        )?;
 
         // Mint and persist an opaque refresh token (hashed) opening a new family.
         let raw_refresh = generate_opaque_token();

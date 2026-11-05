@@ -17,7 +17,7 @@ There are **two distinct identities** in this system:
 
 ## 1. First-party login flow (`/v1/auth/*`)
 
-The `frontend/` login SPA is a first-party app, so instead of the generic
+The `frontends/sveltekit-bff/` login SPA is a first-party app, so instead of the generic
 `/oauth/authorize` + consent screen it uses a **session-based** Authorization Code +
 PKCE flow: authenticate first (`login`), then spend the session for a code
 (`authorize_session`). Protocol parameters are **frozen in the session** between the
@@ -91,6 +91,33 @@ so the SPA can complete `POST /oauth/token` (see
 `GET /v1/auth/client/{client_id}/auth-data` returns the public auth-flow config the
 login SPA needs to render its screens (client name, allowed MFA methods, etc.).
 
+### External-provider-only clients (`external_login_only`)
+
+A client can be configured to authenticate **only** through its external identity
+providers (Google/GitHub, configured per client and started at
+`/v1/auth/oauth-provider/{provider}/…`). Its
+users never pick a password: the social callback already provisions passwordless
+accounts (`User::new(..., None, None)` with the email pre-verified by the provider).
+
+When `oauth_clients.external_login_only` is true, **every password-credential use case
+refuses the client with `AccessDenied` (403)** — `register`, `login`, `forgot_password`,
+`reset_password`, `change_password` — each checking `client.allows_password_login()`
+immediately after resolving the client, **before** any tenant lookup or Argon2
+verification. A correct password is never even verified.
+
+The public auth-data response reflects this: `external_login_only: true`, and
+`can_self_sign_up` / `can_self_forgot_pass` are forced `false` whatever the tenant
+allows. The hosted pages render provider buttons only, and `/sign-up` and
+`/forgot-password` 302 to `/sign-in` (preserving the OAuth query string).
+
+**Lockout invariant.** Two guards make it impossible to leave a client with no way in:
+
+- `update_oauth_client` refuses to turn the flag on unless the client already has at
+  least one **active** external provider (`create_oauth_client` allows it — a new client
+  has none yet, and providers are configured afterwards);
+- `delete_external_provider` / `update_external_provider` refuse to remove or deactivate
+  the **last active** provider while the flag is on.
+
 ---
 
 ## 2. Multi-factor authentication (MFA)
@@ -134,6 +161,11 @@ TOTP secrets are encrypted at rest (AES-256-GCM); WebAuthn uses `webauthn-rs` wi
 the relying-party config resolved from `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` /
 `WEBAUTHN_ADDITIONAL_ORIGINS` (see [`ARCHITECTURE.md`](ARCHITECTURE.md) §10).
 
+Beyond MFA, the same `require_auth` surface exposes **`GET /me/security/login-events`**
+— a user's *own* recent sign-in activity (location, device, risk level, decision) drawn
+from the login-event history, so they can spot unfamiliar logins. Identity is pinned to
+the token's `AuthPrincipal`; a user can never read another user's events.
+
 ---
 
 ## 3. Registration & email confirmation
@@ -147,7 +179,8 @@ the relying-party config resolved from `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` /
 Verification codes are stored **hashed** with an attempt counter (`email_verification_tokens`).
 Email is delivered through the client/tenant's configured SMTP provider
 (`SmtpEmailSender`), falling back to a logging sender when none is configured.
-Sign-in (`login`) refuses unverified accounts.
+Sign-in (`login`) refuses unverified accounts. Registration is refused outright for an
+external-login-only client (§1).
 
 ---
 
@@ -162,7 +195,9 @@ Sign-in (`login`) refuses unverified accounts.
 Reset and change tokens are single-use, stored hashed, and short-lived; issuing a new
 one invalidates any earlier live token for that user. A pending forced change blocks
 `authorize_session` until completed, so a temporary password can't be used to obtain
-tokens.
+tokens. All three endpoints are refused for an external-login-only client (§1) — there
+is no password to reset, and a token minted before the flag was turned on is refused
+rather than redeemed.
 
 ---
 
@@ -211,8 +246,14 @@ The resulting **`AuthPrincipal`** (`user_id`, `tenant_id`, `roles`, `groups`,
 `scopes`, `is_platform_admin`) is placed in request extensions. Handlers pull it via
 the `AuthPrincipal` extractor and enforce tenant isolation with
 `principal.can_access_tenant(tenant_id)` — a platform admin passes for any tenant; a
-tenant-scoped caller only for its own. A `RequestContext` (client IP, User-Agent) is
-also captured for audit logging.
+tenant-scoped caller only for its own. A **`RequestContext`** (client IP, User-Agent)
+is captured app-wide by the `capture_client_context` middleware: the IP is taken from
+`X-Forwarded-For` (left-most hop) / `X-Real-IP` when behind a proxy and **falls back to
+the TCP peer address** otherwise (so a direct, unproxied deployment still gets a real
+client IP). It feeds both audit logging and the adaptive risk engine — geolocation and
+the new-country / impossible-travel / new-device signals. (`X-Forwarded-For` is
+client-spoofable, so trust it only behind a proxy that overwrites it; the socket address
+is the unspoofable fallback.)
 
 > `REQUIRE_ADMIN_AUTH=false` turns `require_admin` into best-effort mode (parses a
 > token for audit attribution but does not block) — a dashboard-rollout aid only.

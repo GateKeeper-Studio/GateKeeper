@@ -71,7 +71,9 @@ impl UseCase {
 
         client.rotate_secret_hash(hash);
 
-        uow.oauth_client_repository().update(&client).await?;
+        uow.oauth_client_repository()
+            .update_secret_hash(&client)
+            .await?;
         uow.commit().await?;
 
         Ok(Response {

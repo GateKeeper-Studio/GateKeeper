@@ -4,8 +4,8 @@ use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct Command {
-    // The subscription this tenant joins (required).
-    pub subscription_id: Uuid,
+    #[serde(skip)]
+    pub organization_id: Uuid,
 
     #[validate(length(min = 1, message = "Name cannot be empty"))]
     pub name: String,

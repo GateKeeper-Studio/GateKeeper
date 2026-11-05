@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                  UPDATE oauth_clients\n                  SET client_secret_hash = $3, updated_at = $4\n                  WHERE tenant_id = $1 AND id = $2\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "98791bd47edb4999aa210fa93cdb789c91e46693e39032f3f1db0efdac1742db"
+}

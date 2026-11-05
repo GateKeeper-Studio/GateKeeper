@@ -48,10 +48,27 @@ impl UserRepository for InMemoryUserRepository {
         tenant_id: Uuid,
         email: &str,
     ) -> Result<bool, crate::domain::errors::DomainError> {
+        let needle = email.to_lowercase();
         let data = self.memory.data.lock().unwrap();
         Ok(data
             .values()
-            .any(|u| u.tenant_id() == tenant_id && u.email() == email))
+            .any(|u| u.tenant_id() == tenant_id && u.email().to_lowercase() == needle))
+    }
+
+    async fn find_user_ids_with_password(
+        &self,
+        user_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, crate::domain::errors::DomainError> {
+        let data = self.memory.data.lock().unwrap();
+        Ok(user_ids
+            .iter()
+            .filter(|id| {
+                data.get(id)
+                    .map(|u| u.credentials().is_some())
+                    .unwrap_or(false)
+            })
+            .copied()
+            .collect())
     }
 
     async fn find_by_id_with_profile(
@@ -75,10 +92,11 @@ impl UserRepository for InMemoryUserRepository {
         tenant_id: Uuid,
         email: &str,
     ) -> Result<Option<User>, crate::domain::errors::DomainError> {
+        let needle = email.to_lowercase();
         let data = self.memory.data.lock().unwrap();
         Ok(data
             .values()
-            .find(|u| u.tenant_id() == tenant_id && u.email() == email)
+            .find(|u| u.tenant_id() == tenant_id && u.email().to_lowercase() == needle)
             .cloned())
     }
 

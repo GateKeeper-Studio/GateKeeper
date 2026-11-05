@@ -7,7 +7,9 @@ mod tests {
 
     use crate::{
         application::ports::email_sender::EmailSender,
-        application::use_cases::email_provider::send_test_email::{command::Command, use_case::UseCase},
+        application::use_cases::email_provider::send_test_email::{
+            command::Command, use_case::UseCase,
+        },
         domain::{
             entities::{
                 email_provider::{EmailProvider, SmtpEncryption},
@@ -34,13 +36,17 @@ mod tests {
             true,
             true,
             Uuid::now_v7(),
-            false,
             Utc::now(),
             None,
         );
         let tenant_id = tenant.id();
         let tenants = Arc::new(InMemoryTenantRepository::new());
-        tenants.memory.data.lock().unwrap().insert(tenant_id, tenant);
+        tenants
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(tenant_id, tenant);
 
         let providers = Arc::new(InMemoryEmailProviderRepository::new());
         let provider = EmailProvider::reconstruct(

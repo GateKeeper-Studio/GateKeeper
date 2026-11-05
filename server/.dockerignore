@@ -1,0 +1,24 @@
+# Keep the build context small and free of host-specific or secret material.
+
+# Build output — many GB, and useless in the image (different toolchain layout).
+target/
+
+# Local Postgres data directory from docker-compose.yml.
+postgres_data/
+
+# Secrets. Never let a real .env reach the build context; configuration is
+# supplied as environment variables at run time.
+.env
+.env.*
+!.env.example
+
+# Machine-local cargo config: pins OPENSSL_DIR to a developer's absolute path,
+# which would break the build inside the image.
+.cargo/config.toml
+
+# Documentation and local tooling — not needed to compile.
+docs/
+CLAUDE.md
+docker-compose.yml
+Dockerfile
+.dockerignore

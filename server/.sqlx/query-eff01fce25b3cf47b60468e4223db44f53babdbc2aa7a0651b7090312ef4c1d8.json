@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, user_id, document_type, document_version, accepted_at, ip_address\n          FROM \"policy_acceptances\"\n          WHERE user_id = $1\n          ORDER BY accepted_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "policy_acceptances",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "policy_acceptances",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "policy_acceptances",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "document_type",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "policy_acceptances",
+            "name": "document_type"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "document_version",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "policy_acceptances",
+            "name": "document_version"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "accepted_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "policy_acceptances",
+            "name": "accepted_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "ip_address",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "policy_acceptances",
+            "name": "ip_address"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "eff01fce25b3cf47b60468e4223db44f53babdbc2aa7a0651b7090312ef4c1d8"
+}

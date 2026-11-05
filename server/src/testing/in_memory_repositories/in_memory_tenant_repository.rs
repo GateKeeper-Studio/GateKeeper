@@ -52,9 +52,48 @@ impl TenantRepository for InMemoryTenantRepository {
             .collect())
     }
 
+    async fn find_by_id_for_organization(
+        &self,
+        tenant_id: Uuid,
+        organization_id: Uuid,
+    ) -> Result<Option<Tenant>, crate::domain::errors::DomainError> {
+        let data = self.memory.data.lock().unwrap();
+        Ok(data
+            .get(&tenant_id)
+            .filter(|tenant| tenant.organization_id() == organization_id)
+            .cloned())
+    }
+
     async fn count_all(&self) -> Result<u32, crate::domain::errors::DomainError> {
         let data = self.memory.data.lock().unwrap();
         Ok(data.len() as u32)
+    }
+
+    async fn find_all_for_organization(
+        &self,
+        organization_id: Uuid,
+        page: u32,
+        page_size: u32,
+    ) -> Result<Vec<Tenant>, crate::domain::errors::DomainError> {
+        let data = self.memory.data.lock().unwrap();
+        Ok(data
+            .values()
+            .filter(|tenant| tenant.organization_id() == organization_id)
+            .skip(((page - 1) * page_size) as usize)
+            .take(page_size as usize)
+            .cloned()
+            .collect())
+    }
+
+    async fn count_for_organization(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<u32, crate::domain::errors::DomainError> {
+        let data = self.memory.data.lock().unwrap();
+        Ok(data
+            .values()
+            .filter(|tenant| tenant.organization_id() == organization_id)
+            .count() as u32)
     }
 
     async fn is_tenant_with_name_exists(

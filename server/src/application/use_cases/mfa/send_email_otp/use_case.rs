@@ -4,7 +4,8 @@ use chrono::{Duration, Utc};
 
 use crate::{
     application::{
-        ports::{email_sender::EmailSender, unit_of_work::UnitOfWorkFactory},
+        ports::unit_of_work::UnitOfWorkFactory,
+        services::templated_email_sender::TemplatedEmailSender,
         use_cases::mfa::send_email_otp::command::Command,
     },
     domain::{
@@ -21,17 +22,17 @@ const MFA_CODE_TTL_MINUTES: i64 = 10;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
-    email_sender: Arc<dyn EmailSender>,
+    templated_email: Arc<TemplatedEmailSender>,
 }
 
 impl UseCase {
     pub fn new(
         unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
-        email_sender: Arc<dyn EmailSender>,
+        templated_email: Arc<TemplatedEmailSender>,
     ) -> Self {
         Self {
             unit_of_work_factory,
-            email_sender,
+            templated_email,
         }
     }
 
@@ -104,8 +105,15 @@ impl UseCase {
         uow.auth_session_repository().update(&session).await?;
         uow.commit().await?;
 
-        self.email_sender
-            .send_mfa_code(email_provider.as_ref(), user.email(), &raw_code)
+        self.templated_email
+            .send_mfa_code(
+                client.tenant_id(),
+                email_provider.as_ref(),
+                user.email(),
+                &raw_code,
+                client.name(),
+                &format!("{MFA_CODE_TTL_MINUTES} minutes"),
+            )
             .await?;
         Ok(())
     }

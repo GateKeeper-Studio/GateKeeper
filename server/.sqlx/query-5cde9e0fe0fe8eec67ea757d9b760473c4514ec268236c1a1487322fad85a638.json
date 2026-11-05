@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT COUNT(*)\n          FROM \"login_events\"\n          WHERE tenant_id = $1\n            AND ($2::uuid IS NULL OR user_id = $2)\n            AND ($3::text IS NULL OR ip_address = $3)\n            AND ($4::text IS NULL OR country_code = $4)\n            AND ($5::text IS NULL OR risk_level = $5)\n            AND ($6::text IS NULL OR decision = $6)\n            AND ($7::bool IS NULL OR success = $7)\n            AND ($8::timestamptz IS NULL OR created_at >= $8)\n            AND ($9::timestamptz IS NULL OR created_at <= $9)\n            AND ($10::text IS NULL OR EXISTS (\n                  SELECT 1 FROM \"login_risk_signals\" s\n                  WHERE s.login_event_id = login_events.id AND s.signal_type = $10))\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "5cde9e0fe0fe8eec67ea757d9b760473c4514ec268236c1a1487322fad85a638"
+}

@@ -9,12 +9,16 @@ mod tests {
         application::use_cases::authentication::forgot_password::{
             command::Command, use_case::UseCase,
         },
-        domain::entities::{
-            oauth_client::{ClientType, MfaPolicy, OAuthClient},
-            tenant::Tenant,
-            user::User,
+        domain::{
+            entities::{
+                oauth_client::{ClientType, MfaPolicy, OAuthClient},
+                tenant::Tenant,
+                user::User,
+            },
+            errors::DomainError,
         },
         testing::{
+            fake_email_renderer::var_from_text,
             in_memory_repositories::{
                 in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
                 in_memory_password_reset_token_repository::InMemoryPasswordResetTokenRepository,
@@ -23,6 +27,7 @@ mod tests {
             },
             in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
             recording_email_sender::RecordingEmailSender,
+            templated_email_support::recording_templated_email_sender,
         },
         utils::oauth_crypto::sha256_hex,
     };
@@ -56,16 +61,23 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }
 
     // `can_forgot` gates the tenant feature flag; `with_user` seeds an active user.
     fn setup(can_forgot: bool, with_user: bool) -> Ctx {
+        setup_ext(can_forgot, with_user, false)
+    }
+
+    fn setup_ext(can_forgot: bool, with_user: bool, external_login_only: bool) -> Ctx {
         let tenant_id = Uuid::now_v7();
 
         let clients = Arc::new(InMemoryOAuthClientRepository::new());
-        let client = make_client(tenant_id);
+        let mut client = make_client(tenant_id);
+        client.set_external_login_only(external_login_only);
         clients
             .memory
             .data
@@ -83,7 +95,6 @@ mod tests {
             true,
             can_forgot,
             uuid::Uuid::now_v7(),
-            false,
             Utc::now(),
             None,
         );
@@ -103,17 +114,13 @@ mod tests {
         }
 
         let tokens = Arc::new(InMemoryPasswordResetTokenRepository::new());
-        let email = Arc::new(RecordingEmailSender::new());
+        let (templated_email, email) = recording_templated_email_sender();
 
         let factory = InMemoryUnitOfWorkFactory::new(users, tenants)
             .with_oauth_client_repository(clients)
             .with_password_reset_token_repository(tokens.clone());
 
-        let use_case = UseCase::new(
-            Arc::new(factory),
-            Arc::clone(&email) as Arc<dyn crate::application::ports::email_sender::EmailSender>,
-            AUTH_UI.to_string(),
-        );
+        let use_case = UseCase::new(Arc::new(factory), templated_email, AUTH_UI.to_string());
 
         Ctx {
             use_case,
@@ -145,17 +152,31 @@ mod tests {
 
         // One email sent to the user with a link carrying the raw token + id, and the
         // persisted hash matches that raw token.
-        let links = ctx.email.reset_links.lock().unwrap();
-        assert_eq!(links.len(), 1);
-        let (to, link) = &links[0];
-        assert_eq!(to, EMAIL);
+        let sent = ctx.email.sent.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].to, EMAIL);
+        let link = var_from_text(&sent[0].text, "link").unwrap();
         assert!(link.starts_with(&format!(
             "{AUTH_UI}/auth/{CLIENT_ID}/change-password?token="
         )));
         assert!(link.contains(&format!("&id={}", token.id())));
 
-        let raw = extract_query(link, "token");
+        let raw = extract_query(&link, "token");
         assert_eq!(sha256_hex(&raw), token.token_hash());
+    }
+
+    // There is no password to reset on an external-login-only client. Unlike the
+    // silent-Ok cases below this one errors: the flag is part of the client's PUBLIC
+    // auth data, so refusing outright leaks nothing the caller couldn't already read.
+    #[tokio::test]
+    async fn refuses_for_an_external_login_only_client() {
+        let ctx = setup_ext(true, true, true);
+
+        let err = ctx.use_case.execute(command()).await.unwrap_err();
+
+        assert!(matches!(err, DomainError::AccessDenied(_)));
+        assert_eq!(ctx.tokens.memory.data.lock().unwrap().len(), 0);
+        assert_eq!(ctx.email.sent.lock().unwrap().len(), 0);
     }
 
     #[tokio::test]
@@ -165,7 +186,7 @@ mod tests {
         ctx.use_case.execute(command()).await.unwrap();
 
         assert_eq!(ctx.tokens.memory.data.lock().unwrap().len(), 0);
-        assert_eq!(ctx.email.reset_links.lock().unwrap().len(), 0);
+        assert_eq!(ctx.email.sent.lock().unwrap().len(), 0);
     }
 
     #[tokio::test]
@@ -175,7 +196,7 @@ mod tests {
         ctx.use_case.execute(command()).await.unwrap();
 
         assert_eq!(ctx.tokens.memory.data.lock().unwrap().len(), 0);
-        assert_eq!(ctx.email.reset_links.lock().unwrap().len(), 0);
+        assert_eq!(ctx.email.sent.lock().unwrap().len(), 0);
     }
 
     #[tokio::test]

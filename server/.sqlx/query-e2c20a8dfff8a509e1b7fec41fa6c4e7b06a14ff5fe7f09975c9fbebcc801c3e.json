@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO external_login_flows (id, state_hash, external_provider_id, oauth_client_id,\n            tenant_id, provider, client_redirect_uri, client_response_type, client_scope,\n            client_state, client_nonce, client_code_challenge, client_code_challenge_method,\n            expires_at, created_at)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Text",
+        "Varchar",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e2c20a8dfff8a509e1b7fec41fa6c4e7b06a14ff5fe7f09975c9fbebcc801c3e"
+}

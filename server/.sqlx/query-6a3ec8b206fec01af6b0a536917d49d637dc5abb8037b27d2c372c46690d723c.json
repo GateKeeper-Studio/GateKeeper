@@ -1,0 +1,112 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, admin_id, token_hash, family_id, rotated_at, revoked_at, expires_at, created_at\n          FROM admin_refresh_tokens\n          WHERE token_hash = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_refresh_tokens",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "admin_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_refresh_tokens",
+            "name": "admin_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "token_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "admin_refresh_tokens",
+            "name": "token_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "family_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_refresh_tokens",
+            "name": "family_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "rotated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_refresh_tokens",
+            "name": "rotated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "revoked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_refresh_tokens",
+            "name": "revoked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_refresh_tokens",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_refresh_tokens",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "6a3ec8b206fec01af6b0a536917d49d637dc5abb8037b27d2c372c46690d723c"
+}

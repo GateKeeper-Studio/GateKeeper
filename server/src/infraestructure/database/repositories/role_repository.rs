@@ -321,7 +321,17 @@ impl RoleRepository for DbRoleRepository {
                     .first_name
                     .zip(r.last_name)
                     .map(|(first_name, last_name)| {
-                        UserProfile::reconstruct(r.id, r.display_name, first_name, last_name, None)
+                        // Member listing doesn't join user_profiles.custom_field_values (or
+                        // updated_at) — this is a lightweight projection for the group/role
+                        // member list, not the full profile.
+                        UserProfile::reconstruct(
+                            r.id,
+                            r.display_name,
+                            first_name,
+                            last_name,
+                            None,
+                            None,
+                        )
                     });
 
                 User::reconstruct(

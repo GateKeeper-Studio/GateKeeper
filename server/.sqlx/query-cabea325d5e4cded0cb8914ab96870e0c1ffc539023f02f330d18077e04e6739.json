@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE mfa_challenges\n          SET consumed_at = $2, attempts = $3\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cabea325d5e4cded0cb8914ab96870e0c1ffc539023f02f330d18077e04e6739"
+}

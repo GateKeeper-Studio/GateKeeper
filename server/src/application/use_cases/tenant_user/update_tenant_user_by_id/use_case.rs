@@ -4,7 +4,11 @@ use crate::application::ports::unit_of_work::UnitOfWorkFactory;
 use crate::application::use_cases::tenant_user::update_tenant_user_by_id::{
     command::Command, response::Response,
 };
-use crate::domain::{entities::user_profile::UserProfile, errors::DomainError};
+use crate::application::use_cases::webhook::user_event_payload::user_event;
+use crate::domain::{
+    entities::{domain_event_type::DomainEventType, user_profile::UserProfile},
+    errors::DomainError,
+};
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
@@ -51,6 +55,13 @@ impl UseCase {
         user.update_profile(profile);
 
         uow.user_repository().update(&user).await?;
+
+        // Same transaction as the update, so a subscriber mirroring this user
+        // cannot end up with a name we rolled back.
+        uow.outbox_event_repository()
+            .enqueue(&user_event(DomainEventType::UserUpdated, &user, None))
+            .await?;
+
         uow.commit().await?;
 
         let updated_profile = user.profile().ok_or_else(|| {

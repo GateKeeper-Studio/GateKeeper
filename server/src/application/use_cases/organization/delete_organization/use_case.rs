@@ -29,8 +29,7 @@ impl UseCase {
                 ))
             })?;
 
-        // The DB cascades the delete to the org's admin_users and its subscription
-        // (and, through the subscription, its tenants).
+        // The DB cascades the delete to the organization's admins and tenants.
         uow.organization_repository()
             .delete_by_id(organization.id())
             .await?;

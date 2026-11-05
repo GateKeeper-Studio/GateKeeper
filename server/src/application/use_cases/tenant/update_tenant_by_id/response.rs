@@ -10,5 +10,6 @@ pub struct Response {
     pub is_active: bool,
     pub can_self_register: bool,
     pub can_self_forgot_password: bool,
+    pub default_language: String,
     pub updated_at: Option<DateTime<Utc>>,
 }

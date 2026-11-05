@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO \"roles\" (id, tenant_id, name, description, created_at, updated_at)\n          VALUES ($1, $2, $3, $4, $5, $6)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ceddee721f0a4c447eb929e82249bdce9c6fe17a24ed48bc62694816cd98fbee"
+}

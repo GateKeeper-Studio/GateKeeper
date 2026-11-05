@@ -39,8 +39,7 @@ may ever request — requested scopes are intersected with it, never widened),
 |---|---|---|
 | `GET` | `/.well-known/openid-configuration` | OIDC discovery metadata |
 | `GET` | `/.well-known/jwks.json` | Tenant public signing keys (JWKS), by `kid` |
-| `GET` | `/oauth/authorize` | Validate an authorization request |
-| `POST` | `/oauth/authorize/consent` | Authenticate user + record consent + issue code |
+| `GET` | `/oauth/authorize` | Validate an authorization request (read-only; no auth, no code issued) |
 | `POST` | `/oauth/token` | Token endpoint (`authorization_code`, `refresh_token`) |
 | `GET`/`POST` | `/oauth/userinfo` | OIDC UserInfo (bearer access token) |
 
@@ -56,9 +55,12 @@ may ever request — requested scopes are intersected with it, never widened),
 ## 3. Authorization Code + PKCE flow
 
 This provider is API-first: rather than rendering HTML, `/oauth/authorize` returns
-the validated request as JSON, and the front-end submits the user's decision to
-`/oauth/authorize/consent`. (The first-party login SPA uses a session-based variant
-— see [`FLOWS-AUTHENTICATION.md`](FLOWS-AUTHENTICATION.md) §1.)
+the validated request as JSON for the login SPA to render. Authentication and code
+issuance happen **only** through the first-party `/v1/auth/*` flow, which enforces
+password, MFA, adaptive risk, and email-verification controls — see
+[`FLOWS-AUTHENTICATION.md`](FLOWS-AUTHENTICATION.md) §1. There is no direct
+password-authenticating OAuth endpoint: a second, unguarded credential path would
+bypass those controls (notably MFA), so it is intentionally absent.
 
 ```
    Client app                Browser / SPA                 Provider (this server)
@@ -69,13 +71,10 @@ the validated request as JSON, and the front-end submits the user's decision to
        │                          │───────────────────────────────▶│  authorize_request
        │                          │   validated request (JSON)     │  (validate; DO NOT
        │                          │◀───────────────────────────────│   trust redirect yet)
-       │                          │ 3. user enters credentials +   │
-       │                          │    approves scopes             │
-       │                          │ 4. POST /oauth/authorize/consent│
-       │                          │───────────────────────────────▶│  authorize_complete
+       │                          │ 3. login + MFA via /v1/auth/*  │  login → verify-mfa →
+       │                          │───────────────────────────────▶│  authorize_session
        │                          │   302 redirect_uri?code=&state=│  (authenticate user,
-       │                          │   (or JSON for fetch clients)   │   upsert consent, mint code)
-       │                          │◀───────────────────────────────│
+       │                          │◀───────────────────────────────│   upsert consent, mint code)
        │ 5. POST /oauth/token (code + code_verifier + redirect_uri) │
        │──────────────────────────────────────────────────────────▶│  token_exchange
        │   access_token, id_token, refresh_token                    │  (verify PKCE, consume
@@ -99,24 +98,21 @@ depends on whether the `redirect_uri` is trusted yet** (open-redirect guard):
 Returns the validated, tamper-checked request (`client_name`, allowed `scopes`,
 `requires_consent`, …) for the UI to render.
 
-### Step 4 — `POST /oauth/authorize/consent` (`authorize_complete`)
-Runs in **one transaction**. It re-validates everything (never trusts the posted
-form), then:
-1. Re-resolve + re-check the client and `redirect_uri`; re-intersect scopes.
-2. **Authenticate the end user** from the `email` + `password` in the body — the
-   user id is *derived here*, never taken from the request (otherwise anyone could
-   mint a code for any account). Failures are generic to prevent account enumeration.
-3. Consent: if the client requires consent and an existing `ConsentGrant` doesn't
-   already cover the requested scopes and the user hasn't approved, return
-   `ConsentRequired` with the missing-scope delta.
-4. Upsert the consent grant (idempotent union of scopes).
-5. Mint a single-use **authorization code** (TTL **60s**): random raw code returned
-   once, **SHA-256 hash** persisted, bound to client, redirect_uri, user, scopes,
-   `code_challenge`/method, and `nonce`.
+### Steps 3–4 — authenticate + issue the code (`/v1/auth/*`)
+Authentication and code issuance are owned by the first-party login flow, not by a
+dedicated OAuth endpoint. The SPA carries the validated request into
+`POST /v1/auth/login`; the server authenticates the password, runs the adaptive
+risk gate, and — when required — challenges for a second factor
+(`POST /v1/auth/verify-mfa/*`). Only once the auth session is fully verified does
+`POST /v1/auth/authorize` (`authorize_session`) spend it for a single-use
+**authorization code** (TTL **60s**): random raw code returned once, **SHA-256 hash**
+persisted, bound to client, redirect_uri, user, scopes, `code_challenge`/method, and
+`nonce`. See [`FLOWS-AUTHENTICATION.md`](FLOWS-AUTHENTICATION.md) §1 for the full
+sequence, including MFA enrollment and forced-password-change gating.
 
-The handler content-negotiates the response: a browser navigation gets the spec
-**302** to `redirect_uri?code=…&state=…`; a `fetch`/XHR caller that sends `Accept:
-application/json` gets the code in JSON (a SPA can't follow a cross-origin 302).
+Routing every interactive login through this single path is deliberate: it ensures
+MFA, lockout, and risk evaluation cannot be sidestepped by an alternate credential
+endpoint.
 
 ### Step 5 — `POST /oauth/token`, `grant_type=authorization_code` (`token_exchange`)
 One transaction; the code is consumed and the refresh token stored together so a
@@ -151,17 +147,48 @@ property is **rotation with reuse detection**:
 
 1. Authenticate the client (confidential ⇒ verify secret).
 2. Look the presented refresh token up **by hash**; it must belong to this client.
-3. **Reuse detection:** if the presented token is inactive *and* was already rotated
-   or revoked, that signals theft → **revoke the entire token family**, emit
-   `token.reuse_detected`, and reject.
-4. Otherwise **rotate**: mark the presented token rotated and mint a successor in the
-   same family.
+3. **Reuse detection (with a rotation-leeway grace window):** if the presented token is
+   inactive:
+   - It was rotated **within the leeway window** and not revoked → treat as a legitimate
+     concurrent-refresh / retry race, **not** theft. Reissue (step 4b); the family is
+     kept.
+   - It was already rotated (outside the window) or revoked → theft signal → **revoke the
+     entire token family**, emit `token.reuse_detected`, and reject. A revoked token never
+     gets grace.
+   - It is merely expired → reject (no family revoke).
+4. Mint the successor:
+   - **(a) active token →** *rotate*: mark the presented token rotated and mint a
+     successor in the same family.
+   - **(b) within-leeway token →** *reissue*: leave the presented token untouched and mint
+     a fresh **sibling** in the same family. Because the presented token isn't re-stamped,
+     its leeway window can't slide forward on repeated presentation.
 5. Re-mint the access (+ id) token with the active signing key, **re-resolving roles
    and groups** so the refreshed token reflects the user's *current* authorization
    context.
-6. Emit `token.refreshed`.
+6. Emit `token.refreshed` (with `grace: true` in its metadata on the leeway path).
 
 Same response shape as the code exchange, with a fresh rotated `refresh_token`.
+
+> **Adaptive risk on refresh.** Before minting the successor, the presented refresh is run
+> through the same risk engine as an interactive login: it is geo-enriched and recorded as a
+> login event (so refreshes show up in the security views and per-user sign-in activity), and
+> a **critical** decision — e.g. impossible travel or an IP under an active block — refuses the
+> refresh with `invalid_grant`, forcing a full re-authentication. Being a non-interactive path,
+> it never triggers MFA step-up. The client IP comes from `capture_client_context` (proxy
+> header, or the TCP peer address as a fallback). The social-login callback
+> (`external_login`) is risk-scored the same way.
+
+### Rotation leeway
+
+The grace window in step 3 defaults to **10 seconds** and is configurable via
+`REFRESH_REUSE_LEEWAY_SECONDS` (`0` disables it). It exists because a client — notably a
+Backend-for-Frontend refreshing per request — can legitimately present the *same* refresh
+token on several concurrent requests, or retry after a network blip. Without leeway, strict
+rotation + reuse detection would see the second presentation as theft, revoke the whole
+family, and log the user out. The window lets those races resolve while a genuinely stolen
+token replayed *later* is still caught. The tradeoff: a token replayed **inside** the window
+is honored, so keep the window small. (BFF clients should still coalesce concurrent
+refreshes so only one token is presented; leeway covers the residual races.)
 
 ---
 
@@ -192,10 +219,11 @@ claims filtered by the granted scopes.
 | PKCE S256 mandatory; no implicit flow | `authorize_request`, `token_exchange` (`verify_pkce`) |
 | Exact redirect-URI match (no wildcards) | `OAuthClient::is_redirect_uri_allowed` |
 | Scopes intersected with client allow-list (never widened) | `OAuthClient::filter_scopes` |
-| User authenticated from own credentials, id never client-supplied | `authorize_complete` / login flow |
-| Authorization codes single-use, short-lived (60s), stored hashed | `authorize_complete`, `token_exchange` |
+| User authenticated from own credentials, id never client-supplied | `/v1/auth/*` login flow (`login`, `authorize_session`) |
+| MFA / risk / email-verification cannot be bypassed by an alt endpoint | single login path; no direct-password OAuth endpoint |
+| Authorization codes single-use, short-lived (60s), stored hashed | `authorize_session`, `token_exchange` |
 | Confidential client secret verified (Argon2 + tenant pepper) | `token_exchange`, `token_refresh` |
-| Refresh tokens rotate; reuse revokes the family | `token_refresh` |
+| Refresh tokens rotate; reuse (outside the `REFRESH_REUSE_LEEWAY_SECONDS` window) revokes the family | `token_refresh` |
 | Per-tenant ES256 keys; tokens pinned to issuer + `tid` | signing key services, auth middleware |
 | `roles`/`groups` re-resolved on issue **and** refresh | `resolve_user_claims` |
 | Security headers (CSP, XFO=DENY, HSTS, no-referrer) | `security_headers` middleware |

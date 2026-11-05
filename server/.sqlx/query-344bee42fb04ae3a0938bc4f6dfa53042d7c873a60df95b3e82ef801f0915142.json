@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT markdown_content, updated_at\n        FROM legal_documents\n        WHERE tenant_id = $1 AND document_type = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "markdown_content",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "legal_documents",
+            "name": "markdown_content"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "legal_documents",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "344bee42fb04ae3a0938bc4f6dfa53042d7c873a60df95b3e82ef801f0915142"
+}

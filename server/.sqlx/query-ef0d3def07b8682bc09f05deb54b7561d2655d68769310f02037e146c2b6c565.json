@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO email_templates (tenant_id, template_type, subject, body_mjml, updated_at)\n        VALUES ($1, $2, $3, $4, $5)\n        ON CONFLICT (tenant_id, template_type)\n        DO UPDATE SET subject = EXCLUDED.subject, body_mjml = EXCLUDED.body_mjml, updated_at = EXCLUDED.updated_at\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ef0d3def07b8682bc09f05deb54b7561d2655d68769310f02037e146c2b6c565"
+}

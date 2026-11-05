@@ -7,6 +7,8 @@ use crate::{
     domain::{
         errors::DomainError,
         repositories::{
+            custom_field_definition_repository::CustomFieldDefinitionRepository,
+            external_identity_provider_repository::ExternalIdentityProviderRepository,
             oauth_client_repository::OAuthClientRepository, tenant_repository::TenantRepository,
         },
     },
@@ -18,16 +20,22 @@ use crate::{
 pub struct UseCase {
     oauth_client_repository: Arc<dyn OAuthClientRepository>,
     tenant_repository: Arc<dyn TenantRepository>,
+    external_identity_provider_repository: Arc<dyn ExternalIdentityProviderRepository>,
+    custom_field_definition_repository: Arc<dyn CustomFieldDefinitionRepository>,
 }
 
 impl UseCase {
     pub fn new(
         oauth_client_repository: Arc<dyn OAuthClientRepository>,
         tenant_repository: Arc<dyn TenantRepository>,
+        external_identity_provider_repository: Arc<dyn ExternalIdentityProviderRepository>,
+        custom_field_definition_repository: Arc<dyn CustomFieldDefinitionRepository>,
     ) -> Self {
         Self {
             oauth_client_repository,
             tenant_repository,
+            external_identity_provider_repository,
+            custom_field_definition_repository,
         }
     }
 
@@ -56,6 +64,30 @@ impl UseCase {
                 DomainError::TenantNotFound(format!("tenant {} not found", client.tenant_id()))
             })?;
 
-        Ok(Response::from_entities(&client, &tenant))
+        // Active external providers become the "Sign in with <provider>" buttons.
+        let providers = self
+            .external_identity_provider_repository
+            .find_active_by_oauth_client_id(client.id())
+            .await?;
+
+        let custom_field_definitions = self
+            .custom_field_definition_repository
+            .find_active_by_tenant_id(tenant.id())
+            .await?;
+
+        // An absent/unrecognized locale just means "use the client's own
+        // default" — never an error, since this is a public endpoint.
+        let requested_locale = query
+            .requested_locale
+            .as_deref()
+            .unwrap_or_else(|| client.default_language());
+
+        Ok(Response::from_entities(
+            &client,
+            &tenant,
+            &providers,
+            &custom_field_definitions,
+            requested_locale,
+        ))
     }
 }

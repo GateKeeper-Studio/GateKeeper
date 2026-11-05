@@ -14,6 +14,7 @@ use crate::{
     domain::entities::legal_document::LegalDocumentType,
     presentation::{
         errors::{ApiError, AppJson},
+        middleware::auth::TenantScope,
         routes::AppState,
     },
 };
@@ -28,7 +29,8 @@ fn parse_doc_type(slug: &str) -> Result<LegalDocumentType, ApiError> {
 // GET /tenants/:tenant_id/legal/:doc_type  (admin)
 pub async fn get_legal_document(
     State(state): State<AppState>,
-    Path((tenant_id, doc_type)): Path<(Uuid, String)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, doc_type)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let document_type = parse_doc_type(&doc_type)?;
     let query = get_legal_document::query::Query {
@@ -42,7 +44,8 @@ pub async fn get_legal_document(
 // PUT /tenants/:tenant_id/legal/:doc_type  (admin)
 pub async fn update_legal_document(
     State(state): State<AppState>,
-    Path((tenant_id, doc_type)): Path<(Uuid, String)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, doc_type)): Path<(Uuid, String)>,
     AppJson(mut payload): AppJson<update_legal_document::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     payload.tenant_id = tenant_id;
@@ -56,7 +59,8 @@ pub async fn update_legal_document(
 // DELETE /tenants/:tenant_id/legal/:doc_type  (admin) — reset to default
 pub async fn reset_legal_document(
     State(state): State<AppState>,
-    Path((tenant_id, doc_type)): Path<(Uuid, String)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, doc_type)): Path<(Uuid, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let document_type = parse_doc_type(&doc_type)?;
     let command = reset_legal_document::command::Command {

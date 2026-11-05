@@ -1,0 +1,38 @@
+{
+  "name": "@gatekeeper/sveltekit-bff",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Server-side GateKeeper OAuth/OIDC BFF helpers for SvelteKit applications.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./svelte": {
+      "types": "./dist/svelte/index.d.ts",
+      "svelte": "./src/svelte/index.ts",
+      "import": "./src/svelte/index.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "svelte": "^5.0.0",
+    "typescript": "^6.0.0"
+  }
+}

@@ -15,20 +15,29 @@ use crate::{
             auth_session_repository::AuthSessionRepository,
             authorization_code_repository::AuthorizationCodeRepository,
             consent_grant_repository::ConsentGrantRepository,
+            custom_field_definition_repository::CustomFieldDefinitionRepository,
             email_provider_repository::EmailProviderRepository,
             email_verification_token_repository::EmailVerificationTokenRepository,
-            group_repository::GroupRepository, mfa_challenge_repository::MfaChallengeRepository,
+            external_identity_provider_repository::ExternalIdentityProviderRepository,
+            external_login_flow_repository::ExternalLoginFlowRepository,
+            group_repository::GroupRepository, login_event_repository::LoginEventRepository,
+            mfa_challenge_repository::MfaChallengeRepository,
             mfa_enrollment_repository::MfaEnrollmentRepository,
             oauth_client_repository::OAuthClientRepository,
             organization_repository::OrganizationRepository,
+            outbox_event_repository::OutboxEventRepository,
             password_change_token_repository::PasswordChangeTokenRepository,
             password_reset_token_repository::PasswordResetTokenRepository,
             policy_acceptance_repository::PolicyAcceptanceRepository,
             refresh_token_repository::RefreshTokenRepository, role_repository::RoleRepository,
+            security_block_repository::SecurityBlockRepository,
             signing_key_repository::SigningKeyRepository,
-            subscription_plan_repository::SubscriptionPlanRepository,
-            subscription_repository::SubscriptionRepository, tenant_repository::TenantRepository,
+            social_identity_repository::SocialIdentityRepository,
+            tenant_repository::TenantRepository,
+            tenant_risk_policy_repository::TenantRiskPolicyRepository,
             user_repository::UserRepository,
+            webhook_delivery_repository::WebhookDeliveryRepository,
+            webhook_subscription_repository::WebhookSubscriptionRepository,
         },
     },
     testing::in_memory_repositories::{
@@ -36,23 +45,31 @@ use crate::{
         in_memory_auth_session_repository::InMemoryAuthSessionRepository,
         in_memory_authorization_code_repository::InMemoryAuthorizationCodeRepository,
         in_memory_consent_grant_repository::InMemoryConsentGrantRepository,
+        in_memory_custom_field_definition_repository::InMemoryCustomFieldDefinitionRepository,
         in_memory_email_provider_repository::InMemoryEmailProviderRepository,
         in_memory_email_verification_token_repository::InMemoryEmailVerificationTokenRepository,
+        in_memory_external_identity_provider_repository::InMemoryExternalIdentityProviderRepository,
+        in_memory_external_login_flow_repository::InMemoryExternalLoginFlowRepository,
         in_memory_group_repository::InMemoryGroupRepository,
+        in_memory_login_event_repository::InMemoryLoginEventRepository,
         in_memory_mfa_challenge_repository::InMemoryMfaChallengeRepository,
         in_memory_mfa_enrollment_repository::InMemoryMfaEnrollmentRepository,
         in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
         in_memory_organization_repository::InMemoryOrganizationRepository,
+        in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
         in_memory_password_change_token_repository::InMemoryPasswordChangeTokenRepository,
         in_memory_password_reset_token_repository::InMemoryPasswordResetTokenRepository,
         in_memory_policy_acceptance_repository::InMemoryPolicyAcceptanceRepository,
         in_memory_refresh_token_repository::InMemoryRefreshTokenRepository,
         in_memory_role_repository::InMemoryRoleRepository,
+        in_memory_security_block_repository::InMemorySecurityBlockRepository,
         in_memory_signing_key_repository::InMemorySigningKeyRepository,
-        in_memory_subscription_plan_repository::InMemorySubscriptionPlanRepository,
-        in_memory_subscription_repository::InMemorySubscriptionRepository,
+        in_memory_social_identity_repository::InMemorySocialIdentityRepository,
         in_memory_tenant_repository::InMemoryTenantRepository,
+        in_memory_tenant_risk_policy_repository::InMemoryTenantRiskPolicyRepository,
         in_memory_user_repository::InMemoryUserRepository,
+        in_memory_webhook_delivery_repository::InMemoryWebhookDeliveryRepository,
+        in_memory_webhook_subscription_repository::InMemoryWebhookSubscriptionRepository,
     },
 };
 
@@ -94,11 +111,10 @@ pub struct InMemoryUnitOfWork {
     user_repository: Arc<InMemoryUserRepository>,
     tenant_repository: Arc<InMemoryTenantRepository>,
     organization_repository: Arc<InMemoryOrganizationRepository>,
-    subscription_repository: Arc<InMemorySubscriptionRepository>,
-    subscription_plan_repository: Arc<InMemorySubscriptionPlanRepository>,
     group_repository: Arc<InMemoryGroupRepository>,
     role_repository: Arc<InMemoryRoleRepository>,
     oauth_client_repository: Arc<InMemoryOAuthClientRepository>,
+    custom_field_definition_repository: Arc<InMemoryCustomFieldDefinitionRepository>,
     authorization_code_repository: Arc<InMemoryAuthorizationCodeRepository>,
     refresh_token_repository: Arc<InMemoryRefreshTokenRepository>,
     consent_grant_repository: Arc<InMemoryConsentGrantRepository>,
@@ -110,8 +126,17 @@ pub struct InMemoryUnitOfWork {
     password_reset_token_repository: Arc<InMemoryPasswordResetTokenRepository>,
     password_change_token_repository: Arc<InMemoryPasswordChangeTokenRepository>,
     email_provider_repository: Arc<InMemoryEmailProviderRepository>,
+    external_identity_provider_repository: Arc<InMemoryExternalIdentityProviderRepository>,
+    social_identity_repository: Arc<InMemorySocialIdentityRepository>,
+    external_login_flow_repository: Arc<InMemoryExternalLoginFlowRepository>,
     audit_event_repository: Arc<InMemoryAuditEventRepository>,
     policy_acceptance_repository: Arc<InMemoryPolicyAcceptanceRepository>,
+    login_event_repository: Arc<InMemoryLoginEventRepository>,
+    security_block_repository: Arc<InMemorySecurityBlockRepository>,
+    outbox_event_repository: Arc<InMemoryOutboxEventRepository>,
+    webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
+    webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
+    tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
 }
 
 impl InMemoryUnitOfWork {
@@ -120,11 +145,10 @@ impl InMemoryUnitOfWork {
         user_repository: Arc<InMemoryUserRepository>,
         tenant_repository: Arc<InMemoryTenantRepository>,
         organization_repository: Arc<InMemoryOrganizationRepository>,
-        subscription_repository: Arc<InMemorySubscriptionRepository>,
-        subscription_plan_repository: Arc<InMemorySubscriptionPlanRepository>,
         group_repository: Arc<InMemoryGroupRepository>,
         role_repository: Arc<InMemoryRoleRepository>,
         oauth_client_repository: Arc<InMemoryOAuthClientRepository>,
+        custom_field_definition_repository: Arc<InMemoryCustomFieldDefinitionRepository>,
         authorization_code_repository: Arc<InMemoryAuthorizationCodeRepository>,
         refresh_token_repository: Arc<InMemoryRefreshTokenRepository>,
         consent_grant_repository: Arc<InMemoryConsentGrantRepository>,
@@ -136,18 +160,26 @@ impl InMemoryUnitOfWork {
         password_reset_token_repository: Arc<InMemoryPasswordResetTokenRepository>,
         password_change_token_repository: Arc<InMemoryPasswordChangeTokenRepository>,
         email_provider_repository: Arc<InMemoryEmailProviderRepository>,
+        external_identity_provider_repository: Arc<InMemoryExternalIdentityProviderRepository>,
+        social_identity_repository: Arc<InMemorySocialIdentityRepository>,
+        external_login_flow_repository: Arc<InMemoryExternalLoginFlowRepository>,
         audit_event_repository: Arc<InMemoryAuditEventRepository>,
         policy_acceptance_repository: Arc<InMemoryPolicyAcceptanceRepository>,
+        login_event_repository: Arc<InMemoryLoginEventRepository>,
+        security_block_repository: Arc<InMemorySecurityBlockRepository>,
+        outbox_event_repository: Arc<InMemoryOutboxEventRepository>,
+        webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
+        webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
+        tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
     ) -> Self {
         Self {
             user_repository,
             tenant_repository,
             organization_repository,
-            subscription_repository,
-            subscription_plan_repository,
             group_repository,
             role_repository,
             oauth_client_repository,
+            custom_field_definition_repository,
             authorization_code_repository,
             refresh_token_repository,
             consent_grant_repository,
@@ -159,8 +191,17 @@ impl InMemoryUnitOfWork {
             password_reset_token_repository,
             password_change_token_repository,
             email_provider_repository,
+            external_identity_provider_repository,
+            social_identity_repository,
+            external_login_flow_repository,
             audit_event_repository,
             policy_acceptance_repository,
+            login_event_repository,
+            security_block_repository,
+            outbox_event_repository,
+            webhook_subscription_repository,
+            webhook_delivery_repository,
+            tenant_risk_policy_repository,
         }
     }
 }
@@ -179,14 +220,6 @@ impl UnitOfWork for InMemoryUnitOfWork {
         Arc::clone(&self.organization_repository) as Arc<dyn OrganizationRepository>
     }
 
-    fn subscription_repository(&self) -> Arc<dyn SubscriptionRepository> {
-        Arc::clone(&self.subscription_repository) as Arc<dyn SubscriptionRepository>
-    }
-
-    fn subscription_plan_repository(&self) -> Arc<dyn SubscriptionPlanRepository> {
-        Arc::clone(&self.subscription_plan_repository) as Arc<dyn SubscriptionPlanRepository>
-    }
-
     fn group_repository(&self) -> Arc<dyn GroupRepository> {
         Arc::clone(&self.group_repository) as Arc<dyn GroupRepository>
     }
@@ -197,6 +230,11 @@ impl UnitOfWork for InMemoryUnitOfWork {
 
     fn oauth_client_repository(&self) -> Arc<dyn OAuthClientRepository> {
         Arc::clone(&self.oauth_client_repository) as Arc<dyn OAuthClientRepository>
+    }
+
+    fn custom_field_definition_repository(&self) -> Arc<dyn CustomFieldDefinitionRepository> {
+        Arc::clone(&self.custom_field_definition_repository)
+            as Arc<dyn CustomFieldDefinitionRepository>
     }
 
     fn authorization_code_repository(&self) -> Arc<dyn AuthorizationCodeRepository> {
@@ -244,6 +282,31 @@ impl UnitOfWork for InMemoryUnitOfWork {
         Arc::clone(&self.email_provider_repository) as Arc<dyn EmailProviderRepository>
     }
 
+    fn external_identity_provider_repository(&self) -> Arc<dyn ExternalIdentityProviderRepository> {
+        Arc::clone(&self.external_identity_provider_repository)
+            as Arc<dyn ExternalIdentityProviderRepository>
+    }
+
+    fn outbox_event_repository(&self) -> Arc<dyn OutboxEventRepository> {
+        Arc::clone(&self.outbox_event_repository) as Arc<dyn OutboxEventRepository>
+    }
+
+    fn webhook_subscription_repository(&self) -> Arc<dyn WebhookSubscriptionRepository> {
+        Arc::clone(&self.webhook_subscription_repository) as Arc<dyn WebhookSubscriptionRepository>
+    }
+
+    fn webhook_delivery_repository(&self) -> Arc<dyn WebhookDeliveryRepository> {
+        Arc::clone(&self.webhook_delivery_repository) as Arc<dyn WebhookDeliveryRepository>
+    }
+
+    fn social_identity_repository(&self) -> Arc<dyn SocialIdentityRepository> {
+        Arc::clone(&self.social_identity_repository) as Arc<dyn SocialIdentityRepository>
+    }
+
+    fn external_login_flow_repository(&self) -> Arc<dyn ExternalLoginFlowRepository> {
+        Arc::clone(&self.external_login_flow_repository) as Arc<dyn ExternalLoginFlowRepository>
+    }
+
     fn audit_event_repository(&self) -> Arc<dyn AuditEventRepository> {
         Arc::clone(&self.audit_event_repository) as Arc<dyn AuditEventRepository>
     }
@@ -252,17 +315,28 @@ impl UnitOfWork for InMemoryUnitOfWork {
         Arc::clone(&self.policy_acceptance_repository) as Arc<dyn PolicyAcceptanceRepository>
     }
 
+    fn login_event_repository(&self) -> Arc<dyn LoginEventRepository> {
+        Arc::clone(&self.login_event_repository) as Arc<dyn LoginEventRepository>
+    }
+
+    fn security_block_repository(&self) -> Arc<dyn SecurityBlockRepository> {
+        Arc::clone(&self.security_block_repository) as Arc<dyn SecurityBlockRepository>
+    }
+
+    fn tenant_risk_policy_repository(&self) -> Arc<dyn TenantRiskPolicyRepository> {
+        Arc::clone(&self.tenant_risk_policy_repository) as Arc<dyn TenantRiskPolicyRepository>
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), DomainError> {
         self.user_repository.memory.commit();
         self.tenant_repository.memory.commit();
         self.organization_repository.memory.commit();
-        self.subscription_repository.memory.commit();
-        self.subscription_plan_repository.memory.commit();
         self.group_repository.memory.commit();
         self.group_repository.commit_members();
         self.role_repository.memory.commit();
         self.role_repository.commit_assignments();
         self.oauth_client_repository.memory.commit();
+        self.custom_field_definition_repository.memory.commit();
         self.authorization_code_repository.memory.commit();
         self.refresh_token_repository.memory.commit();
         self.consent_grant_repository.memory.commit();
@@ -274,8 +348,17 @@ impl UnitOfWork for InMemoryUnitOfWork {
         self.password_reset_token_repository.memory.commit();
         self.password_change_token_repository.memory.commit();
         self.email_provider_repository.memory.commit();
+        self.external_identity_provider_repository.memory.commit();
+        self.outbox_event_repository.memory.commit();
+        self.webhook_subscription_repository.memory.commit();
+        self.webhook_delivery_repository.memory.commit();
+        self.social_identity_repository.memory.commit();
+        self.external_login_flow_repository.memory.commit();
         self.audit_event_repository.commit_events();
         self.policy_acceptance_repository.commit_acceptances();
+        self.login_event_repository.commit_events();
+        self.security_block_repository.commit_blocks();
+        self.tenant_risk_policy_repository.commit_policies();
         Ok(())
     }
 }
@@ -284,11 +367,10 @@ pub struct InMemoryUnitOfWorkFactory {
     user_repository: Arc<InMemoryUserRepository>,
     tenant_repository: Arc<InMemoryTenantRepository>,
     organization_repository: Arc<InMemoryOrganizationRepository>,
-    subscription_repository: Arc<InMemorySubscriptionRepository>,
-    subscription_plan_repository: Arc<InMemorySubscriptionPlanRepository>,
     group_repository: Arc<InMemoryGroupRepository>,
     role_repository: Arc<InMemoryRoleRepository>,
     oauth_client_repository: Arc<InMemoryOAuthClientRepository>,
+    custom_field_definition_repository: Arc<InMemoryCustomFieldDefinitionRepository>,
     authorization_code_repository: Arc<InMemoryAuthorizationCodeRepository>,
     refresh_token_repository: Arc<InMemoryRefreshTokenRepository>,
     consent_grant_repository: Arc<InMemoryConsentGrantRepository>,
@@ -300,8 +382,17 @@ pub struct InMemoryUnitOfWorkFactory {
     password_reset_token_repository: Arc<InMemoryPasswordResetTokenRepository>,
     password_change_token_repository: Arc<InMemoryPasswordChangeTokenRepository>,
     email_provider_repository: Arc<InMemoryEmailProviderRepository>,
+    external_identity_provider_repository: Arc<InMemoryExternalIdentityProviderRepository>,
+    social_identity_repository: Arc<InMemorySocialIdentityRepository>,
+    external_login_flow_repository: Arc<InMemoryExternalLoginFlowRepository>,
     audit_event_repository: Arc<InMemoryAuditEventRepository>,
     policy_acceptance_repository: Arc<InMemoryPolicyAcceptanceRepository>,
+    login_event_repository: Arc<InMemoryLoginEventRepository>,
+    security_block_repository: Arc<InMemorySecurityBlockRepository>,
+    outbox_event_repository: Arc<InMemoryOutboxEventRepository>,
+    webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
+    webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
+    tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
 }
 
 impl InMemoryUnitOfWorkFactory {
@@ -317,17 +408,13 @@ impl InMemoryUnitOfWorkFactory {
             // resolves the seeded users; override via with_group_repository().
             group_repository: Arc::new(InMemoryGroupRepository::new(Arc::clone(&user_repository))),
             role_repository: Arc::new(InMemoryRoleRepository::new(Arc::clone(&user_repository))),
-            // Shares the tenant + user stores so count_tenants / max_users_in_any_tenant
-            // reflect committed rows.
-            subscription_repository: Arc::new(InMemorySubscriptionRepository::new(
-                Arc::clone(&tenant_repository),
-                Arc::clone(&user_repository),
-            )),
-            subscription_plan_repository: Arc::new(InMemorySubscriptionPlanRepository::new()),
             organization_repository: Arc::new(InMemoryOrganizationRepository::new()),
             user_repository,
             tenant_repository,
             oauth_client_repository: Arc::new(InMemoryOAuthClientRepository::new()),
+            custom_field_definition_repository: Arc::new(
+                InMemoryCustomFieldDefinitionRepository::new(),
+            ),
             authorization_code_repository: Arc::new(InMemoryAuthorizationCodeRepository::new()),
             refresh_token_repository: Arc::new(InMemoryRefreshTokenRepository::new()),
             consent_grant_repository: Arc::new(InMemoryConsentGrantRepository::new()),
@@ -341,9 +428,65 @@ impl InMemoryUnitOfWorkFactory {
             password_reset_token_repository: Arc::new(InMemoryPasswordResetTokenRepository::new()),
             password_change_token_repository: Arc::new(InMemoryPasswordChangeTokenRepository::new()),
             email_provider_repository: Arc::new(InMemoryEmailProviderRepository::new()),
+            external_identity_provider_repository: Arc::new(
+                InMemoryExternalIdentityProviderRepository::new(),
+            ),
+            outbox_event_repository: Arc::new(InMemoryOutboxEventRepository::new()),
+            webhook_subscription_repository: Arc::new(InMemoryWebhookSubscriptionRepository::new()),
+            webhook_delivery_repository: Arc::new(InMemoryWebhookDeliveryRepository::new()),
+            social_identity_repository: Arc::new(InMemorySocialIdentityRepository::new()),
+            external_login_flow_repository: Arc::new(InMemoryExternalLoginFlowRepository::new()),
             audit_event_repository: Arc::new(InMemoryAuditEventRepository::new()),
             policy_acceptance_repository: Arc::new(InMemoryPolicyAcceptanceRepository::new()),
+            login_event_repository: Arc::new(InMemoryLoginEventRepository::new()),
+            security_block_repository: Arc::new(InMemorySecurityBlockRepository::new()),
+            tenant_risk_policy_repository: Arc::new(InMemoryTenantRiskPolicyRepository::new()),
         }
+    }
+
+    pub fn with_login_event_repository(mut self, repo: Arc<InMemoryLoginEventRepository>) -> Self {
+        self.login_event_repository = repo;
+        self
+    }
+
+    pub fn with_security_block_repository(
+        mut self,
+        repo: Arc<InMemorySecurityBlockRepository>,
+    ) -> Self {
+        self.security_block_repository = repo;
+        self
+    }
+
+    pub fn with_tenant_risk_policy_repository(
+        mut self,
+        repo: Arc<InMemoryTenantRiskPolicyRepository>,
+    ) -> Self {
+        self.tenant_risk_policy_repository = repo;
+        self
+    }
+
+    pub fn with_outbox_event_repository(
+        mut self,
+        repo: Arc<InMemoryOutboxEventRepository>,
+    ) -> Self {
+        self.outbox_event_repository = repo;
+        self
+    }
+
+    pub fn with_webhook_subscription_repository(
+        mut self,
+        repo: Arc<InMemoryWebhookSubscriptionRepository>,
+    ) -> Self {
+        self.webhook_subscription_repository = repo;
+        self
+    }
+
+    pub fn with_webhook_delivery_repository(
+        mut self,
+        repo: Arc<InMemoryWebhookDeliveryRepository>,
+    ) -> Self {
+        self.webhook_delivery_repository = repo;
+        self
     }
 
     pub fn with_audit_event_repository(mut self, repo: Arc<InMemoryAuditEventRepository>) -> Self {
@@ -361,22 +504,6 @@ impl InMemoryUnitOfWorkFactory {
 
     pub fn with_group_repository(mut self, repo: Arc<InMemoryGroupRepository>) -> Self {
         self.group_repository = repo;
-        self
-    }
-
-    pub fn with_subscription_repository(
-        mut self,
-        repo: Arc<InMemorySubscriptionRepository>,
-    ) -> Self {
-        self.subscription_repository = repo;
-        self
-    }
-
-    pub fn with_subscription_plan_repository(
-        mut self,
-        repo: Arc<InMemorySubscriptionPlanRepository>,
-    ) -> Self {
-        self.subscription_plan_repository = repo;
         self
     }
 
@@ -398,6 +525,14 @@ impl InMemoryUnitOfWorkFactory {
         repo: Arc<InMemoryOAuthClientRepository>,
     ) -> Self {
         self.oauth_client_repository = repo;
+        self
+    }
+
+    pub fn with_custom_field_definition_repository(
+        mut self,
+        repo: Arc<InMemoryCustomFieldDefinitionRepository>,
+    ) -> Self {
+        self.custom_field_definition_repository = repo;
         self
     }
 
@@ -485,6 +620,30 @@ impl InMemoryUnitOfWorkFactory {
         self.email_provider_repository = repo;
         self
     }
+
+    pub fn with_external_identity_provider_repository(
+        mut self,
+        repo: Arc<InMemoryExternalIdentityProviderRepository>,
+    ) -> Self {
+        self.external_identity_provider_repository = repo;
+        self
+    }
+
+    pub fn with_social_identity_repository(
+        mut self,
+        repo: Arc<InMemorySocialIdentityRepository>,
+    ) -> Self {
+        self.social_identity_repository = repo;
+        self
+    }
+
+    pub fn with_external_login_flow_repository(
+        mut self,
+        repo: Arc<InMemoryExternalLoginFlowRepository>,
+    ) -> Self {
+        self.external_login_flow_repository = repo;
+        self
+    }
 }
 
 #[async_trait]
@@ -494,11 +653,10 @@ impl UnitOfWorkFactory for InMemoryUnitOfWorkFactory {
             Arc::clone(&self.user_repository),
             Arc::clone(&self.tenant_repository),
             Arc::clone(&self.organization_repository),
-            Arc::clone(&self.subscription_repository),
-            Arc::clone(&self.subscription_plan_repository),
             Arc::clone(&self.group_repository),
             Arc::clone(&self.role_repository),
             Arc::clone(&self.oauth_client_repository),
+            Arc::clone(&self.custom_field_definition_repository),
             Arc::clone(&self.authorization_code_repository),
             Arc::clone(&self.refresh_token_repository),
             Arc::clone(&self.consent_grant_repository),
@@ -510,8 +668,17 @@ impl UnitOfWorkFactory for InMemoryUnitOfWorkFactory {
             Arc::clone(&self.password_reset_token_repository),
             Arc::clone(&self.password_change_token_repository),
             Arc::clone(&self.email_provider_repository),
+            Arc::clone(&self.external_identity_provider_repository),
+            Arc::clone(&self.social_identity_repository),
+            Arc::clone(&self.external_login_flow_repository),
             Arc::clone(&self.audit_event_repository),
             Arc::clone(&self.policy_acceptance_repository),
+            Arc::clone(&self.login_event_repository),
+            Arc::clone(&self.security_block_repository),
+            Arc::clone(&self.outbox_event_repository),
+            Arc::clone(&self.webhook_subscription_repository),
+            Arc::clone(&self.webhook_delivery_repository),
+            Arc::clone(&self.tenant_risk_policy_repository),
         )))
     }
 }

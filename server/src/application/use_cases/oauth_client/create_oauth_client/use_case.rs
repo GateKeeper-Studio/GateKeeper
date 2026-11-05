@@ -9,8 +9,9 @@ use crate::{
             client_view::ClientView,
             create_oauth_client::{command::Command, response::Response},
             validation::{
-                normalize_optional, parse_client_type, require_non_empty, validate_legal_uri,
-                validate_redirect_uris,
+                normalize_optional, parse_client_type, require_non_empty,
+                validate_client_languages, validate_initiate_login_uri, validate_legal_uri,
+                validate_login_appearance, validate_redirect_uris,
             },
         },
     },
@@ -56,6 +57,13 @@ impl UseCase {
         validate_legal_uri("tos_uri", &tos_uri)?;
         validate_legal_uri("policy_uri", &policy_uri)?;
 
+        let initiate_login_uri = normalize_optional(command.initiate_login_uri);
+        validate_initiate_login_uri(&initiate_login_uri)?;
+
+        let login_appearance = validate_login_appearance(command.login_appearance)?;
+        let (allowed_languages, default_language) =
+            validate_client_languages(command.allowed_languages, command.default_language)?;
+
         // The public client_id is a UUID v7. It is a non-secret identifier (RFC 6749
         // §2.2), so it only needs to be unique, not unguessable.
         let client_id = Uuid::now_v7();
@@ -97,6 +105,8 @@ impl UseCase {
             command.allowed_grant_types,
             command.require_pkce,
             command.require_consent,
+            allowed_languages,
+            default_language,
             MfaPolicy {
                 required: command.mfa_required,
                 email_enabled: command.mfa_email_enabled,
@@ -106,6 +116,11 @@ impl UseCase {
         );
         client.set_email_provider_id(command.email_provider_id);
         client.set_legal_uris(tos_uri, policy_uri);
+        client.set_initiate_login_uri(initiate_login_uri);
+        client.set_login_appearance(login_appearance);
+        // No provider check here — a brand-new client has none yet. The invariant is
+        // enforced on update, where the admin has had a chance to configure one.
+        client.set_external_login_only(command.external_login_only);
 
         uow.oauth_client_repository().add(&client).await?;
         uow.commit().await?;

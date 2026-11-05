@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE refresh_tokens\n          SET rotated_at = $2\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0d4bc6f5ab947af74c4643ac6ee4bf3a974b92e6db492888ea7f899571d2bac4"
+}

@@ -110,9 +110,12 @@ impl UseCase {
             .await?;
 
         // 5. Re-mint the access token for the (still-valid) admin.
-        let issued = self
-            .token_issuer
-            .issue(admin.id(), admin.email(), admin.organization_id())?;
+        let issued = self.token_issuer.issue(
+            admin.id(),
+            admin.email(),
+            admin.name(),
+            admin.organization_id(),
+        )?;
 
         let event = AuditEvent::new(
             None,

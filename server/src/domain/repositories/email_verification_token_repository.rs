@@ -17,4 +17,11 @@ pub trait EmailVerificationTokenRepository: Send + Sync {
     async fn add(&self, token: &EmailVerificationToken) -> Result<(), DomainError>;
     // Persists redemption (consumed_at) and the wrong-attempt counter.
     async fn update(&self, token: &EmailVerificationToken) -> Result<(), DomainError>;
+
+    // Retention: hard-delete rows already past `expires_at`. Called by the
+    // background purge; idempotent, so concurrent runs are harmless.
+    async fn delete_expired(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, DomainError>;
 }

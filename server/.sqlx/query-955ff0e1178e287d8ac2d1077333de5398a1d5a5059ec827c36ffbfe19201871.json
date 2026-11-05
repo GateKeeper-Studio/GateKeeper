@@ -1,0 +1,196 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, tenant_id, enabled, failed_ip_threshold, failed_user_threshold,\n                          password_spraying_user_threshold, tenant_attack_threshold,\n                          medium_risk_threshold, high_risk_threshold, critical_risk_threshold,\n                          require_mfa_on_high_risk, block_on_critical_risk,\n                          temporary_block_minutes, created_at, updated_at\n                   FROM \"tenant_risk_policies\"\n                   WHERE tenant_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "failed_ip_threshold",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "failed_ip_threshold"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "failed_user_threshold",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "failed_user_threshold"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "password_spraying_user_threshold",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "password_spraying_user_threshold"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "tenant_attack_threshold",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "tenant_attack_threshold"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "medium_risk_threshold",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "medium_risk_threshold"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "high_risk_threshold",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "high_risk_threshold"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "critical_risk_threshold",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "critical_risk_threshold"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "require_mfa_on_high_risk",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "require_mfa_on_high_risk"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "block_on_critical_risk",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "block_on_critical_risk"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "temporary_block_minutes",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "temporary_block_minutes"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "955ff0e1178e287d8ac2d1077333de5398a1d5a5059ec827c36ffbfe19201871"
+}

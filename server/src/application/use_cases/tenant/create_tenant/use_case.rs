@@ -25,41 +25,15 @@ impl UseCase {
     pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
 
-        // The tenant must join an existing subscription.
-        let subscription = uow
-            .subscription_repository()
-            .find_by_id(command.subscription_id)
+        uow.organization_repository()
+            .find_by_id(command.organization_id)
             .await?
             .ok_or_else(|| {
-                DomainError::SubscriptionNotFound(format!(
-                    "Subscription with id {} not found",
-                    command.subscription_id
+                DomainError::OrganizationNotFound(format!(
+                    "Organization with id {} not found",
+                    command.organization_id
                 ))
             })?;
-
-        // Enforce the plan's tenant cap before adding another tenant.
-        let plan = uow
-            .subscription_plan_repository()
-            .find_by_id(subscription.plan_id())
-            .await?
-            .ok_or_else(|| {
-                DomainError::SubscriptionPlanNotFound(format!(
-                    "Subscription plan with id {} not found",
-                    subscription.plan_id()
-                ))
-            })?;
-
-        let current_tenants = uow
-            .subscription_repository()
-            .count_tenants(subscription.id())
-            .await?;
-
-        if current_tenants >= plan.max_tenants() as u32 {
-            return Err(DomainError::SubscriptionLimitReached(format!(
-                "Subscription has reached its plan limit of {} tenants",
-                plan.max_tenants()
-            )));
-        }
 
         let already_exists = uow
             .tenant_repository()
@@ -80,8 +54,7 @@ impl UseCase {
             true, // is_active
             command.can_self_register,
             command.can_self_forgot_password,
-            command.subscription_id,
-            false, // is_default — only the auto-created master tenant is the default
+            command.organization_id,
         );
 
         uow.tenant_repository().add(&tenant).await?;
@@ -101,8 +74,8 @@ impl UseCase {
             is_active: tenant.is_active(),
             can_self_register: tenant.can_self_register(),
             can_self_forgot_password: tenant.can_self_forgot_password(),
-            subscription_id: tenant.subscription_id(),
-            is_default: tenant.is_default(),
+            organization_id: tenant.organization_id(),
+            default_language: tenant.default_language().to_string(),
             created_at: tenant.created_at(),
         })
     }

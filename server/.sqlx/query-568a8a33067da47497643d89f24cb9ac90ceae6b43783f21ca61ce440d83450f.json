@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE password_change_tokens\n          SET consumed_at = $2\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "568a8a33067da47497643d89f24cb9ac90ceae6b43783f21ca61ce440d83450f"
+}

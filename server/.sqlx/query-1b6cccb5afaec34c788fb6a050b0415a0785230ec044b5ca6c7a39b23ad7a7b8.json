@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO social_identities (id, user_id, tenant_id, provider, provider_subject,\n            email, created_at, updated_at)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1b6cccb5afaec34c788fb6a050b0415a0785230ec044b5ca6c7a39b23ad7a7b8"
+}

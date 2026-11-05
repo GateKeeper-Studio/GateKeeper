@@ -15,7 +15,7 @@ impl UseCase {
     pub async fn execute(&self, query: Query) -> Result<Response, DomainError> {
         let tenant = self
             .tenant_repository
-            .find_by_id(query.tenant_id)
+            .find_by_id_for_organization(query.tenant_id, query.organization_id)
             .await?
             .ok_or_else(|| {
                 DomainError::TenantNotFound(format!("Tenant with id {} not found", query.tenant_id))
@@ -28,8 +28,9 @@ impl UseCase {
             is_active: tenant.is_active(),
             can_self_register: tenant.can_self_register(),
             can_self_forgot_password: tenant.can_self_forgot_password(),
-            subscription_id: tenant.subscription_id(),
-            is_default: tenant.is_default(),
+            organization_id: tenant.organization_id(),
+            appearance: tenant.appearance().cloned(),
+            default_language: tenant.default_language().to_string(),
             created_at: tenant.created_at(),
             updated_at: tenant.updated_at(),
         })

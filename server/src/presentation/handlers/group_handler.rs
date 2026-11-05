@@ -19,7 +19,7 @@ use crate::{
     presentation::{
         audit_emit::admin_action,
         errors::{ApiError, AppJson},
-        middleware::auth::{AuthPrincipal, RequestContext},
+        middleware::auth::{RequestContext, TenantScope},
         routes::AppState,
     },
 };
@@ -35,8 +35,10 @@ pub struct PaginationParams {
 // POST /tenants/:tenant_id/groups
 pub async fn create_group(
     State(state): State<AppState>,
-    Path(tenant_id): Path<Uuid>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     ctx: RequestContext,
     AppJson(mut payload): AppJson<create_group::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -61,7 +63,7 @@ pub async fn create_group(
 // GET /tenants/:tenant_id/groups?page=1&page_size=10
 pub async fn list_groups(
     State(state): State<AppState>,
-    Path(tenant_id): Path<Uuid>,
+    TenantScope { tenant_id, .. }: TenantScope,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_groups::query::Query {
@@ -78,7 +80,8 @@ pub async fn list_groups(
 // GET /tenants/:tenant_id/groups/:group_id
 pub async fn get_group_by_id(
     State(state): State<AppState>,
-    Path((tenant_id, group_id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, group_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = get_group_by_id::query::Query {
         tenant_id,
@@ -92,8 +95,11 @@ pub async fn get_group_by_id(
 // PUT /tenants/:tenant_id/groups/:group_id
 pub async fn update_group_by_id(
     State(state): State<AppState>,
-    Path((tenant_id, group_id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, group_id)): Path<(Uuid, Uuid)>,
     ctx: RequestContext,
     AppJson(mut payload): AppJson<update_group_by_id::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -119,8 +125,11 @@ pub async fn update_group_by_id(
 // DELETE /tenants/:tenant_id/groups/:group_id
 pub async fn delete_group_by_id(
     State(state): State<AppState>,
-    Path((tenant_id, group_id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, group_id)): Path<(Uuid, Uuid)>,
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = delete_group_by_id::command::Command {
@@ -145,7 +154,8 @@ pub async fn delete_group_by_id(
 // GET /tenants/:tenant_id/groups/:group_id/members?page=1&page_size=10
 pub async fn list_group_members(
     State(state): State<AppState>,
-    Path((tenant_id, group_id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, group_id)): Path<(Uuid, Uuid)>,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_group_members::query::Query {
@@ -163,8 +173,11 @@ pub async fn list_group_members(
 // POST /tenants/:tenant_id/groups/:group_id/members  { user_ids: [...] }
 pub async fn add_group_members(
     State(state): State<AppState>,
-    Path((tenant_id, group_id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, group_id)): Path<(Uuid, Uuid)>,
     ctx: RequestContext,
     AppJson(mut payload): AppJson<add_group_members::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -190,8 +203,11 @@ pub async fn add_group_members(
 // DELETE /tenants/:tenant_id/groups/:group_id/members/:user_id
 pub async fn remove_group_member(
     State(state): State<AppState>,
-    Path((tenant_id, group_id, user_id)): Path<(Uuid, Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, group_id, user_id)): Path<(Uuid, Uuid, Uuid)>,
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = remove_group_member::command::Command {
@@ -217,7 +233,8 @@ pub async fn remove_group_member(
 // GET /tenants/:tenant_id/users/:user_id/groups
 pub async fn list_user_groups(
     State(state): State<AppState>,
-    Path((tenant_id, user_id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_user_groups::query::Query { tenant_id, user_id };
     let response = state.list_user_groups.execute(query).await?;

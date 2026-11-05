@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT signal_type, severity, points, metadata_json\n                   FROM \"login_risk_signals\"\n                   WHERE login_event_id = $1\n                   ORDER BY points DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "signal_type",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "login_risk_signals",
+            "name": "signal_type"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "severity",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "login_risk_signals",
+            "name": "severity"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "points",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "login_risk_signals",
+            "name": "points"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "metadata_json",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "login_risk_signals",
+            "name": "metadata_json"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "725de998abdf3fdf8206699fd35422b74dc1beb8ea9f741906dcdef05923d417"
+}

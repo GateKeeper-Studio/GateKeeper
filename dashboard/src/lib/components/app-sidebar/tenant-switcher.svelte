@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { createQuery } from '@tanstack/svelte-query';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
@@ -9,34 +8,24 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 	import { useSidebar } from '$lib/components/ui/sidebar/index.js';
-	import { listTenants } from '$lib/services/admin/tenants';
 	import { selectedTenant } from '$lib/state/selected-tenant.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	const sidebar = useSidebar();
 
-	const tenantsQuery = createQuery(() => ({
-		queryKey: ['tenants'],
-		queryFn: async () => {
-			const [data, err] = await listTenants();
-			if (err) throw err;
-			return data.items;
-		}
-	}));
+	// The tenant list is fetched by the dashboard +layout (always mounted, so it works
+	// on mobile where this switcher lives in an off-canvas Sheet). Read the shared store.
 
-	// Hand the fetched list to the shared store so it can resolve the URL's
-	// `[tenantId]` param into a full tenant for every dashboard component.
-	$effect(() => {
-		selectedTenant.tenants = tenantsQuery.data ?? [];
-	});
-
-	// Selecting a tenant just changes the URL — the store derives `current` from it.
+	// Selecting a tenant changes the URL; the store derives `current` from it. Remember
+	// the choice immediately so it survives navigating to a global page or a reload.
 	// Swap only the `[tenantId]` segment so the current sub-section (e.g.
 	// /email-providers) and any query string carry over to the new tenant.
 	function select(tenantId: string) {
+		selectedTenant.setActive(tenantId);
 		const current = page.params.tenantId;
 		const path = current
-			? page.url.pathname.replace(`/dashboard/${current}`, `/dashboard/${tenantId}`)
-			: `/dashboard/${tenantId}`;
+			? page.url.pathname.replace(`/tenants/${current}`, `/tenants/${tenantId}`)
+			: `/tenants/${tenantId}`;
 		goto(`${path}${page.url.search}`);
 	}
 </script>
@@ -61,19 +50,19 @@
 							<span class="truncate font-medium">
 								{#if selectedTenant.current}
 									{selectedTenant.current.name}
-								{:else if tenantsQuery.isPending}
-									Loading tenants…
-								{:else if tenantsQuery.isError}
-									Failed to load
+								{:else if selectedTenant.loading}
+									{m.tenant_switcher_loading_tenants()}
+								{:else if selectedTenant.error}
+									{m.tenant_switcher_failed_to_load()}
 								{:else if selectedTenant.tenantId}
-									Unknown tenant
+									{m.tenant_switcher_unknown_tenant()}
 								{:else}
-									Select a tenant
+									{m.tenant_switcher_select_tenant()}
 								{/if}
 							</span>
 
 							<span class="truncate text-xs text-muted-foreground">
-								{selectedTenant.current ? 'Tenant' : 'No tenant selected'}
+								{selectedTenant.current ? m.sidebar_tenant() : m.tenant_switcher_no_tenant_selected()}
 							</span>
 						</div>
 
@@ -88,18 +77,18 @@
 				side={sidebar.isMobile ? 'bottom' : 'right'}
 				sideOffset={4}
 			>
-				<DropdownMenu.Label class="text-muted-foreground text-xs">Tenants</DropdownMenu.Label>
+				<DropdownMenu.Label class="text-muted-foreground text-xs">{m.tenant_switcher_tenants()}</DropdownMenu.Label>
 
-				{#if tenantsQuery.isPending}
-					<div class="text-muted-foreground px-2 py-1.5 text-sm">Loading…</div>
-				{:else if tenantsQuery.isError}
+				{#if selectedTenant.loading}
+					<div class="text-muted-foreground px-2 py-1.5 text-sm">{m.tenant_switcher_loading()}</div>
+				{:else if selectedTenant.error}
 					<div class="text-destructive px-2 py-1.5 text-sm">
-						{tenantsQuery.error.message}
+						{selectedTenant.error.message}
 					</div>
-				{:else if tenantsQuery.data.length === 0}
-					<div class="text-muted-foreground px-2 py-1.5 text-sm">No tenants yet</div>
+				{:else if selectedTenant.tenants.length === 0}
+					<div class="text-muted-foreground px-2 py-1.5 text-sm">{m.dashboard_home_empty_title()}</div>
 				{:else}
-					{#each tenantsQuery.data as tenant, index (tenant.tenantId)}
+					{#each selectedTenant.tenants as tenant, index (tenant.tenantId)}
 						<DropdownMenu.Item
 							onSelect={() => select(tenant.tenantId)}
 							class="gap-2 p-2"
@@ -120,13 +109,13 @@
 
 				<DropdownMenu.Item class="gap-2 p-2">
 					{#snippet child({ props })}
-						<a href="/dashboard/create-tenant" {...props}>
+						<a href="/tenants/new" {...props}>
 							<div
 								class="flex size-6 items-center justify-center rounded-md border bg-transparent"
 							>
 								<PlusIcon class="size-4" />
 							</div>
-							<div class="text-muted-foreground font-medium">Add tenant</div>
+							<div class="text-muted-foreground font-medium">{m.tenant_switcher_add_tenant()}</div>
 						</a>
 					{/snippet}
 				</DropdownMenu.Item>

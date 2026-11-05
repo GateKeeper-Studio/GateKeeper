@@ -37,6 +37,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }

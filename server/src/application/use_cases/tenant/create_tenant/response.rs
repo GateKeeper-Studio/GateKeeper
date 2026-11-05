@@ -10,7 +10,7 @@ pub struct Response {
     pub is_active: bool,
     pub can_self_register: bool,
     pub can_self_forgot_password: bool,
-    pub subscription_id: Uuid,
-    pub is_default: bool,
+    pub organization_id: Uuid,
+    pub default_language: String,
     pub created_at: DateTime<Utc>,
 }

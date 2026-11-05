@@ -5,11 +5,8 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        application::{
-            ports::email_sender::EmailSender,
-            use_cases::authentication::resend_confirm_email::{
-                command::Command, use_case::UseCase,
-            },
+        application::use_cases::authentication::resend_confirm_email::{
+            command::Command, use_case::UseCase,
         },
         domain::entities::{
             oauth_client::{ClientType, MfaPolicy, OAuthClient},
@@ -17,6 +14,7 @@ mod tests {
             user::User,
         },
         testing::{
+            fake_email_renderer::var_from_text,
             in_memory_repositories::{
                 in_memory_email_verification_token_repository::InMemoryEmailVerificationTokenRepository,
                 in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
@@ -25,6 +23,7 @@ mod tests {
             },
             in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
             recording_email_sender::RecordingEmailSender,
+            templated_email_support::recording_templated_email_sender,
         },
         utils::oauth_crypto::sha256_hex,
     };
@@ -45,6 +44,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }
@@ -59,7 +60,6 @@ mod tests {
             can_self_register,
             true,
             uuid::Uuid::now_v7(),
-            false,
             chrono::Utc::now(),
             None,
         )
@@ -102,13 +102,13 @@ mod tests {
         users.memory.data.lock().unwrap().insert(user_id, user);
 
         let tokens = Arc::new(InMemoryEmailVerificationTokenRepository::new());
-        let emails = Arc::new(RecordingEmailSender::new());
+        let (templated_email, emails) = recording_templated_email_sender();
 
         let factory = InMemoryUnitOfWorkFactory::new(users, tenants)
             .with_oauth_client_repository(clients)
             .with_email_verification_token_repository(tokens.clone());
 
-        let use_case = UseCase::new(Arc::new(factory), emails.clone() as Arc<dyn EmailSender>);
+        let use_case = UseCase::new(Arc::new(factory), templated_email);
 
         Ctx {
             use_case,
@@ -127,8 +127,8 @@ mod tests {
 
         let sent = ctx.emails.sent.lock().unwrap();
         assert_eq!(sent.len(), 1);
-        let (to, code) = &sent[0];
-        assert_eq!(to, "user@example.com");
+        assert_eq!(sent[0].to, "user@example.com");
+        let code = var_from_text(&sent[0].text, "code").unwrap();
         assert_eq!(code.len(), 6);
         assert!(code.chars().all(|c| c.is_ascii_digit()));
 
@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(tokens.len(), 1);
         assert_eq!(
             tokens.values().next().unwrap().token_hash(),
-            sha256_hex(code)
+            sha256_hex(&code)
         );
     }
 

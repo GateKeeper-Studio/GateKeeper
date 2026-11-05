@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 use crate::domain::entities::mfa_method::MfaMethod;
@@ -13,8 +13,9 @@ pub struct AuthSession {
     id: Uuid,
     tenant_id: Uuid,
 
-    // Stored server-side; the browser only holds an opaque, httpOnly session cookie
-    // whose value hashes to session_token_hash.
+    // Stored server-side; the login SPA holds only the raw opaque token (returned
+    // once by POST /v1/auth/login, kept in sessionStorage) whose SHA-256 hashes to
+    // session_token_hash.
     session_token_hash: String,
 
     user_id: Option<Uuid>, // None until the user authenticates
@@ -36,7 +37,13 @@ pub struct AuthSession {
     pending_code_challenge_method: String,
     pending_nonce: Option<String>,
 
-    expires_at: DateTime<Utc>, // absolute idle timeout
+    // The idle deadline. Slides forward when the user explicitly asks to stay signed
+    // in (see `extend`), but never past `absolute_expires_at`.
+    expires_at: DateTime<Utc>,
+    // The hard ceiling, fixed at creation. Without it, a session that is refreshed
+    // often enough would never die — an idle timeout you can renew indefinitely is
+    // not a timeout.
+    absolute_expires_at: DateTime<Utc>,
     created_at: DateTime<Utc>,
 }
 
@@ -53,6 +60,7 @@ impl AuthSession {
         pending_code_challenge_method: String,
         pending_nonce: Option<String>,
         expires_at: DateTime<Utc>,
+        absolute_expires_at: DateTime<Utc>,
     ) -> Self {
         AuthSession {
             id: Uuid::now_v7(),
@@ -71,6 +79,7 @@ impl AuthSession {
             pending_code_challenge_method,
             pending_nonce,
             expires_at,
+            absolute_expires_at,
             created_at: Utc::now(),
         }
     }
@@ -93,6 +102,7 @@ impl AuthSession {
         pending_code_challenge_method: String,
         pending_nonce: Option<String>,
         expires_at: DateTime<Utc>,
+        absolute_expires_at: DateTime<Utc>,
         created_at: DateTime<Utc>,
     ) -> Self {
         AuthSession {
@@ -112,6 +122,7 @@ impl AuthSession {
             pending_code_challenge_method,
             pending_nonce,
             expires_at,
+            absolute_expires_at,
             created_at,
         }
     }
@@ -150,6 +161,27 @@ impl AuthSession {
     // past makes every later `is_expired` check fail. `update()` persists this.
     pub fn expire_now(&mut self, now: DateTime<Utc>) {
         self.expires_at = now;
+    }
+
+    // Slide the idle window forward when the user explicitly asks to stay signed in.
+    // Clamped to `absolute_expires_at`, so refreshing can buy time but never immortality.
+    //
+    // Returns false when the ceiling has already passed and there is nothing left to
+    // give — the caller must then reject the refresh rather than hand back a deadline
+    // in the past.
+    pub fn extend(&mut self, now: DateTime<Utc>, idle_ttl: Duration) -> bool {
+        if now >= self.absolute_expires_at {
+            return false;
+        }
+        self.expires_at = (now + idle_ttl).min(self.absolute_expires_at);
+        true
+    }
+
+    // Swap in a freshly minted token on refresh. The old raw token stops resolving the
+    // moment this is persisted, which keeps the window in which a leaked session code
+    // is useful as short as the idle timeout.
+    pub fn rotate_token(&mut self, session_token_hash: String) {
+        self.session_token_hash = session_token_hash;
     }
 
     pub fn id(&self) -> Uuid {
@@ -199,6 +231,9 @@ impl AuthSession {
     }
     pub fn expires_at(&self) -> DateTime<Utc> {
         self.expires_at
+    }
+    pub fn absolute_expires_at(&self) -> DateTime<Utc> {
+        self.absolute_expires_at
     }
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at

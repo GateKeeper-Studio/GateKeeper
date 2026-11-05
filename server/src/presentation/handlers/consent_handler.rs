@@ -12,7 +12,7 @@ use crate::{
     presentation::{
         audit_emit::admin_action,
         errors::ApiError,
-        middleware::auth::{AuthPrincipal, RequestContext},
+        middleware::auth::{RequestContext, TenantScope},
         routes::AppState,
     },
 };
@@ -23,7 +23,8 @@ use crate::{
 // each currently holds.
 pub async fn list_user_consents(
     State(state): State<AppState>,
-    Path((tenant_id, user_id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_user_consents::query::Query { tenant_id, user_id };
     let response = state.list_user_consents.execute(query).await?;
@@ -36,8 +37,11 @@ pub async fn list_user_consents(
 // `client_id` here is the internal oauth_clients.id. Idempotent → 204.
 pub async fn revoke_consent(
     State(state): State<AppState>,
-    Path((tenant_id, user_id, client_id)): Path<(Uuid, Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, user_id, client_id)): Path<(Uuid, Uuid, Uuid)>,
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = revoke_consent::command::Command {

@@ -30,7 +30,11 @@ impl User {
         User {
             id: Uuid::now_v7(),
             tenant_id,
-            email,
+            // Email is the user's identity key and is matched case-insensitively.
+            // Normalize once here (the single creation choke point for both
+            // self-registration and social provisioning) so the stored value is
+            // canonical and the unique index never admits case-variant duplicates.
+            email: email.trim().to_lowercase(),
             is_email_verified: false,
             profile,
             credentials,

@@ -33,6 +33,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true, // require_pkce
             true, // require_consent
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }
@@ -125,7 +127,7 @@ mod tests {
         let (_, use_case) = setup(&client);
 
         let mut query = make_query(tenant_id);
-        query.scope = "admin billing".to_string(); // none are allowed
+        query.scope = "admin reports".to_string(); // none are allowed
 
         let err = use_case.execute(query).await.unwrap_err();
         assert!(matches!(err, DomainError::InvalidScope(_)));

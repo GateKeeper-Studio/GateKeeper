@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use chrono::Utc;
+use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::{
@@ -37,6 +38,14 @@ impl UseCase {
             .ok_or_else(|| DomainError::InvalidClient("unknown or inactive client".to_string()))?;
         let tenant_id = client.tenant_id();
 
+        // 1b. An external-login-only client mints no reset tokens; refuse any that
+        //     predate the flag being turned on.
+        if !client.allows_password_login() {
+            return Err(DomainError::AccessDenied(
+                "this application signs in with an external provider only".to_string(),
+            ));
+        }
+
         // 2. Generic error for every validation failure so an attacker cannot tell
         //    why a reset attempt failed (unknown id, expired, consumed, wrong token).
         let invalid = || {
@@ -54,8 +63,14 @@ impl UseCase {
             .filter(|t| t.tenant_id() == tenant_id && t.is_redeemable(Utc::now()))
             .ok_or_else(invalid)?;
 
-        // 4. Hash comparison of the high-entropy secret (constant-time on the hash).
-        if sha256_hex(&command.password_reset_token) != token.token_hash() {
+        // 4. Constant-time hash comparison of the high-entropy secret.
+        let submitted = sha256_hex(&command.password_reset_token);
+        if submitted
+            .as_bytes()
+            .ct_eq(token.token_hash().as_bytes())
+            .unwrap_u8()
+            != 1
+        {
             return Err(invalid());
         }
 

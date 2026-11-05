@@ -1,9 +1,14 @@
 pub mod admin_token_issuer;
 pub mod audit_logger;
+pub mod email_renderer;
 pub mod email_sender;
+pub mod external_identity_provider_client;
+pub mod geoip_resolver;
+pub mod risk_engine;
 pub mod secret_cipher;
 pub mod signing_key_generator;
 pub mod token_signer;
 pub mod token_verifier;
 pub mod unit_of_work;
 pub mod webauthn;
+pub mod webhook_sender;

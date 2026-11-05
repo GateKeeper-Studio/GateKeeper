@@ -15,4 +15,11 @@ pub trait PasswordResetTokenRepository: Send + Sync {
     // Burns every still-live reset token for the user so only one link is ever
     // active at a time: issuing a fresh link invalidates any older ones.
     async fn invalidate_active_by_user_id(&self, user_id: Uuid) -> Result<(), DomainError>;
+
+    // Retention: hard-delete rows already past `expires_at`. Called by the
+    // background purge; idempotent, so concurrent runs are harmless.
+    async fn delete_expired(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, DomainError>;
 }

@@ -17,4 +17,11 @@ pub trait PasswordChangeTokenRepository: Send + Sync {
     // Burns every still-live token for the user so a fresh login never leaves more
     // than one live change code at a time.
     async fn invalidate_active_by_user_id(&self, user_id: Uuid) -> Result<(), DomainError>;
+
+    // Retention: hard-delete rows already past `expires_at`. Called by the
+    // background purge; idempotent, so concurrent runs are harmless.
+    async fn delete_expired(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, DomainError>;
 }

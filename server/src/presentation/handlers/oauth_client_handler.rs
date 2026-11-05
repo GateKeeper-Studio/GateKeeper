@@ -19,7 +19,7 @@ use crate::{
     presentation::{
         audit_emit::admin_action,
         errors::{ApiError, AppJson},
-        middleware::auth::{AuthPrincipal, RequestContext},
+        middleware::auth::{RequestContext, TenantScope},
         routes::AppState,
     },
 };
@@ -33,8 +33,10 @@ pub struct PaginationParams {
 // POST /tenants/:tenant_id/oauth-clients
 pub async fn create_oauth_client(
     State(state): State<AppState>,
-    Path(tenant_id): Path<Uuid>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
     ctx: RequestContext,
     AppJson(mut payload): AppJson<create_oauth_client::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -58,7 +60,7 @@ pub async fn create_oauth_client(
 // GET /tenants/:tenant_id/oauth-clients?page=1&page_size=10
 pub async fn list_oauth_clients(
     State(state): State<AppState>,
-    Path(tenant_id): Path<Uuid>,
+    TenantScope { tenant_id, .. }: TenantScope,
     Query(params): Query<PaginationParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = list_oauth_clients::query::Query {
@@ -73,7 +75,8 @@ pub async fn list_oauth_clients(
 // GET /tenants/:tenant_id/oauth-clients/:client_id
 pub async fn get_oauth_client_by_id(
     State(state): State<AppState>,
-    Path((tenant_id, id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let query = get_oauth_client_by_id::query::Query { tenant_id, id };
     let response = state.get_oauth_client_by_id.execute(query).await?;
@@ -83,8 +86,11 @@ pub async fn get_oauth_client_by_id(
 // PUT /tenants/:tenant_id/oauth-clients/:client_id
 pub async fn update_oauth_client(
     State(state): State<AppState>,
-    Path((tenant_id, id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
     ctx: RequestContext,
     AppJson(mut payload): AppJson<update_oauth_client::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -112,7 +118,8 @@ pub async fn update_oauth_client(
 // once (the old secret is invalidated immediately). 400 for public clients.
 pub async fn rotate_oauth_client_secret(
     State(state): State<AppState>,
-    Path((tenant_id, id)): Path<(Uuid, Uuid)>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = rotate_oauth_client_secret::command::Command { tenant_id, id };
     let response = state.rotate_oauth_client_secret.execute(command).await?;
@@ -122,8 +129,11 @@ pub async fn rotate_oauth_client_secret(
 // DELETE /tenants/:tenant_id/oauth-clients/:client_id
 pub async fn delete_oauth_client(
     State(state): State<AppState>,
-    Path((tenant_id, id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
     let command = delete_oauth_client::command::Command { tenant_id, id };

@@ -13,10 +13,11 @@ pub struct IssuedAdminToken {
 // admin account. The `admin` role is implied (admin tokens are only ever minted
 // for platform admins), so the middleware grants admin access on a valid token.
 // `organization_id` pins the admin to the single organization it belongs to — every
-// org/subscription action is scoped to it, so an admin can only manage its own org.
+// organization action is scoped to it, so an admin can only manage its own org.
 pub struct AdminTokenClaims {
     pub admin_id: Uuid,
     pub email: String,
+    pub name: String,
     pub organization_id: Uuid,
 }
 
@@ -29,6 +30,7 @@ pub trait AdminTokenIssuer: Send + Sync {
         &self,
         admin_id: Uuid,
         email: &str,
+        name: &str,
         organization_id: Uuid,
     ) -> Result<IssuedAdminToken, DomainError>;
     fn verify(&self, token: &str) -> Result<AdminTokenClaims, DomainError>;

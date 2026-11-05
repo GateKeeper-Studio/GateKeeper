@@ -37,7 +37,7 @@ impl AdminUserRepository for DbAdminUserRepository {
       self.executor,
       sqlx::query!(
         r#"
-          SELECT id, organization_id, email, password_hash, password_algorithm, is_active, created_at, updated_at
+          SELECT id, organization_id, email, name, password_hash, password_algorithm, is_active, created_at, updated_at
           FROM admin_users
           WHERE email = $1
         "#,
@@ -52,6 +52,7 @@ impl AdminUserRepository for DbAdminUserRepository {
                 r.id,
                 r.organization_id,
                 r.email,
+                r.name,
                 r.password_hash,
                 r.password_algorithm,
                 r.is_active,
@@ -66,7 +67,7 @@ impl AdminUserRepository for DbAdminUserRepository {
       self.executor,
       sqlx::query!(
         r#"
-          SELECT id, organization_id, email, password_hash, password_algorithm, is_active, created_at, updated_at
+          SELECT id, organization_id, email, name, password_hash, password_algorithm, is_active, created_at, updated_at
           FROM admin_users
           WHERE id = $1
         "#,
@@ -81,6 +82,7 @@ impl AdminUserRepository for DbAdminUserRepository {
                 r.id,
                 r.organization_id,
                 r.email,
+                r.name,
                 r.password_hash,
                 r.password_algorithm,
                 r.is_active,
@@ -95,12 +97,13 @@ impl AdminUserRepository for DbAdminUserRepository {
       self.executor,
       sqlx::query!(
         r#"
-          INSERT INTO admin_users (id, organization_id, email, password_hash, password_algorithm, is_active, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          INSERT INTO admin_users (id, organization_id, email, name, password_hash, password_algorithm, is_active, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         "#,
         admin.id(),
         admin.organization_id(),
         admin.email(),
+        admin.name(),
         admin.password_hash(),
         admin.password_algorithm(),
         admin.is_active(),
@@ -109,14 +112,66 @@ impl AdminUserRepository for DbAdminUserRepository {
       ),
       execute
     )
-    .map_err(|e| match &e {
-      sqlx::Error::Database(db) if db.is_unique_violation() => {
-        DomainError::UserAlreadyExists("an admin with that email already exists".to_string())
-      }
-      _ => map_sqlx_error(e),
-    })?;
+    .map_err(map_admin_write_error)?;
 
         Ok(())
+    }
+
+    async fn update(&self, admin: &AdminUser) -> Result<(), DomainError> {
+        run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          UPDATE admin_users
+          SET email = $2, name = $3, password_hash = $4, password_algorithm = $5,
+              is_active = $6, updated_at = $7
+          WHERE id = $1
+        "#,
+                admin.id(),
+                admin.email(),
+                admin.name(),
+                admin.password_hash(),
+                admin.password_algorithm(),
+                admin.is_active(),
+                admin.updated_at(),
+            ),
+            execute
+        )
+        .map_err(map_admin_write_error)?;
+
+        Ok(())
+    }
+
+    async fn count_active_by_organization(
+        &self,
+        organization_id: Uuid,
+    ) -> Result<i64, DomainError> {
+        let row = run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          SELECT COUNT(*) AS "count!"
+          FROM admin_users
+          WHERE organization_id = $1 AND is_active = true
+        "#,
+                organization_id
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(row.count)
+    }
+}
+
+// A unique-violation on a write means the email is taken — surface it as a conflict;
+// anything else is an opaque infrastructure error.
+fn map_admin_write_error(e: sqlx::Error) -> DomainError {
+    match &e {
+        sqlx::Error::Database(db) if db.is_unique_violation() => {
+            DomainError::UserAlreadyExists("an admin with that email already exists".to_string())
+        }
+        _ => map_sqlx_error(e),
     }
 }
 

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE user_profiles SET first_name = '', last_name = '', display_name = '', custom_field_values = NULL WHERE user_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4f7bbb35cdd0a76a01208a333e3fa6cef456c8fad2e9ea1fcb0efc8e5757a9d0"
+}

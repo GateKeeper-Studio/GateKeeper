@@ -12,6 +12,7 @@
 	import { validate } from '$lib/utils/form';
 	import { formSchema } from './schema';
 	import { forgotPasswordApi } from '$lib/services/auth/forgot-password';
+	import { m } from '$lib/paraglide/messages.js';
 
 	const clientId = page.params.clientId as string;
 
@@ -31,7 +32,7 @@
 		errors = {};
 
 		if (!clientId) {
-			toast.error('Application ID is required');
+			toast.error(m.auth_forgot_password_client_id_required());
 			return;
 		}
 
@@ -56,28 +57,27 @@
 
 {#if isSent}
 	<div class="grid gap-6">
-		<Alert.Root variant="default" class="bg-green-100 dark:bg-green-700">
+		<Alert.Root variant="default" class="bg-green-100 dark:bg-green-800">
 			<CheckCircleIcon class="h-5 w-5 text-green-500 dark:text-green-400" />
-			<Alert.Title>E-mail sent</Alert.Title>
+			<Alert.Title class="font-bold">{m.auth_forgot_password_sent_title()}</Alert.Title>
 
-			<Alert.Description>
-				Check your email for a link to reset your password. If it doesn't appear within a few
-				minutes, check your spam folder.
+			<Alert.Description class="dark:text-gray-100">
+				{m.auth_forgot_password_sent_description()}
 			</Alert.Description>
 		</Alert.Root>
 	</div>
 
-	<Button onclick={() => (isSent = false)} class="mt-4">Go Back</Button>
+	<Button onclick={() => (isSent = false)} class="mt-4">{m.auth_forgot_password_go_back()}</Button>
 {:else}
 	<div class="grid gap-4">
 		<form onsubmit={onSubmit} class="space-y-3">
 			<div class="space-y-2">
-				<Label for="email">E-mail</Label>
+				<Label for="email">{m.auth_email_label()}</Label>
 				<Input
 					id="email"
 					type="email"
 					autocomplete="email"
-					placeholder="example@email.com"
+					placeholder={m.auth_email_placeholder()}
 					bind:value={email}
 				/>
 				{#if errors.email}
@@ -89,7 +89,7 @@
 				{#if isLoading}
 					<LoadingSpinner class="absolute left-4" />
 				{/if}
-				Send Mail
+				{m.auth_forgot_password_submit()}
 			</Button>
 		</form>
 	</div>

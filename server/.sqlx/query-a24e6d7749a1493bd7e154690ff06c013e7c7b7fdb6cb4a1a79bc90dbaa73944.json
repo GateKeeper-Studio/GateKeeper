@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE refresh_tokens\n          SET revoked_at = now()\n          WHERE tenant_id = $1 AND family_id = $2 AND revoked_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a24e6d7749a1493bd7e154690ff06c013e7c7b7fdb6cb4a1a79bc90dbaa73944"
+}

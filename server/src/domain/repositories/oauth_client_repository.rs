@@ -35,6 +35,9 @@ pub trait OAuthClientRepository: Send + Sync {
     async fn count_by_tenant_id(&self, tenant_id: Uuid) -> Result<u32, DomainError>;
 
     async fn add(&self, client: &OAuthClient) -> Result<(), DomainError>;
+    // `update` never touches the secret hash; rotation goes through
+    // `update_secret_hash` so a details edit can't clobber a credential.
     async fn update(&self, client: &OAuthClient) -> Result<(), DomainError>;
+    async fn update_secret_hash(&self, client: &OAuthClient) -> Result<(), DomainError>;
     async fn delete_by_id(&self, tenant_id: Uuid, id: Uuid) -> Result<(), DomainError>;
 }

@@ -1,6 +1,6 @@
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     application::use_cases::compliance::list_audit_events,
-    presentation::{errors::ApiError, middleware::auth::AuthPrincipal, routes::AppState},
+    presentation::{errors::ApiError, middleware::auth::TenantScope, routes::AppState},
 };
 
 // Query-string filters for the audit log. All optional and AND-combined.
@@ -31,14 +31,9 @@ pub struct AuditQueryParams {
 // log even if it reaches this path.
 pub async fn list_audit_events(
     State(state): State<AppState>,
-    Path(tenant_id): Path<Uuid>,
-    principal: AuthPrincipal,
+    TenantScope { tenant_id, .. }: TenantScope,
     Query(params): Query<AuditQueryParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    if state.require_admin_auth && !principal.can_access_tenant(tenant_id) {
-        return Err(ApiError::Forbidden("tenant mismatch".to_string()));
-    }
-
     let query = list_audit_events::query::Query {
         tenant_id,
         page: params.page,

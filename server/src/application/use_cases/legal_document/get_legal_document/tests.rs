@@ -5,7 +5,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        application::use_cases::legal_document::get_legal_document::{query::Query, use_case::UseCase},
+        application::use_cases::legal_document::get_legal_document::{
+            query::Query, use_case::UseCase,
+        },
         domain::{
             entities::legal_document::{LegalDocument, LegalDocumentType},
             repositories::legal_document_repository::LegalDocumentRepository,

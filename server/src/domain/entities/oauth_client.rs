@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -63,6 +65,119 @@ impl ClientType {
     }
 }
 
+// Which pre-built login-page template this client's hosted auth screens use. The
+// value is a whitelisted key that selects one of OUR Svelte layout components —
+// the admin never supplies markup, so there is no code-injection surface here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginLayout {
+    Centered,
+    SplitImage,
+    Card,
+    Minimal,
+}
+
+impl LoginLayout {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LoginLayout::Centered => "centered",
+            LoginLayout::SplitImage => "split_image",
+            LoginLayout::Card => "card",
+            LoginLayout::Minimal => "minimal",
+        }
+    }
+
+    // Returns None for unknown keys so the application layer can reject them and a
+    // corrupted/legacy DB value can fall back to a safe default on read.
+    pub fn from_key(value: &str) -> Option<Self> {
+        match value {
+            "centered" => Some(LoginLayout::Centered),
+            "split_image" => Some(LoginLayout::SplitImage),
+            "card" => Some(LoginLayout::Card),
+            "minimal" => Some(LoginLayout::Minimal),
+            _ => None,
+        }
+    }
+}
+
+// Which side the hero panel sits on for the split-image layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeroSide {
+    Left,
+    Right,
+}
+
+impl HeroSide {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HeroSide::Left => "left",
+            HeroSide::Right => "right",
+        }
+    }
+
+    pub fn from_key(value: &str) -> Option<Self> {
+        match value {
+            "left" => Some(HeroSide::Left),
+            "right" => Some(HeroSide::Right),
+            _ => None,
+        }
+    }
+}
+
+// Font family for the login screens. A closed allowlist (never raw user input):
+// the key maps to a bundled, safe font stack in the front-end. Keeping it an enum
+// means an admin can't inject an arbitrary `font-family` value into the CSS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginFont {
+    Inter,
+    System,
+    Roboto,
+    Georgia,
+}
+
+impl LoginFont {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LoginFont::Inter => "inter",
+            LoginFont::System => "system",
+            LoginFont::Roboto => "roboto",
+            LoginFont::Georgia => "georgia",
+        }
+    }
+
+    pub fn from_key(value: &str) -> Option<Self> {
+        match value {
+            "inter" => Some(LoginFont::Inter),
+            "system" => Some(LoginFont::System),
+            "roboto" => Some(LoginFont::Roboto),
+            "georgia" => Some(LoginFont::Georgia),
+            _ => None,
+        }
+    }
+}
+
+// Per-client login-page appearance: the chosen layout template plus a small set of
+// validated branding tokens. Every field is either a whitelisted enum, a validated
+// http(s) URL, a hex color, a constrained length/unit value, or plain text — so the
+// hosted login UI can render it WITHOUT ever executing admin-supplied code. The
+// invariants are enforced at the application boundary (see validation.rs), mirroring
+// how tos_uri / policy_uri are validated before they reach this entity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoginAppearance {
+    pub layout: LoginLayout,
+    pub hero_position: HeroSide,
+    pub logo_uri: Option<String>,
+    pub background_image_uri: Option<String>,
+    // locale -> text. Not required to cover every allowed_language — a hosted
+    // page falls back through the client's default_language, then whatever
+    // translation exists (see application::shared::localization::resolve_localized).
+    pub heading: Option<HashMap<String, String>>,
+    pub subtext: Option<HashMap<String, String>>,
+    pub primary_color: Option<String>,
+    pub accent_color: Option<String>,
+    pub border_radius: Option<String>,
+    pub font_family: Option<LoginFont>,
+}
+
 #[derive(Debug, Clone)]
 pub struct OAuthClient {
     id: Uuid,
@@ -96,6 +211,37 @@ pub struct OAuthClient {
     tos_uri: Option<String>,
     policy_uri: Option<String>,
 
+    // OIDC `initiate_login_uri` (RFC 7591 / OIDC Dynamic Client Registration): the RP
+    // endpoint that starts a fresh authorization request.
+    //
+    // The hosted login UI sends the browser here when the OAuth state/PKCE it was handed
+    // has expired. It has to be the RP that restarts the flow, not us: the PKCE
+    // code_verifier lives in the RP's own cookie and we have never seen it, so only the
+    // RP can mint a replacement. Registering the URI here — rather than accepting one in
+    // a query parameter — is what keeps "restart my sign-in" from being an open redirect.
+    initiate_login_uri: Option<String>,
+
+    // Optional per-client login-page template + branding. None → the default look.
+    login_appearance: Option<LoginAppearance>,
+
+    // When true, this client authenticates ONLY through its configured external
+    // identity providers: every password-credential path (self-registration, password
+    // sign-in, forgot/reset password, forced change) is refused for it, and its users
+    // never pick a password at all. The social callback already provisions passwordless
+    // accounts, so nothing else about the flow changes.
+    //
+    // The application layer refuses to turn this on unless the client has at least one
+    // ACTIVE external provider — otherwise the hosted login page would offer no way in.
+    external_login_only: bool,
+
+    // Which of the supported locales (domain::locale::SUPPORTED_LOCALES) this
+    // client's hosted login/sign-up page offers to end users, and which one it
+    // uses absent an explicit user choice. Always non-empty; default_language is
+    // always a member (enforced in the application layer before either reaches
+    // here — see validate_client_languages).
+    allowed_languages: Vec<String>,
+    default_language: String,
+
     mfa_policy: MfaPolicy,
 
     is_active: bool,
@@ -117,6 +263,8 @@ impl OAuthClient {
         allowed_grant_types: Vec<String>,
         require_pkce: bool,
         require_consent: bool,
+        allowed_languages: Vec<String>,
+        default_language: String,
         mfa_policy: MfaPolicy,
     ) -> Self {
         OAuthClient {
@@ -135,6 +283,11 @@ impl OAuthClient {
             email_provider_id: None,
             tos_uri: None,
             policy_uri: None,
+            initiate_login_uri: None,
+            login_appearance: None,
+            external_login_only: false,
+            allowed_languages,
+            default_language,
             mfa_policy,
             is_active: true,
             created_at: Utc::now(),
@@ -159,6 +312,9 @@ impl OAuthClient {
         email_provider_id: Option<Uuid>,
         tos_uri: Option<String>,
         policy_uri: Option<String>,
+        initiate_login_uri: Option<String>,
+        allowed_languages: Vec<String>,
+        default_language: String,
         mfa_policy: MfaPolicy,
         is_active: bool,
         created_at: DateTime<Utc>,
@@ -180,6 +336,14 @@ impl OAuthClient {
             email_provider_id,
             tos_uri,
             policy_uri,
+            initiate_login_uri,
+            // Rehydrated separately via set_login_appearance() / set_external_login_only()
+            // so this constructor's signature stays stable across the many call sites that
+            // build clients.
+            login_appearance: None,
+            external_login_only: false,
+            allowed_languages,
+            default_language,
             mfa_policy,
             is_active,
             created_at,
@@ -204,6 +368,11 @@ impl OAuthClient {
         email_provider_id: Option<Uuid>,
         tos_uri: Option<String>,
         policy_uri: Option<String>,
+        initiate_login_uri: Option<String>,
+        login_appearance: Option<LoginAppearance>,
+        external_login_only: bool,
+        allowed_languages: Vec<String>,
+        default_language: String,
         mfa_policy: MfaPolicy,
         is_active: bool,
     ) {
@@ -217,6 +386,11 @@ impl OAuthClient {
         self.email_provider_id = email_provider_id;
         self.tos_uri = tos_uri;
         self.policy_uri = policy_uri;
+        self.initiate_login_uri = initiate_login_uri;
+        self.login_appearance = login_appearance;
+        self.external_login_only = external_login_only;
+        self.allowed_languages = allowed_languages;
+        self.default_language = default_language;
         self.mfa_policy = mfa_policy;
         self.is_active = is_active;
         self.updated_at = Some(Utc::now());
@@ -233,6 +407,27 @@ impl OAuthClient {
     pub fn set_legal_uris(&mut self, tos_uri: Option<String>, policy_uri: Option<String>) {
         self.tos_uri = tos_uri;
         self.policy_uri = policy_uri;
+    }
+
+    // Set/clear the RP endpoint that restarts an expired authorization request (admin
+    // CRUD on create, where `new` defaults it to None).
+    pub fn set_initiate_login_uri(&mut self, initiate_login_uri: Option<String>) {
+        self.initiate_login_uri = initiate_login_uri;
+    }
+
+    // Set/clear the per-client login-page appearance. Used on create and when
+    // rehydrating from the database (reconstruct leaves it None). Does not touch
+    // updated_at — it is not, by itself, an admin edit event. Pass None for the
+    // default look.
+    pub fn set_login_appearance(&mut self, login_appearance: Option<LoginAppearance>) {
+        self.login_appearance = login_appearance;
+    }
+
+    // Set the external-provider-only policy. Used on create and when rehydrating from
+    // the database (reconstruct leaves it false), mirroring set_login_appearance —
+    // admin edits go through update_details, which stamps updated_at.
+    pub fn set_external_login_only(&mut self, external_login_only: bool) {
+        self.external_login_only = external_login_only;
     }
 
     // Rotate the client secret: replace the stored Argon2 hash with a freshly
@@ -313,6 +508,26 @@ impl OAuthClient {
     }
     pub fn policy_uri(&self) -> Option<&str> {
         self.policy_uri.as_deref()
+    }
+    pub fn initiate_login_uri(&self) -> Option<&str> {
+        self.initiate_login_uri.as_deref()
+    }
+    pub fn login_appearance(&self) -> Option<&LoginAppearance> {
+        self.login_appearance.as_ref()
+    }
+    pub fn external_login_only(&self) -> bool {
+        self.external_login_only
+    }
+    // The question every password-credential use case actually asks before it spends
+    // an Argon2 verification or mints a reset token.
+    pub fn allows_password_login(&self) -> bool {
+        !self.external_login_only
+    }
+    pub fn allowed_languages(&self) -> &[String] {
+        &self.allowed_languages
+    }
+    pub fn default_language(&self) -> &str {
+        &self.default_language
     }
     pub fn mfa_policy(&self) -> &MfaPolicy {
         &self.mfa_policy

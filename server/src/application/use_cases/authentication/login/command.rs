@@ -29,4 +29,11 @@ pub struct Command {
     // ignored by the use case.
     pub mfa_methods: Option<Vec<String>>,
     pub mfa_default_method: Option<String>,
+
+    // Request context for the Risk Engine, injected by the handler from
+    // X-Forwarded-For / X-Real-IP / User-Agent — never taken from the JSON body.
+    #[serde(skip_deserializing, default)]
+    pub ip_address: Option<String>,
+    #[serde(skip_deserializing, default)]
+    pub user_agent: Option<String>,
 }

@@ -5,20 +5,21 @@
 	import { EMfaType } from '$lib/services/auth/login';
 	import AuthForm from './auth-form.svelte';
 	import type { PageData } from './$types';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 </script>
 
 <svelte:head>
-	<title>Authenticator App - GateKeeper</title>
+	<title>{m.auth_mfa_app_title()} - GateKeeper</title>
 </svelte:head>
 
 <Background client={data.client}>
 	<MfaMethodHeader method={EMfaType.MfaApp} />
 
 	{#if data.loadError}
-		<ErrorAlert message={data.loadError.message} title="An error occurred..." />
+		<ErrorAlert message={data.loadError.message} title={m.auth_error_title()} />
 	{:else}
-		<AuthForm />
+		<AuthForm client={data.client} />
 	{/if}
 </Background>

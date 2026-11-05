@@ -1,0 +1,80 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT\n            ip_address AS \"ip_address!\",\n            COUNT(*) AS \"attempts!\",\n            COUNT(*) FILTER (WHERE NOT credentials_valid) AS \"failed_attempts!\",\n            COUNT(DISTINCT COALESCE(username_normalized, user_id::text)) AS \"distinct_users!\",\n            MAX(country_code) AS country_code,\n            MAX(risk_score) AS \"max_risk_score!\",\n            MIN(created_at) AS \"first_seen!\",\n            MAX(created_at) AS \"last_seen!\"\n          FROM \"login_events\"\n          WHERE tenant_id = $1 AND ip_address IS NOT NULL\n            AND created_at >= $2 AND created_at <= $3\n          GROUP BY ip_address\n          ORDER BY \"failed_attempts!\" DESC, \"attempts!\" DESC\n          LIMIT $4\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ip_address!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "ip_address"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "attempts!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "failed_attempts!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "distinct_users!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "country_code",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "max_risk_score!",
+        "type_info": "Int4",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 6,
+        "name": "first_seen!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "last_seen!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "3daa7b6d2350674ad7305577e7a993e653b7f80b3af7fbb9381c26da87e288fb"
+}

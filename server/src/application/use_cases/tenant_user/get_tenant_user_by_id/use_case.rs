@@ -55,6 +55,7 @@ impl UseCase {
             first_name: profile.first_name().to_string(),
             last_name: profile.last_name().to_string(),
             email: user.email().to_string(),
+            custom_field_values: profile.custom_field_values().cloned(),
             created_at: user.created_at(),
             updated_at: user.updated_at(),
         })

@@ -12,20 +12,29 @@ use crate::{
             auth_session_repository::AuthSessionRepository,
             authorization_code_repository::AuthorizationCodeRepository,
             consent_grant_repository::ConsentGrantRepository,
+            custom_field_definition_repository::CustomFieldDefinitionRepository,
             email_provider_repository::EmailProviderRepository,
             email_verification_token_repository::EmailVerificationTokenRepository,
-            group_repository::GroupRepository, mfa_challenge_repository::MfaChallengeRepository,
+            external_identity_provider_repository::ExternalIdentityProviderRepository,
+            external_login_flow_repository::ExternalLoginFlowRepository,
+            group_repository::GroupRepository, login_event_repository::LoginEventRepository,
+            mfa_challenge_repository::MfaChallengeRepository,
             mfa_enrollment_repository::MfaEnrollmentRepository,
             oauth_client_repository::OAuthClientRepository,
             organization_repository::OrganizationRepository,
+            outbox_event_repository::OutboxEventRepository,
             password_change_token_repository::PasswordChangeTokenRepository,
             password_reset_token_repository::PasswordResetTokenRepository,
             policy_acceptance_repository::PolicyAcceptanceRepository,
             refresh_token_repository::RefreshTokenRepository, role_repository::RoleRepository,
+            security_block_repository::SecurityBlockRepository,
             signing_key_repository::SigningKeyRepository,
-            subscription_plan_repository::SubscriptionPlanRepository,
-            subscription_repository::SubscriptionRepository, tenant_repository::TenantRepository,
+            social_identity_repository::SocialIdentityRepository,
+            tenant_repository::TenantRepository,
+            tenant_risk_policy_repository::TenantRiskPolicyRepository,
             user_repository::UserRepository,
+            webhook_delivery_repository::WebhookDeliveryRepository,
+            webhook_subscription_repository::WebhookSubscriptionRepository,
         },
     },
     infraestructure::database::{
@@ -35,21 +44,29 @@ use crate::{
             auth_session_repository::DbAuthSessionRepository,
             authorization_code_repository::DbAuthorizationCodeRepository,
             consent_grant_repository::DbConsentGrantRepository,
+            custom_field_definition_repository::DbCustomFieldDefinitionRepository,
             email_provider_repository::DbEmailProviderRepository,
             email_verification_token_repository::DbEmailVerificationTokenRepository,
-            group_repository::DbGroupRepository,
+            external_identity_provider_repository::DbExternalIdentityProviderRepository,
+            external_login_flow_repository::DbExternalLoginFlowRepository,
+            group_repository::DbGroupRepository, login_event_repository::DbLoginEventRepository,
             mfa_challenge_repository::DbMfaChallengeRepository,
             mfa_enrollment_repository::DbMfaEnrollmentRepository,
             oauth_client_repository::DbOAuthClientRepository,
             organization_repository::DbOrganizationRepository,
+            outbox_event_repository::DbOutboxEventRepository,
             password_change_token_repository::DbPasswordChangeTokenRepository,
             password_reset_token_repository::DbPasswordResetTokenRepository,
             policy_acceptance_repository::DbPolicyAcceptanceRepository,
             refresh_token_repository::DbRefreshTokenRepository, role_repository::DbRoleRepository,
+            security_block_repository::DbSecurityBlockRepository,
             signing_key_repository::DbSigningKeyRepository,
-            subscription_plan_repository::DbSubscriptionPlanRepository,
-            subscription_repository::DbSubscriptionRepository,
-            tenant_repository::DbTenantRepository, user_repository::DbUserRepository,
+            social_identity_repository::DbSocialIdentityRepository,
+            tenant_repository::DbTenantRepository,
+            tenant_risk_policy_repository::DbTenantRiskPolicyRepository,
+            user_repository::DbUserRepository,
+            webhook_delivery_repository::DbWebhookDeliveryRepository,
+            webhook_subscription_repository::DbWebhookSubscriptionRepository,
         },
     },
 };
@@ -59,11 +76,10 @@ pub struct DbUnitOfWork {
     user_repository: Arc<DbUserRepository>,
     tenant_repository: Arc<DbTenantRepository>,
     organization_repository: Arc<DbOrganizationRepository>,
-    subscription_repository: Arc<DbSubscriptionRepository>,
-    subscription_plan_repository: Arc<DbSubscriptionPlanRepository>,
     group_repository: Arc<DbGroupRepository>,
     role_repository: Arc<DbRoleRepository>,
     oauth_client_repository: Arc<DbOAuthClientRepository>,
+    custom_field_definition_repository: Arc<DbCustomFieldDefinitionRepository>,
     authorization_code_repository: Arc<DbAuthorizationCodeRepository>,
     refresh_token_repository: Arc<DbRefreshTokenRepository>,
     consent_grant_repository: Arc<DbConsentGrantRepository>,
@@ -75,8 +91,17 @@ pub struct DbUnitOfWork {
     password_reset_token_repository: Arc<DbPasswordResetTokenRepository>,
     password_change_token_repository: Arc<DbPasswordChangeTokenRepository>,
     email_provider_repository: Arc<DbEmailProviderRepository>,
+    external_identity_provider_repository: Arc<DbExternalIdentityProviderRepository>,
+    social_identity_repository: Arc<DbSocialIdentityRepository>,
+    external_login_flow_repository: Arc<DbExternalLoginFlowRepository>,
+    outbox_event_repository: Arc<DbOutboxEventRepository>,
+    webhook_subscription_repository: Arc<DbWebhookSubscriptionRepository>,
+    webhook_delivery_repository: Arc<DbWebhookDeliveryRepository>,
     audit_event_repository: Arc<DbAuditEventRepository>,
     policy_acceptance_repository: Arc<DbPolicyAcceptanceRepository>,
+    login_event_repository: Arc<DbLoginEventRepository>,
+    security_block_repository: Arc<DbSecurityBlockRepository>,
+    tenant_risk_policy_repository: Arc<DbTenantRiskPolicyRepository>,
 }
 
 impl DbUnitOfWork {
@@ -92,17 +117,14 @@ impl DbUnitOfWork {
             organization_repository: Arc::new(DbOrganizationRepository::with_tx(
                 transaction_context.clone(),
             )),
-            subscription_repository: Arc::new(DbSubscriptionRepository::with_tx(
-                transaction_context.clone(),
-            )),
-            subscription_plan_repository: Arc::new(DbSubscriptionPlanRepository::with_tx(
-                transaction_context.clone(),
-            )),
             group_repository: Arc::new(DbGroupRepository::with_tx(transaction_context.clone())),
             role_repository: Arc::new(DbRoleRepository::with_tx(transaction_context.clone())),
             oauth_client_repository: Arc::new(DbOAuthClientRepository::with_tx(
                 transaction_context.clone(),
             )),
+            custom_field_definition_repository: Arc::new(
+                DbCustomFieldDefinitionRepository::with_tx(transaction_context.clone()),
+            ),
             authorization_code_repository: Arc::new(DbAuthorizationCodeRepository::with_tx(
                 transaction_context.clone(),
             )),
@@ -136,10 +158,37 @@ impl DbUnitOfWork {
             email_provider_repository: Arc::new(DbEmailProviderRepository::with_tx(
                 transaction_context.clone(),
             )),
+            external_identity_provider_repository: Arc::new(
+                DbExternalIdentityProviderRepository::with_tx(transaction_context.clone()),
+            ),
+            social_identity_repository: Arc::new(DbSocialIdentityRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            external_login_flow_repository: Arc::new(DbExternalLoginFlowRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            outbox_event_repository: Arc::new(DbOutboxEventRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            webhook_subscription_repository: Arc::new(DbWebhookSubscriptionRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            webhook_delivery_repository: Arc::new(DbWebhookDeliveryRepository::with_tx(
+                transaction_context.clone(),
+            )),
             audit_event_repository: Arc::new(DbAuditEventRepository::with_tx(
                 transaction_context.clone(),
             )),
             policy_acceptance_repository: Arc::new(DbPolicyAcceptanceRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            login_event_repository: Arc::new(DbLoginEventRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            security_block_repository: Arc::new(DbSecurityBlockRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            tenant_risk_policy_repository: Arc::new(DbTenantRiskPolicyRepository::with_tx(
                 transaction_context.clone(),
             )),
             transaction_context,
@@ -161,14 +210,6 @@ impl UnitOfWork for DbUnitOfWork {
         self.organization_repository.clone()
     }
 
-    fn subscription_repository(&self) -> Arc<dyn SubscriptionRepository> {
-        self.subscription_repository.clone()
-    }
-
-    fn subscription_plan_repository(&self) -> Arc<dyn SubscriptionPlanRepository> {
-        self.subscription_plan_repository.clone()
-    }
-
     fn group_repository(&self) -> Arc<dyn GroupRepository> {
         self.group_repository.clone()
     }
@@ -179,6 +220,10 @@ impl UnitOfWork for DbUnitOfWork {
 
     fn oauth_client_repository(&self) -> Arc<dyn OAuthClientRepository> {
         self.oauth_client_repository.clone()
+    }
+
+    fn custom_field_definition_repository(&self) -> Arc<dyn CustomFieldDefinitionRepository> {
+        self.custom_field_definition_repository.clone()
     }
 
     fn authorization_code_repository(&self) -> Arc<dyn AuthorizationCodeRepository> {
@@ -225,12 +270,48 @@ impl UnitOfWork for DbUnitOfWork {
         self.email_provider_repository.clone()
     }
 
+    fn external_identity_provider_repository(&self) -> Arc<dyn ExternalIdentityProviderRepository> {
+        self.external_identity_provider_repository.clone()
+    }
+
+    fn outbox_event_repository(&self) -> Arc<dyn OutboxEventRepository> {
+        self.outbox_event_repository.clone()
+    }
+
+    fn webhook_subscription_repository(&self) -> Arc<dyn WebhookSubscriptionRepository> {
+        self.webhook_subscription_repository.clone()
+    }
+
+    fn webhook_delivery_repository(&self) -> Arc<dyn WebhookDeliveryRepository> {
+        self.webhook_delivery_repository.clone()
+    }
+
+    fn social_identity_repository(&self) -> Arc<dyn SocialIdentityRepository> {
+        self.social_identity_repository.clone()
+    }
+
+    fn external_login_flow_repository(&self) -> Arc<dyn ExternalLoginFlowRepository> {
+        self.external_login_flow_repository.clone()
+    }
+
     fn audit_event_repository(&self) -> Arc<dyn AuditEventRepository> {
         self.audit_event_repository.clone()
     }
 
     fn policy_acceptance_repository(&self) -> Arc<dyn PolicyAcceptanceRepository> {
         self.policy_acceptance_repository.clone()
+    }
+
+    fn login_event_repository(&self) -> Arc<dyn LoginEventRepository> {
+        self.login_event_repository.clone()
+    }
+
+    fn security_block_repository(&self) -> Arc<dyn SecurityBlockRepository> {
+        self.security_block_repository.clone()
+    }
+
+    fn tenant_risk_policy_repository(&self) -> Arc<dyn TenantRiskPolicyRepository> {
+        self.tenant_risk_policy_repository.clone()
     }
 
     async fn commit(self: Box<Self>) -> Result<(), DomainError> {

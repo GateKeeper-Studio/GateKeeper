@@ -18,6 +18,55 @@ services:
           memory: "1GB"
     command: >
       postgres -c log_statement=all -c log_destination=stderr -c log_min_messages=info
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gatekeeper -d gatekeeper"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  gatekeeper-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gatekeeper-server:dev
+    ports:
+      - "${PORT:-8080}:8080"
+    depends_on:
+      gatekeeper-db-rust:
+        # main() runs migrations on boot, so the DB must accept connections first.
+        condition: service_healthy
+    # Optional: pulls secrets (JWT_SECRET, EMAIL_ENCRYPTION_KEY, ...) from .env.
+    # Anything under `environment:` below wins over it.
+    env_file:
+      - path: .env
+        required: false
+    # Lets webhook deliveries reach a consumer running on the docker host:
+    # inside this container `localhost` is the container itself, so point the
+    # subscription at http://host.docker.internal:<port>/... instead.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      APP_ENV: development
+      # Inside the compose network the DB is reachable by service name, not
+      # localhost — override whatever .env says.
+      DATABASE_URL: postgres://gatekeeper:gatekeeper@gatekeeper-db-rust:5432/gatekeeper
+      PORT: 8080
+      # Dev-only fallback; a JWT_SECRET in .env takes precedence.
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
+      LOG_FORMAT: text
+    healthcheck:
+      # /health is static liveness and never touches the DB.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     logging:
       driver: "json-file"
       options:

@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use lettre::{
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::Mailbox,
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::{Mailbox, MultiPart},
     transport::smtp::authentication::Credentials,
 };
 
@@ -28,54 +29,68 @@ impl SmtpEmailSender {
         Self { secret_cipher }
     }
 
-    async fn send(
+    // Decrypts the password and builds the from-mailbox + transport shared by every
+    // delivery path. The `is_active` gate lives in the callers, not here, so the
+    // test-email path can deliberately validate an inactive provider's credentials
+    // before it goes live.
+    fn prepare(
         &self,
-        provider: Option<&EmailProvider>,
-        to: &str,
-        subject: &str,
-        body: &str,
-    ) -> Result<(), DomainError> {
-        let Some(provider) = provider else {
-            // No SMTP provider configured for this client or tenant — log so local/dev
-            // flows still surface the content. Replace by configuring a provider.
-            tracing::info!(recipient = %to, subject = %subject, "[dev email] no SMTP provider configured: {}", body);
-            return Ok(());
-        };
-
-        if !provider.is_active() {
-            return Err(DomainError::EmailProviderError(
-                "the selected email provider is inactive".to_string(),
-            ));
-        }
-
-        self.deliver(provider, to, subject, body).await
+        provider: &EmailProvider,
+    ) -> Result<(Mailbox, AsyncSmtpTransport<Tokio1Executor>), DomainError> {
+        let password = self.secret_cipher.decrypt(provider.password_encrypted())?;
+        let from = build_mailbox(provider.from_email(), provider.from_name())?;
+        let transport = build_transport(provider, password)?;
+        Ok((from, transport))
     }
 
-    // Decrypts the password, builds the message + transport, and delivers it.
-    // The `is_active` gate lives in `send`, not here, so the test-email path can
-    // deliberately validate an inactive provider's credentials before it goes live.
+    // Delivers a `multipart/alternative` message (plain-text + HTML) so modern
+    // clients render the HTML while text-only clients still get a readable body.
     async fn deliver(
         &self,
         provider: &EmailProvider,
         to: &str,
         subject: &str,
-        body: &str,
+        html_body: &str,
+        text_body: &str,
     ) -> Result<(), DomainError> {
-        let password = self.secret_cipher.decrypt(provider.password_encrypted())?;
-
-        let from = build_mailbox(provider.from_email(), provider.from_name())?;
-        let to_mailbox: Mailbox = to.parse().map_err(|_| {
-            DomainError::EmailProviderError(format!("invalid recipient address: {to}"))
-        })?;
+        let (from, transport) = self.prepare(provider)?;
+        let to_mailbox = parse_recipient(to)?;
 
         let email = Message::builder()
             .from(from)
             .to(to_mailbox)
             .subject(subject)
-            .body(body.to_string())
+            .multipart(MultiPart::alternative_plain_html(
+                text_body.to_string(),
+                html_body.to_string(),
+            ))
             .map_err(|e| DomainError::EmailProviderError(format!("failed to build email: {e}")))?;
 
-        let transport = build_transport(provider, password)?;
+        transport.send(email).await.map_err(|e| {
+            tracing::error!("SMTP send failed: {e}");
+            DomainError::EmailProviderError(format!("failed to send email: {e}"))
+        })?;
+
+        Ok(())
+    }
+
+    // Delivers a plain-text-only message (used by the diagnostic test email).
+    async fn deliver_text(
+        &self,
+        provider: &EmailProvider,
+        to: &str,
+        subject: &str,
+        text_body: &str,
+    ) -> Result<(), DomainError> {
+        let (from, transport) = self.prepare(provider)?;
+        let to_mailbox = parse_recipient(to)?;
+
+        let email = Message::builder()
+            .from(from)
+            .to(to_mailbox)
+            .subject(subject)
+            .body(text_body.to_string())
+            .map_err(|e| DomainError::EmailProviderError(format!("failed to build email: {e}")))?;
 
         transport.send(email).await.map_err(|e| {
             tracing::error!("SMTP send failed: {e}");
@@ -88,41 +103,28 @@ impl SmtpEmailSender {
 
 #[async_trait]
 impl EmailSender for SmtpEmailSender {
-    async fn send_verification_code(
+    async fn send(
         &self,
         provider: Option<&EmailProvider>,
         to: &str,
-        code: &str,
+        subject: &str,
+        html_body: &str,
+        text_body: &str,
     ) -> Result<(), DomainError> {
-        let body = format!(
-            "Your verification code is: {code}\n\nIt expires shortly. If you didn't request this, you can ignore this email."
-        );
-        self.send(provider, to, "Your verification code", &body)
-            .await
-    }
+        let Some(provider) = provider else {
+            // No SMTP provider configured for this client or tenant — log so local/dev
+            // flows still surface the content. Replace by configuring a provider.
+            tracing::info!(recipient = %to, subject = %subject, "[dev email] no SMTP provider configured: {}", text_body);
+            return Ok(());
+        };
 
-    async fn send_password_reset_link(
-        &self,
-        provider: Option<&EmailProvider>,
-        to: &str,
-        link: &str,
-    ) -> Result<(), DomainError> {
-        let body = format!(
-            "We received a request to reset your password.\n\nReset it here: {link}\n\nIf you didn't request this, you can ignore this email."
-        );
-        self.send(provider, to, "Reset your password", &body).await
-    }
+        if !provider.is_active() {
+            return Err(DomainError::EmailProviderError(
+                "the selected email provider is inactive".to_string(),
+            ));
+        }
 
-    async fn send_mfa_code(
-        &self,
-        provider: Option<&EmailProvider>,
-        to: &str,
-        code: &str,
-    ) -> Result<(), DomainError> {
-        let body = format!(
-            "Your sign-in verification code is: {code}\n\nIt expires shortly. If you didn't try to sign in, change your password immediately."
-        );
-        self.send(provider, to, "Your sign-in verification code", &body)
+        self.deliver(provider, to, subject, html_body, text_body)
             .await
     }
 
@@ -137,10 +139,16 @@ impl EmailSender for SmtpEmailSender {
             ));
         };
         let body = "This is a test email from GateKeeper.\n\nIf you received it, this SMTP provider's credentials and connection are working.";
-        // Bypasses the `is_active` gate on purpose — see `deliver`.
-        self.deliver(provider, to, "GateKeeper SMTP test", body)
+        // Bypasses the `is_active` gate on purpose — see `deliver_text`.
+        self.deliver_text(provider, to, "GateKeeper SMTP test", body)
             .await
     }
+}
+
+// Parses a recipient address into a mailbox, mapping failures to a domain error.
+fn parse_recipient(to: &str) -> Result<Mailbox, DomainError> {
+    to.parse()
+        .map_err(|_| DomainError::EmailProviderError(format!("invalid recipient address: {to}")))
 }
 
 // "Name <email>" when a display name is set, otherwise the bare address.

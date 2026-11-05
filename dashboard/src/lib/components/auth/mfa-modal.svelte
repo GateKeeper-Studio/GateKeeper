@@ -12,7 +12,9 @@
 	import { buildOidcParams } from '$lib/utils/form';
 	import { EMfaType } from '$lib/services/auth/login';
 	import { sendEmailMfaApi } from '$lib/services/auth/send-email-mfa';
+	import { readSessionCode } from '$lib/state/auth-session-expiry.svelte';
 	import { mfaMethods } from './mfa-method-meta';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { currentMethod }: { currentMethod: EMfaType } = $props();
 
@@ -49,9 +51,11 @@
 		if (switching) return;
 		switching = type;
 
-		const sessionCode = sessionStorage.getItem(`auth_session_${clientId}`) || '';
+		// Read late, via the shared helper: a session refresh rotates the code, so a value
+		// captured any earlier than this could already be dead.
+		const sessionCode = readSessionCode(clientId);
 		if (!sessionCode) {
-			toast.error('Your sign-in session expired. Please sign in again.');
+			toast.error(m.mfa_modal_session_expired());
 			switching = null;
 			return;
 		}
@@ -61,11 +65,11 @@
 		if (type === EMfaType.MfaEmail) {
 			const [, sendErr] = await sendEmailMfaApi({ clientId, sessionCode });
 			if (sendErr) {
-				toast.error(sendErr.data?.message || 'Could not send a verification code.');
+				toast.error(sendErr.message || m.mfa_modal_send_code_error());
 				switching = null;
 				return;
 			}
-			toast.success('A verification code was sent to your e-mail');
+			toast.success(m.mfa_modal_code_sent());
 		}
 
 		// Carry the sign-in flow params over, but drop the previous method's
@@ -88,22 +92,21 @@
 		<div
 			class="flex flex-col gap-2 rounded-md bg-amber-500/10 p-2 text-center text-sm text-muted-foreground"
 		>
-			<span>Cannot use this authentication method now?</span>
+			<span>{m.mfa_modal_cannot_use_method()}</span>
 
 			<Dialog.Trigger
 				class="rounded-sm bg-amber-600/30 p-1 px-3 text-foreground transition-all hover:brightness-50"
 			>
-				Try another one
+				{m.mfa_modal_try_another()}
 			</Dialog.Trigger>
 		</div>
 
 		<Dialog.Content class="top-[40%] sm:max-w-[38.75rem]">
 			<Dialog.Header>
-				<Dialog.Title>Two Factor Methods</Dialog.Title>
+				<Dialog.Title>{m.mfa_modal_title()}</Dialog.Title>
 
 				<Dialog.Description>
-					Two-factor authentication adds an additional layer of security to your account by
-					requiring more than just a password to sign in.
+					{m.mfa_modal_description()}
 				</Dialog.Description>
 			</Dialog.Header>
 
@@ -133,11 +136,11 @@
 								{#if switching === method.type}
 									<LoadingSpinner />
 								{:else if isCurrent}
-									<Badge variant="outline">Current Method</Badge>
+									<Badge variant="outline">{m.mfa_modal_current_method()}</Badge>
 								{:else if isAvailable}
-									<Badge>Configured</Badge>
+									<Badge>{m.mfa_modal_configured()}</Badge>
 								{:else}
-									<Badge variant="secondary">Not Configured</Badge>
+									<Badge variant="secondary">{m.mfa_modal_not_configured()}</Badge>
 								{/if}
 							</Card.Title>
 

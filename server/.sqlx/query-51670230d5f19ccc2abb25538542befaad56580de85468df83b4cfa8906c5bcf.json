@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO authorization_codes (id, tenant_id, code_hash, client_id, user_id,\n            redirect_uri, scopes, code_challenge, code_challenge_method, nonce, consumed_at,\n            expires_at, created_at)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "TextArray",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "51670230d5f19ccc2abb25538542befaad56580de85468df83b4cfa8906c5bcf"
+}

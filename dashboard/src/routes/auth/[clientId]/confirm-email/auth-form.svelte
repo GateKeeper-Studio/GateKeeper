@@ -10,6 +10,7 @@
 	import { validate } from '$lib/utils/form';
 	import { formSchema } from './schema';
 	import { confirmEmailApi } from '$lib/services/auth/confirm-email';
+	import { m } from '$lib/paraglide/messages.js';
 
 	const clientId = page.params.clientId as string;
 	const searchParams = page.url.searchParams;
@@ -66,12 +67,12 @@
 		}
 
 		if (!data) {
-			showError('An error occurred');
+			showError(m.auth_generic_error());
 			return;
 		}
 
 		isLoading = false;
-		toast.success('Email confirmed!');
+		toast.success(m.auth_confirm_email_success());
 
 		window.location.href = `${redirectUri}?code=${data.authorizationCode}&state=${oidcState}&redirect_uri=${redirectUri}&client_id=${clientId}`;
 	}
@@ -79,7 +80,7 @@
 
 <div class="grid gap-4">
 	{#if error}
-		<ErrorAlert message={error} title="An error occurred..." />
+		<ErrorAlert message={error} title={m.auth_error_title()} />
 	{/if}
 
 	<form onsubmit={onSubmit} class="flex w-full flex-col items-center space-y-3">
@@ -110,7 +111,7 @@
 			{#if isLoading}
 				<LoadingSpinner class="absolute left-4" />
 			{/if}
-			Confirm Code
+			{m.auth_confirm_email_submit()}
 		</Button>
 	</form>
 </div>

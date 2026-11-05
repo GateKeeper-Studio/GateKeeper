@@ -21,8 +21,14 @@ impl UseCase {
         let page = query.page.unwrap_or(1).max(1);
         let page_size = query.page_size.unwrap_or(10).clamp(1, 100);
 
-        let tenants = self.tenant_repository.find_all(page, page_size).await?;
-        let total = self.tenant_repository.count_all().await?;
+        let tenants = self
+            .tenant_repository
+            .find_all_for_organization(query.organization_id, page, page_size)
+            .await?;
+        let total = self
+            .tenant_repository
+            .count_for_organization(query.organization_id)
+            .await?;
 
         Ok(PagedContent {
             items: tenants
@@ -34,8 +40,9 @@ impl UseCase {
                     is_active: t.is_active(),
                     can_self_register: t.can_self_register(),
                     can_self_forgot_password: t.can_self_forgot_password(),
-                    subscription_id: t.subscription_id(),
-                    is_default: t.is_default(),
+                    organization_id: t.organization_id(),
+                    appearance: t.appearance().cloned(),
+                    default_language: t.default_language().to_string(),
                     created_at: t.created_at(),
                     updated_at: t.updated_at(),
                 })

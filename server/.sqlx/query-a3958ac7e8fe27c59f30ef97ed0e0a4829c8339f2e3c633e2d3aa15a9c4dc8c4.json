@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE mfa_challenges\n          SET consumed_at = now()\n          WHERE user_id = $1 AND purpose = $2 AND method = $3 AND consumed_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a3958ac7e8fe27c59f30ef97ed0e0a4829c8339f2e3c633e2d3aa15a9c4dc8c4"
+}

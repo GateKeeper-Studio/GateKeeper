@@ -1,0 +1,12 @@
+# cargo-audit accepted exceptions — kept in sync with deny.toml [advisories.ignore]
+# and documented in docs/MEMORY-SAFETY.md. Run: `cargo audit`.
+[advisories]
+ignore = [
+    # rsa "Marvin Attack" timing sidechannel — no upstream fix. Transitive via
+    # jsonwebtoken's rust_crypto backend; the RSA path is unused (this IdP signs
+    # ES256 + HS256 only). Revisit when a constant-time rsa release lands.
+    "RUSTSEC-2023-0071",
+    # proc-macro-error2 unmaintained — build-time proc-macro (validator_derive),
+    # not in the runtime binary. No security impact.
+    "RUSTSEC-2026-0173",
+]

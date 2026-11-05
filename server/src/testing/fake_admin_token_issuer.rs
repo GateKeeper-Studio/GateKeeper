@@ -9,8 +9,8 @@ use crate::{
 };
 
 // Deterministic admin-token stand-in for use-case tests: it does not produce a real
-// JWT, just an inspectable `fake-admin.<id>.<org>.<email>` string, and verifies by
-// parsing that shape back. Lets tests assert a token was issued without real HS256 keys.
+// JWT, just an inspectable `fake-admin.<id>.<org>.<name>.<email>` string, and verifies
+// by parsing that shape back. Lets tests assert a token was issued without real HS256 keys.
 #[derive(Clone, Default)]
 pub struct FakeAdminTokenIssuer;
 
@@ -26,10 +26,11 @@ impl AdminTokenIssuer for FakeAdminTokenIssuer {
         &self,
         admin_id: Uuid,
         email: &str,
+        name: &str,
         organization_id: Uuid,
     ) -> Result<IssuedAdminToken, DomainError> {
         Ok(IssuedAdminToken {
-            token: format!("fake-admin.{admin_id}.{organization_id}.{email}"),
+            token: format!("fake-admin.{admin_id}.{organization_id}.{name}.{email}"),
             expires_in: 3600,
         })
     }
@@ -38,16 +39,20 @@ impl AdminTokenIssuer for FakeAdminTokenIssuer {
         let rest = token
             .strip_prefix("fake-admin.")
             .ok_or_else(|| DomainError::AuthenticationError("invalid_token".to_string()))?;
-        let mut parts = rest.splitn(3, '.');
+        // id and org are dot-free UUIDs; name is dot-free in tests; email comes last
+        // (it may contain dots), so split into exactly four segments.
+        let mut parts = rest.splitn(4, '.');
         let invalid = || DomainError::AuthenticationError("invalid_token".to_string());
         let id = parts.next().ok_or_else(invalid)?;
         let org = parts.next().ok_or_else(invalid)?;
+        let name = parts.next().ok_or_else(invalid)?;
         let email = parts.next().ok_or_else(invalid)?;
         let admin_id = Uuid::parse_str(id).map_err(|_| invalid())?;
         let organization_id = Uuid::parse_str(org).map_err(|_| invalid())?;
         Ok(AdminTokenClaims {
             admin_id,
             email: email.to_string(),
+            name: name.to_string(),
             organization_id,
         })
     }

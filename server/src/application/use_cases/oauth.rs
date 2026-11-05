@@ -1,4 +1,3 @@
-pub mod authorize_complete;
 pub mod authorize_request;
 pub mod discovery;
 pub mod jwks;

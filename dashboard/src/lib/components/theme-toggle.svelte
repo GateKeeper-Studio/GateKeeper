@@ -6,6 +6,7 @@
 
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let triggerRef = $state<HTMLElement | null>(null);
 
@@ -59,13 +60,13 @@
 				<MoonIcon
 					class="absolute h-[1.2rem] w-[1.2rem] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0"
 				/>
-				<span class="sr-only">Toggle theme</span>
+				<span class="sr-only">{m.theme_toggle_label()}</span>
 			</Button>
 		{/snippet}
 	</DropdownMenu.Trigger>
 	<DropdownMenu.Content align="end">
-		<DropdownMenu.Item onclick={() => selectMode('light')}>Light</DropdownMenu.Item>
-		<DropdownMenu.Item onclick={() => selectMode('dark')}>Dark</DropdownMenu.Item>
-		<DropdownMenu.Item onclick={() => selectMode('system')}>System</DropdownMenu.Item>
+		<DropdownMenu.Item onclick={() => selectMode('light')}>{m.theme_toggle_light()}</DropdownMenu.Item>
+		<DropdownMenu.Item onclick={() => selectMode('dark')}>{m.theme_toggle_dark()}</DropdownMenu.Item>
+		<DropdownMenu.Item onclick={() => selectMode('system')}>{m.theme_toggle_system()}</DropdownMenu.Item>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

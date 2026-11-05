@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE \"groups\"\n          SET name = $2, description = $3, updated_at = $4\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d7ff7040a21aea35c4fcff976ac63a64e9defc12b7b2c26537ef65fccbd5756c"
+}

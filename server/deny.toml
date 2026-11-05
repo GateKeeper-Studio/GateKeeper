@@ -1,0 +1,58 @@
+# cargo-deny policy (memory-safety checklist §4/§20). Run: `cargo deny check`.
+# Gates the dependency graph on: RustSec advisories, banned/duplicate crates,
+# license policy, and crate sources.
+
+[advisories]
+version = 2
+# RustSec advisory DB. With version = 2, vulnerabilities and unsound advisories
+# are errors and unmaintained/yanked are warnings by default. Record accepted
+# exceptions here with a justification comment (the "exception register", §24).
+# Full rationale + review dates live in docs/MEMORY-SAFETY.md.
+ignore = [
+    # rsa "Marvin Attack" timing sidechannel. No fix published upstream. Pulled in
+    # transitively by jsonwebtoken's rust_crypto backend, but this IdP signs/verifies
+    # ONLY ES256 (per-tenant) and HS256 (admin) JWTs — the RSA code path is never
+    # exercised. Re-evaluate when RustCrypto/RSA ships a constant-time release.
+    "RUSTSEC-2023-0071",
+    # proc-macro-error2 unmaintained. Build-time proc-macro dependency of
+    # validator_derive; it is not present in the runtime binary. No security impact.
+    # Drops when `validator` migrates off it.
+    "RUSTSEC-2026-0173",
+]
+
+[bans]
+# Duplicate versions bloat the graph and multiply transitive unsafe/audit surface.
+# Warn (don't fail) — a fresh graph tends to have a few benign dupes.
+multiple-versions = "warn"
+wildcards = "deny"          # no `foo = "*"` — every dep must be version-bounded
+allow-wildcard-paths = true # path deps in a workspace are fine
+deny = []                   # add crates to hard-ban here (e.g. unmaintained forks)
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# The crate itself is proprietary (publish = false in Cargo.toml) — skip license
+# checks on our own first-party code.
+private = { ignore = true }
+# Permissive licenses only — this is a proprietary service; no copyleft linked in.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "ISC",
+    "Zlib",
+    "MPL-2.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "Unicode-3.0",
+]
+
+[sources]
+# Only crates.io by default; unknown registries/git remotes are rejected. Add
+# vetted git remotes to `allow-git` with a pinned rev if ever needed.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-git = []

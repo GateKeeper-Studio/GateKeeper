@@ -3,10 +3,18 @@ use std::sync::Arc;
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
-        use_cases::tenant_user::create_tenant_user::{command::Command, response::Response},
+        use_cases::{
+            tenant_user::create_tenant_user::{command::Command, response::Response},
+            webhook::user_event_payload::user_event,
+        },
     },
     domain::{
-        entities::{user::User, user_credentials::UserCredentials, user_profile},
+        entities::{
+            domain_event_type::{DomainEventType, UserEventSource},
+            user::User,
+            user_credentials::UserCredentials,
+            user_profile,
+        },
         errors::DomainError,
     },
     utils::password_hasher::hash_password,
@@ -88,6 +96,15 @@ impl UseCase {
         user.set_profile(user_profile);
 
         uow.user_repository().add(&user).await?;
+
+        // Same transaction as the insert: the event and the user commit together.
+        uow.outbox_event_repository()
+            .enqueue(&user_event(
+                DomainEventType::UserCreated,
+                &user,
+                Some(UserEventSource::Admin),
+            ))
+            .await?;
 
         uow.commit().await?;
 

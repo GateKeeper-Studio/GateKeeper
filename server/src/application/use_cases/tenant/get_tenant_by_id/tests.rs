@@ -20,7 +20,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
         )
     }
 
@@ -46,6 +45,7 @@ mod tests {
         let response = use_case
             .execute(Query {
                 tenant_id: tenant.id(),
+                organization_id: tenant.organization_id(),
             })
             .await
             .unwrap();
@@ -66,7 +66,6 @@ mod tests {
             true,
             false,
             uuid::Uuid::now_v7(),
-            false,
         );
         tenant_repo
             .memory
@@ -78,6 +77,7 @@ mod tests {
         let response = use_case
             .execute(Query {
                 tenant_id: tenant.id(),
+                organization_id: tenant.organization_id(),
             })
             .await
             .unwrap();
@@ -98,6 +98,29 @@ mod tests {
         let err = use_case
             .execute(Query {
                 tenant_id: Uuid::new_v4(),
+                organization_id: Uuid::new_v4(),
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::TenantNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn hides_tenant_from_another_organization() {
+        let (tenant_repo, use_case) = setup();
+        let tenant = make_tenant();
+        tenant_repo
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(tenant.id(), tenant.clone());
+
+        let err = use_case
+            .execute(Query {
+                tenant_id: tenant.id(),
+                organization_id: Uuid::now_v7(),
             })
             .await
             .unwrap_err();

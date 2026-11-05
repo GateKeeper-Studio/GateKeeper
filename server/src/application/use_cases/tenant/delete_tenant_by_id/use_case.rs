@@ -20,7 +20,7 @@ impl UseCase {
 
         let tenant = uow
             .tenant_repository()
-            .find_by_id(command.tenant_id)
+            .find_by_id_for_organization(command.tenant_id, command.organization_id)
             .await?
             .ok_or_else(|| {
                 DomainError::TenantNotFound(format!(
@@ -28,15 +28,6 @@ impl UseCase {
                     command.tenant_id
                 ))
             })?;
-
-        // The default ("master") tenant is owned by its subscription and is only
-        // removed by deleting the subscription itself.
-        if tenant.is_default() {
-            return Err(DomainError::CannotDeleteDefaultTenant(format!(
-                "Tenant {} is the default tenant of its subscription and cannot be deleted directly",
-                tenant.id()
-            )));
-        }
 
         uow.tenant_repository().delete_by_id(tenant.id()).await?;
         uow.commit().await?;

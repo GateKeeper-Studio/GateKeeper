@@ -2,7 +2,8 @@ use uuid::Uuid;
 
 // The parsed `GET /oauth/authorize` query string. This use case only validates
 // it — no writes happen here, because at this point the user is not yet
-// authenticated. See `authorize_complete` for the write side.
+// authenticated. Authentication and code issuance happen in the `/v1/auth/*`
+// flow (login → MFA → authorize_session), which is the sole write side.
 #[derive(Debug, Clone)]
 pub struct Query {
     pub tenant_id: Uuid,

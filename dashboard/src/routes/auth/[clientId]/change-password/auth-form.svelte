@@ -14,6 +14,7 @@
 	import { validate } from '$lib/utils/form';
 	import { formSchema } from './schema';
 	import { resetPasswordApi } from '$lib/services/auth/reset-password';
+	import { m } from '$lib/paraglide/messages.js';
 
 	const clientId = page.params.clientId as string;
 
@@ -37,15 +38,15 @@
 		errors = {};
 
 		if (!clientId) {
-			toast.error('Application ID is required');
+			toast.error(m.auth_change_password_client_id_required());
 			return;
 		}
 		if (!passwordResetToken) {
-			toast.error('Password reset token is required');
+			toast.error(m.auth_change_password_token_required());
 			return;
 		}
 		if (!passwordResetId) {
-			toast.error('Password reset ID is required');
+			toast.error(m.auth_change_password_reset_id_required());
 			return;
 		}
 
@@ -66,7 +67,7 @@
 		}
 
 		isLoading = false;
-		toast.success('Password reset successfully');
+		toast.success(m.auth_change_password_reset_success());
 
 		await goto(resolve(`/auth/[clientId]/change-password?changed=true`, { clientId }));
 	}
@@ -76,21 +77,21 @@
 	<div class="grid gap-4">
 		<Alert.Root variant="default" class="bg-green-100 dark:bg-green-700">
 			<CheckCircleIcon class="h-5 w-5 text-green-500 dark:text-green-400" />
-			<Alert.Title>Success</Alert.Title>
-			<Alert.Description>
-				Your password has been changed successfully <br />
+			<Alert.Title class="font-bold">{m.auth_change_password_success_title()}</Alert.Title>
+			<Alert.Description class="dark:text-gray-100">
+				{m.auth_change_password_success_description()} <br />
 			</Alert.Description>
 		</Alert.Root>
 
 		<span class="mt-1 text-center font-semibold">
-			You can close this page and try logging in with your new password!
+			{m.auth_change_password_success_hint()}
 		</span>
 	</div>
 {:else}
 	<div class="grid gap-4">
 		<form onsubmit={onSubmit} class="space-y-3">
 			<div class="space-y-2">
-				<Label for="password">Password</Label>
+				<Label for="password">{m.auth_password_label()}</Label>
 				<Input
 					id="password"
 					type="password"
@@ -104,7 +105,7 @@
 			</div>
 
 			<div class="space-y-2">
-				<Label for="confirmPassword">Confirm Password</Label>
+				<Label for="confirmPassword">{m.auth_change_password_confirm_password_label()}</Label>
 				<Input
 					id="confirmPassword"
 					type="password"
@@ -121,7 +122,7 @@
 				{#if isLoading}
 					<LoadingSpinner class="absolute left-4" />
 				{/if}
-				Save Password
+				{m.auth_change_password_submit()}
 			</Button>
 		</form>
 	</div>

@@ -42,6 +42,7 @@ mod tests {
             uuid::Uuid::now_v7(),
             uuid::Uuid::now_v7(),
             "admin@example.com".to_string(),
+            "Ada Admin".to_string(),
             "hash".to_string(),
             "argon2id".to_string(),
             active_admin,

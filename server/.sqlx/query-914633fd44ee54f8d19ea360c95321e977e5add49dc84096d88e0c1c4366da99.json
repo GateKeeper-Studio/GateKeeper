@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE \"roles\"\n          SET name = $2, description = $3, updated_at = $4\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "914633fd44ee54f8d19ea360c95321e977e5add49dc84096d88e0c1c4366da99"
+}

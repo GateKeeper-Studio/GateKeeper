@@ -1,0 +1,161 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, user_id, auth_session_id, purpose, method,\n            code_hash, state_json, attempts, consumed_at, expires_at, created_at\n          FROM mfa_challenges\n          WHERE auth_session_id = $1 AND method = $2 AND consumed_at IS NULL\n          ORDER BY created_at DESC\n          LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "auth_session_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "auth_session_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "purpose",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "purpose"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "method",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "method"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "code_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "code_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "state_json",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "state_json"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "attempts",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "attempts"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "consumed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "consumed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "mfa_challenges",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "bb8790dbc39eb9dff81d74cb0276404b4cfe15499fe4fa536e3b8843cf001bb2"
+}

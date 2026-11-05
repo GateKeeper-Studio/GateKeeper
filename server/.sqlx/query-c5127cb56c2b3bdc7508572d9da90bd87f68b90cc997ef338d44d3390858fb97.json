@@ -1,0 +1,173 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, code_hash, client_id, user_id, redirect_uri, scopes,\n            code_challenge, code_challenge_method, nonce, consumed_at, expires_at, created_at\n          FROM authorization_codes\n          WHERE tenant_id = $1 AND code_hash = $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "code_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "code_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "client_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "redirect_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "redirect_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "code_challenge",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "code_challenge"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "code_challenge_method",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "code_challenge_method"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "nonce",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "nonce"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "consumed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "consumed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "authorization_codes",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c5127cb56c2b3bdc7508572d9da90bd87f68b90cc997ef338d44d3390858fb97"
+}

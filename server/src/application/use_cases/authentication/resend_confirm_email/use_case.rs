@@ -4,7 +4,8 @@ use chrono::{Duration, Utc};
 
 use crate::{
     application::{
-        ports::{email_sender::EmailSender, unit_of_work::UnitOfWorkFactory},
+        ports::unit_of_work::UnitOfWorkFactory,
+        services::templated_email_sender::TemplatedEmailSender,
         use_cases::authentication::resend_confirm_email::command::Command,
     },
     domain::{entities::email_verification_token::EmailVerificationToken, errors::DomainError},
@@ -15,17 +16,17 @@ const VERIFICATION_CODE_TTL_MINUTES: i64 = 15;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
-    email_sender: Arc<dyn EmailSender>,
+    templated_email: Arc<TemplatedEmailSender>,
 }
 
 impl UseCase {
     pub fn new(
         unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
-        email_sender: Arc<dyn EmailSender>,
+        templated_email: Arc<TemplatedEmailSender>,
     ) -> Self {
         Self {
             unit_of_work_factory,
-            email_sender,
+            templated_email,
         }
     }
 
@@ -108,8 +109,15 @@ impl UseCase {
 
         uow.commit().await?;
 
-        self.email_sender
-            .send_verification_code(email_provider.as_ref(), &command.email, &raw_code)
+        self.templated_email
+            .send_verification_code(
+                tenant_id,
+                email_provider.as_ref(),
+                &command.email,
+                &raw_code,
+                client.name(),
+                &format!("{VERIFICATION_CODE_TTL_MINUTES} minutes"),
+            )
             .await?;
 
         Ok(())

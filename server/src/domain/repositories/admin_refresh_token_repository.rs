@@ -20,4 +20,7 @@ pub trait AdminRefreshTokenRepository: Send + Sync {
     ) -> Result<(), DomainError>;
     // Reuse-detection kill switch + server-side logout: revoke every live token in a family.
     async fn revoke_family(&self, family_id: Uuid) -> Result<(), DomainError>;
+    // Ends every session for one admin at once — used when the account is deactivated,
+    // so all rotation families (not just the current one) stop working immediately.
+    async fn revoke_all_for_admin(&self, admin_id: Uuid) -> Result<(), DomainError>;
 }

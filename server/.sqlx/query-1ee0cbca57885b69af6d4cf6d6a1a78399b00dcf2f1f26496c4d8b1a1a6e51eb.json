@@ -1,0 +1,67 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT\n            COUNT(*) AS total,\n            COUNT(*) FILTER (WHERE success) AS successful,\n            COUNT(*) FILTER (WHERE NOT credentials_valid) AS failed,\n            COUNT(*) FILTER (WHERE decision = 'BLOCK_TEMPORARILY') AS blocked,\n            COUNT(*) FILTER (WHERE risk_level = 'HIGH') AS high,\n            COUNT(*) FILTER (WHERE risk_level = 'CRITICAL') AS critical,\n            COUNT(*) FILTER (WHERE EXISTS (\n              SELECT 1 FROM \"login_risk_signals\" s\n              WHERE s.login_event_id = login_events.id\n                AND s.signal_type = 'PASSWORD_SPRAYING')) AS spraying\n          FROM \"login_events\"\n          WHERE tenant_id = $1 AND created_at >= $2 AND created_at <= $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "successful",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "failed",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "blocked",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "high",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "critical",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 6,
+        "name": "spraying",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "1ee0cbca57885b69af6d4cf6d6a1a78399b00dcf2f1f26496c4d8b1a1a6e51eb"
+}

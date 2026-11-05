@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::Value;
 use uuid::Uuid;
 
 // The portable data bundle (GDPR Art. 15/20, LGPD Art. 18 II/V). Structured,
@@ -25,6 +26,9 @@ pub struct ExportedUser {
     pub display_name: Option<String>,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
+    // Tenant-defined data collected from this user (see tenant_custom_fields) —
+    // must be included so the export is a complete "right to access" bundle.
+    pub custom_field_values: Option<Value>,
     pub is_active: bool,
     pub created_at: String,
     pub updated_at: Option<String>,

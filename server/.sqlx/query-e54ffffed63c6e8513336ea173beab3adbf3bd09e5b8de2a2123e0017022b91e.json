@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_credentials (id, user_id, password_hash, password_algorithm, should_change_pass, created_at, updated_at)\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            ON CONFLICT (user_id) DO UPDATE\n            SET password_hash = EXCLUDED.password_hash,\n                password_algorithm = EXCLUDED.password_algorithm,\n                should_change_pass = EXCLUDED.should_change_pass,\n                updated_at = EXCLUDED.updated_at\n          ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e54ffffed63c6e8513336ea173beab3adbf3bd09e5b8de2a2123e0017022b91e"
+}

@@ -9,12 +9,22 @@
 	import ErrorAlert from '$lib/components/error-alert.svelte';
 	import LoadingSpinner from '$lib/components/loading-spinner.svelte';
 	import MfaModal from '$lib/components/auth/mfa-modal.svelte';
+	import SessionExpiryGuard from '$lib/components/auth/session-expiry-guard.svelte';
 
 	import { validate, buildOidcParams } from '$lib/utils/form';
 	import { formSchema } from './schema';
+	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { authorizeApi } from '$lib/services/auth/authorize';
 	import { verifyAppMfaApi } from '$lib/services/auth/verify-app-mfa';
 	import { EMfaType } from '$lib/services/auth/login';
+	import {
+		SessionClock,
+		clearSession,
+		readSessionCode
+	} from '$lib/state/auth-session-expiry.svelte';
+	import { m } from '$lib/paraglide/messages.js';
+
+	let { client }: { client: ClientAuthData | null } = $props();
 
 	const clientId = page.params.clientId as string;
 	const searchParams = page.url.searchParams;
@@ -43,18 +53,32 @@
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
 
+	// Past the password step the clock is our own AuthSession, whose deadlines were
+	// stored alongside the session code at login. Rehydrating rather than restarting is
+	// what keeps the countdown honest across the hop from the sign-in page.
+	const clock = new SessionClock();
+	clock.hydrateFromStorage(clientId);
+
+	let errorTimeout: ReturnType<typeof setTimeout> | undefined;
+
 	function showError(message: string) {
 		error = message;
 		isLoading = false;
-		setTimeout(() => (error = null), 6000);
+		clearTimeout(errorTimeout);
+		errorTimeout = setTimeout(() => (error = null), 6000);
 	}
 
-	function getSessionCode() {
-		return sessionStorage.getItem(`auth_session_${clientId}`) || '';
+	$effect(() => () => clearTimeout(errorTimeout));
+
+	function onExpire() {
+		code = '';
+		isLoading = false;
 	}
 
 	async function onSubmit(event: SubmitEvent) {
 		event.preventDefault();
+
+		if (clock.phase === 'expired') return;
 
 		const result = validate(formSchema, { code });
 		if (!result.success) {
@@ -63,9 +87,11 @@
 		}
 		errors = {};
 		isLoading = true;
-		const sessionCode = getSessionCode();
+		// Read late, never cached: a refresh rotates the code out from under us.
+		const sessionCode = readSessionCode(clientId);
 		if (!sessionCode) {
-			showError('Your sign-in session expired. Please sign in again.');
+			clock.expireNow();
+			isLoading = false;
 			return;
 		}
 
@@ -78,12 +104,27 @@
 
 		if (verifyMfaErr) {
 			console.error(verifyMfaErr);
-			showError(verifyMfaErr.data?.message || 'An error occurred');
+			// The server returns a single generic "invalid or expired session" (401) when the
+			// session itself is gone — that is unrecoverable here, so hand it to the guard,
+			// which offers a way back instead of an alert the user can't act on.
+			if (verifyMfaErr.message === 'invalid or expired session') {
+				clock.expireNow();
+				return;
+			}
+			// "invalid MFA challenge" (also 401) is the recoverable case: a wrong or stale
+			// 6-digit code. `ApiError` resolves the `{ error }` body into `.message` — note
+			// `.data.message` is undefined for this body shape.
+			showError(
+				verifyMfaErr.message === 'invalid MFA challenge'
+					? m.auth_mfa_app_invalid_code()
+					: verifyMfaErr.message || m.auth_mfa_app_verify_error()
+			);
+			code = '';
 			return;
 		}
 
 		if (!verifyMfaData) {
-			showError('An error occurred');
+			showError(m.auth_generic_error());
 			return;
 		}
 
@@ -112,26 +153,38 @@
 
 		if (authorizeErr) {
 			console.error(authorizeErr);
-			showError(authorizeErr.data?.message || 'An error occurred');
+			if (authorizeErr.status === 401) {
+				clock.expireNow();
+				return;
+			}
+			showError(authorizeErr.message || m.auth_generic_error());
 			return;
 		}
 
 		if (!authorizeData) {
-			showError('An error occurred');
+			showError(m.auth_generic_error());
 			return;
 		}
 
 		isLoading = false;
-		toast.success('You have successfully signed in');
-		sessionStorage.removeItem(`auth_session_${clientId}`);
+		toast.success(m.signin_success());
+		clearSession(clientId);
 
 		window.location.href = `${redirectUri}?code=${authorizeData.authorizationCode}&state=${oidcState}&redirect_uri=${redirectUri}&client_id=${clientId}`;
 	}
 </script>
 
 <div class="grid gap-4">
+	<SessionExpiryGuard
+		{clock}
+		{clientId}
+		mode="session"
+		initiateLoginUri={client?.initiateLoginUri ?? null}
+		{onExpire}
+	/>
+
 	{#if error}
-		<ErrorAlert message={error} title="An error occurred..." />
+		<ErrorAlert message={error} title={m.auth_mfa_app_error_title()} />
 	{/if}
 
 	<form onsubmit={onSubmit} class="flex w-full flex-col items-center space-y-3">
@@ -162,7 +215,7 @@
 			{#if isLoading}
 				<LoadingSpinner class="absolute left-4" />
 			{/if}
-			Confirm Code
+			{m.auth_mfa_app_submit()}
 		</Button>
 	</form>
 

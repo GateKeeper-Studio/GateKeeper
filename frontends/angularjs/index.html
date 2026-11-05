@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GateKeeper AngularJS Public Client</title>
+  </head>
+  <body>
+    <main ng-controller="AppController as vm" class="app">
+      <header>
+        <h1>GateKeeper · AngularJS public client</h1>
+        <p class="subtitle">Authorization Code + PKCE, no client secret.</p>
+      </header>
+
+      <section class="card">
+        <div class="status">
+          <span class="dot" ng-class="vm.gatekeeper.isAuthenticated() ? 'on' : 'off'"></span>
+          <strong>{{ vm.gatekeeper.isAuthenticated() ? 'Signed in' : 'Signed out' }}</strong>
+        </div>
+
+        <dl>
+          <dt>User</dt>
+          <dd>{{ vm.gatekeeper.user().email || vm.gatekeeper.user().sub || '—' }}</dd>
+          <dt>Expires</dt>
+          <dd>{{ vm.gatekeeper.expiresAt() ? vm.formatExpiry(vm.gatekeeper.expiresAt()) : '—' }}</dd>
+        </dl>
+
+        <p class="error" ng-if="vm.gatekeeper.error()">{{ vm.gatekeeper.error().message }}</p>
+
+        <div class="actions">
+          <div ng-if="vm.gatekeeper.isAuthenticated()">
+            <button type="button" ng-click="vm.gatekeeper.refresh()">Refresh token</button>
+            <button type="button" ng-click="vm.loadUserInfo()">Load userinfo</button>
+            <button type="button" ng-click="vm.showToken()">Show access token</button>
+            <button type="button" ng-click="vm.gatekeeper.signOut()">Sign out</button>
+          </div>
+          <button type="button" ng-if="!vm.gatekeeper.isAuthenticated()" ng-click="vm.gatekeeper.signIn()">
+            Sign in with GateKeeper
+          </button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Output</h2>
+        <pre>{{ vm.output }}</pre>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

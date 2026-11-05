@@ -5,6 +5,7 @@ pub mod validation;
 
 pub mod create_oauth_client;
 pub mod delete_oauth_client;
+pub mod external_provider;
 pub mod get_client_auth_data;
 pub mod get_oauth_client_by_id;
 pub mod list_oauth_clients;

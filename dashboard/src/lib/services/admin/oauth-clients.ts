@@ -1,7 +1,10 @@
-import { api } from '../base/api';
+import { adminApi as api } from '../base/admin-api';
 import { ApiError, type Result, type VoidResult } from '../types';
+import type { LoginAppearance } from '$lib/types/login-appearance';
 
-// Mirrors the IdP's ClientView (snake_case — that projection has no camelCase rename).
+// Mirrors the IdP's ClientView (snake_case top-level — that projection has no
+// camelCase rename). The nested login_appearance object is camelCase (its view
+// struct renames), matching the LoginAppearance type.
 export type OAuthClientView = {
 	id: string;
 	client_id: string;
@@ -20,6 +23,14 @@ export type OAuthClientView = {
 	email_provider_id: string | null;
 	tos_uri: string | null;
 	policy_uri: string | null;
+	initiate_login_uri: string | null;
+	login_appearance: LoginAppearance | null;
+	// When true this client authenticates ONLY through its external identity
+	// providers: the IdP refuses every password path for it (register, sign-in,
+	// forgot/reset/change), and its hosted login page renders provider buttons only.
+	external_login_only: boolean;
+	allowed_languages: string[];
+	default_language: string;
 	is_active: boolean;
 	created_at: string;
 	updated_at: string | null;
@@ -60,6 +71,13 @@ export type CreateOAuthClientInput = {
 	emailProviderId: string | null;
 	tosUri: string | null;
 	policyUri: string | null;
+	initiateLoginUri: string | null;
+	loginAppearance: LoginAppearance | null;
+	// Turning this on requires the client to already have at least one ACTIVE external
+	// provider — the IdP rejects the update otherwise, so users can never be locked out.
+	externalLoginOnly: boolean;
+	allowedLanguages: string[];
+	defaultLanguage: string;
 };
 
 // The create response flattens ClientView and adds the raw secret EXACTLY ONCE
@@ -84,6 +102,13 @@ export type UpdateOAuthClientInput = {
 	emailProviderId: string | null;
 	tosUri: string | null;
 	policyUri: string | null;
+	initiateLoginUri: string | null;
+	loginAppearance: LoginAppearance | null;
+	// Turning this on requires the client to already have at least one ACTIVE external
+	// provider — the IdP rejects the update otherwise, so users can never be locked out.
+	externalLoginOnly: boolean;
+	allowedLanguages: string[];
+	defaultLanguage: string;
 };
 
 export async function createOAuthClient(
@@ -106,7 +131,12 @@ export async function createOAuthClient(
 			mfa_webauthn_enabled: input.mfaWebauthnEnabled,
 			email_provider_id: input.emailProviderId,
 			tos_uri: input.tosUri,
-			policy_uri: input.policyUri
+			policy_uri: input.policyUri,
+			initiate_login_uri: input.initiateLoginUri,
+			login_appearance: input.loginAppearance,
+			external_login_only: input.externalLoginOnly,
+			allowed_languages: input.allowedLanguages,
+			default_language: input.defaultLanguage
 		});
 		return [data, null];
 	} catch (error) {
@@ -135,7 +165,12 @@ export async function updateOAuthClient(
 			is_active: input.isActive,
 			email_provider_id: input.emailProviderId,
 			tos_uri: input.tosUri,
-			policy_uri: input.policyUri
+			policy_uri: input.policyUri,
+			initiate_login_uri: input.initiateLoginUri,
+			login_appearance: input.loginAppearance,
+			external_login_only: input.externalLoginOnly,
+			allowed_languages: input.allowedLanguages,
+			default_language: input.defaultLanguage
 		});
 		return [null];
 	} catch (error) {
@@ -209,6 +244,9 @@ export async function assignEmailProvider(
 			email_provider_id: emailProviderId,
 			tos_uri: client.tos_uri,
 			policy_uri: client.policy_uri,
+			login_appearance: client.login_appearance,
+			allowed_languages: client.allowed_languages,
+			default_language: client.default_language,
 			is_active: client.is_active
 		});
 		return [null];

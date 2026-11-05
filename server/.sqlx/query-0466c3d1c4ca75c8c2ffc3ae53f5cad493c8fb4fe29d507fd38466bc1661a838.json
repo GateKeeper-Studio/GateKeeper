@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT latitude, longitude, country_code, created_at\n                   FROM \"login_events\"\n                   WHERE tenant_id = $1 AND user_id = $2 AND success = true\n                   ORDER BY created_at DESC\n                   LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "latitude",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "latitude"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "longitude",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "longitude"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "country_code",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "country_code"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "0466c3d1c4ca75c8c2ffc3ae53f5cad493c8fb4fe29d507fd38466bc1661a838"
+}

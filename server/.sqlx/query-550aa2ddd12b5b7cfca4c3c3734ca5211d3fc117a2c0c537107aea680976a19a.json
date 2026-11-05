@@ -1,0 +1,136 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT u.id as \"id!\", u.email as \"email!\", u.tenant_id as \"tenant_id!\", u.is_email_verified as \"is_email_verified!\",\n            c.password_hash, c.password_algorithm, c.should_change_pass, u.is_active,\n            u.created_at, u.updated_at\n          FROM users u\n          LEFT JOIN user_credentials c ON c.user_id = u.id\n          WHERE u.id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "email!",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "tenant_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "is_email_verified!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "is_email_verified"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "password_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "user_credentials",
+            "name": "password_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "password_algorithm",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "user_credentials",
+            "name": "password_algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "should_change_pass",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "user_credentials",
+            "name": "should_change_pass"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "550aa2ddd12b5b7cfca4c3c3734ca5211d3fc117a2c0c537107aea680976a19a"
+}

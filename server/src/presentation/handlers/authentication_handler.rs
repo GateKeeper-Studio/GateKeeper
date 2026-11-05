@@ -1,17 +1,18 @@
 use axum::{
     Json,
-    extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    extract::{Path, Query, State},
+    http::StatusCode,
     response::IntoResponse,
 };
+use serde::Deserialize;
 use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
     application::use_cases::{
         authentication::{
-            authorize_session, change_password, confirm_email, forgot_password, login, register,
-            resend_confirm_email, reset_password,
+            authorize_session, change_password, confirm_email, forgot_password, login,
+            refresh_session, register, resend_confirm_email, reset_password,
         },
         oauth_client::get_client_auth_data,
     },
@@ -49,14 +50,18 @@ pub async fn register(
 // `sessionCode`. No authorization code is issued here — that is step 2.
 pub async fn login(
     State(state): State<AppState>,
-    headers: HeaderMap,
-    AppJson(payload): AppJson<login::command::Command>,
+    ctx: RequestContext,
+    AppJson(mut payload): AppJson<login::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     payload.validate().map_err(ApiError::Validation)?;
 
-    // Audit context from the raw request (this is a public route, no AuthPrincipal).
-    let ctx = RequestContext::from_headers(&headers);
+    // Audit + risk context (populated app-wide by `capture_client_context`; carries
+    // the client IP with a socket-address fallback and the User-Agent).
     let client_id = payload.client_id.clone();
+
+    // Feed the Risk Engine the request context (X-Forwarded-For / User-Agent).
+    payload.ip_address = ctx.ip_address.clone();
+    payload.user_agent = ctx.user_agent.clone();
 
     match state.login.execute(payload).await {
         Ok(response) => {
@@ -99,6 +104,25 @@ pub async fn authorize(
     AppJson(payload): AppJson<authorize_session::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state.authorize_session.execute(payload).await?;
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+// POST /v1/auth/session/refresh
+//
+// The user is still on the MFA / forced-password-change screen and said they are still
+// there, so slide the session's idle deadline forward.
+//
+// Deliberately a user-gesture endpoint: the SPA calls this from a click, never from a
+// background poll. A session that renews itself while nobody is watching has no idle
+// timeout at all. The absolute ceiling inside the use case is what stops even an honest
+// caller from holding a session open forever, and the session code rotates on every hit
+// — the response carries the replacement.
+pub async fn refresh_session(
+    State(state): State<AppState>,
+    AppJson(payload): AppJson<refresh_session::command::Command>,
+) -> Result<impl IntoResponse, ApiError> {
+    let response = state.refresh_session.execute(payload).await?;
 
     Ok((StatusCode::OK, Json(response)))
 }
@@ -180,6 +204,15 @@ pub async fn change_password(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ClientAuthDataParams {
+    // The locale the hosted page is currently rendering in, so heading/
+    // subtext/custom-field text resolve for that language. Absent or
+    // unrecognized just falls back to the client's own default_language.
+    #[serde(default)]
+    pub locale: Option<String>,
+}
+
 // GET /v1/auth/client/{client_id}/auth-data
 //
 // Public, unauthenticated read used by the login SPA to render the sign-in/up
@@ -188,10 +221,14 @@ pub async fn change_password(
 pub async fn client_auth_data(
     State(state): State<AppState>,
     Path(client_id): Path<String>,
+    Query(params): Query<ClientAuthDataParams>,
 ) -> Result<impl IntoResponse, ApiError> {
     let response = state
         .get_client_auth_data
-        .execute(get_client_auth_data::query::Query { client_id })
+        .execute(get_client_auth_data::query::Query {
+            client_id,
+            requested_locale: params.locale,
+        })
         .await?;
 
     Ok((StatusCode::OK, Json(response)))

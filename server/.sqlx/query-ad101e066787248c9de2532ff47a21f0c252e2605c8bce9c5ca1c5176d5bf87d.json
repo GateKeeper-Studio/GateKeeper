@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM legal_documents WHERE tenant_id = $1 AND document_type = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ad101e066787248c9de2532ff47a21f0c252e2605c8bce9c5ca1c5176d5bf87d"
+}

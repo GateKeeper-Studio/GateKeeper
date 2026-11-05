@@ -131,6 +131,24 @@ impl AdminRefreshTokenRepository for DbAdminRefreshTokenRepository {
 
         Ok(())
     }
+
+    async fn revoke_all_for_admin(&self, admin_id: Uuid) -> Result<(), DomainError> {
+        run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          UPDATE admin_refresh_tokens
+          SET revoked_at = now()
+          WHERE admin_id = $1 AND revoked_at IS NULL
+        "#,
+                admin_id,
+            ),
+            execute
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(())
+    }
 }
 
 fn map_sqlx_error(e: sqlx::Error) -> DomainError {

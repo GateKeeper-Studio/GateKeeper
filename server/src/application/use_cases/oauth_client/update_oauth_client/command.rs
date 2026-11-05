@@ -2,8 +2,18 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::application::use_cases::oauth_client::validation::LoginAppearanceInput;
+
 fn default_true() -> bool {
     true
+}
+
+fn default_allowed_languages() -> Vec<String> {
+    vec!["en".to_string()]
+}
+
+fn default_language_code() -> String {
+    "en".to_string()
 }
 
 // Updates the editable details of a client. Identity fields (client_id, secret,
@@ -59,4 +69,28 @@ pub struct Command {
 
     #[serde(default)]
     pub policy_uri: Option<String>,
+
+    // Optional OIDC initiate_login_uri (see create_oauth_client::Command).
+    #[serde(default)]
+    pub initiate_login_uri: Option<String>,
+
+    // Optional per-client login-page template + branding. Validated by
+    // validate_login_appearance before it ever reaches the entity; null clears it.
+    #[serde(default)]
+    pub login_appearance: Option<LoginAppearanceInput>,
+
+    // When true, this client authenticates ONLY through its external identity
+    // providers (see create_oauth_client::Command). The use case refuses to turn it
+    // on unless the client already has at least one ACTIVE provider.
+    #[serde(default)]
+    pub external_login_only: bool,
+
+    // Which supported locales this client's hosted login/sign-up page offers,
+    // and which one it defaults to absent a user choice. Validated by
+    // validate_client_languages before it reaches the entity.
+    #[serde(default = "default_allowed_languages")]
+    pub allowed_languages: Vec<String>,
+
+    #[serde(default = "default_language_code")]
+    pub default_language: String,
 }

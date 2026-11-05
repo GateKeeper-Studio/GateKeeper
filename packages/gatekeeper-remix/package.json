@@ -1,0 +1,39 @@
+{
+  "name": "@gatekeeper/remix",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Remix Backend-for-Frontend helpers for GateKeeper confidential OAuth clients.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@gatekeeper/bff-core": "file:../gatekeeper-bff-core"
+  },
+  "peerDependencies": {
+    "@remix-run/node": ">=2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@remix-run/node": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.0"
+  }
+}

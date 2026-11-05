@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serde_json::Value;
 use validator::Validate;
 
 // Self-registration request. The wire format is camelCase to match the dashboard
@@ -25,4 +26,10 @@ pub struct Command {
 
     #[validate(length(min = 1, message = "Last name cannot be empty"))]
     pub last_name: String,
+
+    // Raw answers to the tenant's custom sign-up fields, keyed by field_key.
+    // Un-validated at this layer — validate_custom_field_values is the only way
+    // this ever reaches the stored profile.
+    #[serde(default)]
+    pub custom_field_values: Option<Value>,
 }

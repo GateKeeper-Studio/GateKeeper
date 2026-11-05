@@ -14,7 +14,7 @@ Companion docs:
 ## 1. What this service is
 
 A headless, API-first identity provider. It does **not** render login/consent HTML;
-instead it exposes JSON + redirect endpoints that the `frontend/` login SPA and
+instead it exposes JSON + redirect endpoints that the `frontends/sveltekit-bff/` login SPA and
 `dashboard/` admin SPA drive. Capabilities:
 
 - **OAuth 2.1 / OIDC provider** — Authorization Code + PKCE, refresh-token rotation,
@@ -24,7 +24,7 @@ instead it exposes JSON + redirect endpoints that the `frontend/` login SPA and
 - **MFA** — email OTP, TOTP (authenticator apps), and WebAuthn / passkeys.
 - **Platform administration** — global admins, audited admin surface, per-tenant
   SMTP email providers.
-- **Billing** — organizations, subscriptions, and subscription plans.
+- **Organizations** — top-level ownership for admins and tenants.
 - **Compliance (LGPD/GDPR/ISO 27001/SOC 2)** — append-only audit log, data-subject
   export, right-to-erasure / anonymization, retention purge, versioned policy
   acceptance.
@@ -101,7 +101,7 @@ server/
     │   └── create_admin.rs     # CLI to bootstrap a platform-admin account
     │
     ├── domain/                 # ── enterprise rules (pure) ──────────────────────
-    │   ├── entities/           #   User, Tenant, Organization, Subscription, Group,
+    │   ├── entities/           #   User, Tenant, Organization, Group,
     │   │                       #   Role, OAuthClient, AuthorizationCode, RefreshToken,
     │   │                       #   AuthSession, ConsentGrant, SigningKey, MfaEnrollment,
     │   │                       #   MfaChallenge, AuditEvent, PolicyAcceptance, …
@@ -154,7 +154,8 @@ server/
 Plain Rust structs with private fields, constructor `new(...)`, a `reconstruct(...)`
 for rehydration from the DB, behavior methods, and getters. They enforce invariants
 (e.g. `OAuthClient::is_redirect_uri_allowed` is exact-match only;
-`RefreshToken::rotate` / `is_active` encode rotation semantics).
+`RefreshToken::rotate` / `reissue_within_family` / `is_active` encode rotation and
+reuse-leeway semantics).
 
 ### Repository traits (domain) + SQLx impls (infra)
 Each aggregate has a trait in `domain/repositories/` and a `Db…Repository` in
@@ -166,7 +167,10 @@ it runs queries through the `run!` macro so the same code targets either executo
 Cross-cutting capabilities the use cases need but shouldn't implement are expressed
 as **ports** (traits) in `application/ports/` and implemented in `infraestructure/`.
 This is how JWT signing, verification, key generation, encryption, email, WebAuthn,
-admin-token issuance, and audit logging stay swappable and testable.
+admin-token issuance, audit logging, and outbound webhook delivery stay swappable
+and testable. `WebhookSender` in particular is the seam that keeps the event
+transport reversible: publishing to a broker instead of HTTP would be another
+implementation of that trait, not a change to any use case.
 
 ### Use cases (application)
 A `UseCase` struct holds its dependencies (`Arc<dyn …>`), and `execute(input) ->
@@ -187,13 +191,12 @@ and assembles the router.
 
 | Group | Responsibility |
 |---|---|
-| `organization` | Top-level tenant owner; owns admins + a subscription |
-| `subscription`, `subscription_plan` | Billing: plans (catalog) and active subscriptions |
+| `organization` | Top-level owner of admins and tenants |
 | `tenant` | The OIDC issuer boundary; creating one generates its ES256 key |
 | `tenant_user` | Admin CRUD over a tenant's users |
 | `group`, `role` | RBAC: groups, roles, and their membership/assignment |
 | `oauth_client` | Relying-party registration (admin CRUD, secret rotation) |
-| `oauth` | Protocol use cases: `authorize_request`, `authorize_complete`, `token_exchange`, `token_refresh`, `userinfo`, `jwks`, `discovery` |
+| `oauth` | Protocol use cases: `authorize_request`, `token_exchange`, `token_refresh`, `userinfo`, `jwks`, `discovery` (interactive login + code issuance live in the `authentication` module's `/v1/auth/*` flow) |
 | `authentication` | First-party login flow, registration, email confirm, forgot/reset/change password |
 | `mfa` | Enrollment + verification for email OTP, TOTP, WebAuthn |
 | `consent_grant` | User "connected apps": list + revoke consents |
@@ -229,6 +232,15 @@ and assembles the router.
   consumes the UoW and finalizes it. A panic/early return drops the transaction →
   rollback.
 - Migrations run automatically on boot (`sqlx::migrate!("./migrations")`).
+- **Outbound events use a transactional outbox.** Use cases that change a user
+  enqueue an `outbox_events` row through the same UoW, so the event commits with
+  the change or not at all — no window where a user exists but nothing downstream
+  was told (or the reverse). See [`FLOWS-WEBHOOKS.md`](FLOWS-WEBHOOKS.md).
+- **One background worker exists**: the webhook dispatcher, spawned in `main.rs`
+  and stopped on SIGTERM after the HTTP server drains. Everything else in this
+  service is request-driven (the retention purge is an admin endpoint, not a job).
+  The dispatcher is safe on every replica — its claim queries use
+  `FOR UPDATE SKIP LOCKED`.
 
 ---
 

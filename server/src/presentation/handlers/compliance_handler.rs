@@ -10,17 +10,18 @@ use uuid::Uuid;
 use crate::{
     application::use_cases::{
         compliance::{erase_user, export_user_data, record_policy_acceptance},
-        tenant_user::update_tenant_user_by_id,
+        tenant_user::{update_tenant_user_by_id, update_tenant_user_custom_field_values},
     },
     domain::entities::{
         audit_action::{
-            DATA_PURGED, POLICY_ACCEPTED, USER_DATA_EXPORTED, USER_ERASED, USER_PROFILE_UPDATED,
+            DATA_PURGED, POLICY_ACCEPTED, USER_CUSTOM_FIELDS_UPDATED, USER_DATA_EXPORTED,
+            USER_ERASED, USER_PROFILE_UPDATED,
         },
         audit_event::{ActorType, AuditEvent, Outcome},
     },
     presentation::{
         errors::{ApiError, AppJson},
-        middleware::auth::{AuthPrincipal, RequestContext},
+        middleware::auth::{AuthPrincipal, RequestContext, TenantScope},
         routes::AppState,
     },
 };
@@ -69,14 +70,13 @@ fn export_attachment(user_id: Uuid, body: impl serde::Serialize) -> impl IntoRes
 // GET /tenants/:tenant_id/users/:user_id/data-export  (admin-initiated DSR)
 pub async fn export_user_data(
     State(state): State<AppState>,
-    Path((tenant_id, user_id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, user_id)): Path<(Uuid, Uuid)>,
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
-    if state.require_admin_auth && !principal.can_access_tenant(tenant_id) {
-        return Err(ApiError::Forbidden("tenant mismatch".to_string()));
-    }
-
     let bundle = state
         .export_user_data
         .execute(export_user_data::query::Query { tenant_id, user_id })
@@ -168,14 +168,14 @@ async fn do_record_acceptance(
 // POST /tenants/:tenant_id/users/:user_id/policy-acceptances  (admin)
 pub async fn record_policy_acceptance(
     State(state): State<AppState>,
-    Path((tenant_id, user_id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, user_id)): Path<(Uuid, Uuid)>,
     ctx: RequestContext,
     AppJson(body): AppJson<PolicyAcceptanceBody>,
 ) -> Result<impl IntoResponse, ApiError> {
-    if state.require_admin_auth && !principal.can_access_tenant(tenant_id) {
-        return Err(ApiError::Forbidden("tenant mismatch".to_string()));
-    }
     do_record_acceptance(
         &state,
         tenant_id,
@@ -191,13 +191,13 @@ pub async fn record_policy_acceptance(
 // GET /tenants/:tenant_id/users/:user_id/policy-acceptances  (admin)
 pub async fn list_user_acceptances(
     State(state): State<AppState>,
-    Path((tenant_id, user_id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, user_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    if state.require_admin_auth && !principal.can_access_tenant(tenant_id) {
-        return Err(ApiError::Forbidden("tenant mismatch".to_string()));
-    }
-    let rows = state.list_user_acceptances.execute(user_id).await?;
+    let rows = state
+        .list_user_acceptances
+        .execute(tenant_id, user_id)
+        .await?;
     Ok((StatusCode::OK, Json(rows)))
 }
 
@@ -263,13 +263,13 @@ async fn do_erase(
 // POST /tenants/:tenant_id/users/:user_id/erase  (admin-initiated erasure)
 pub async fn erase_user(
     State(state): State<AppState>,
-    Path((tenant_id, user_id)): Path<(Uuid, Uuid)>,
-    principal: AuthPrincipal,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, user_id)): Path<(Uuid, Uuid)>,
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
-    if state.require_admin_auth && !principal.can_access_tenant(tenant_id) {
-        return Err(ApiError::Forbidden("tenant mismatch".to_string()));
-    }
     do_erase(
         &state,
         tenant_id,
@@ -345,6 +345,37 @@ pub async fn update_my_profile(
         ActorType::User,
         Some(principal.user_id),
         USER_PROFILE_UPDATED,
+        Outcome::Success,
+    )
+    .with_resource("user", principal.user_id)
+    .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
+    let _ = state.audit_logger.record(event).await;
+
+    Ok((StatusCode::OK, Json(response)))
+}
+
+// PUT /me/profile/custom-field-values  (self-service, split off update_my_profile so
+// editing custom values never risks wiping name fields and vice versa — see
+// update_tenant_user_custom_field_values's doc comment)
+pub async fn update_my_custom_field_values(
+    State(state): State<AppState>,
+    principal: AuthPrincipal,
+    ctx: RequestContext,
+    AppJson(mut payload): AppJson<update_tenant_user_custom_field_values::command::Command>,
+) -> Result<impl IntoResponse, ApiError> {
+    payload.tenant_id = principal.tenant_id;
+    payload.user_id = principal.user_id;
+
+    let response = state
+        .update_tenant_user_custom_field_values
+        .execute(payload)
+        .await?;
+
+    let event = AuditEvent::new(
+        Some(principal.tenant_id),
+        ActorType::User,
+        Some(principal.user_id),
+        USER_CUSTOM_FIELDS_UPDATED,
         Outcome::Success,
     )
     .with_resource("user", principal.user_id)

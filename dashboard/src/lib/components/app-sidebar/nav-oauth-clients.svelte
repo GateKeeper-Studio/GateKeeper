@@ -7,12 +7,13 @@
 	import { selectedTenant } from '$lib/state/selected-tenant.svelte';
 	import { page } from '$app/state';
 	import { cn } from '$lib/utils.js';
+	import { m } from '$lib/paraglide/messages.js';
 
 	// The currently-viewed client adopts the primary color so the selection is obvious.
 	const activeClasses =
 		'bg-sidebar-primary! text-sidebar-primary-foreground! hover:bg-sidebar-primary! hover:text-sidebar-primary-foreground!';
 	function clientHref(id: string) {
-		return `/dashboard/${selectedTenant.tenantId}/oauth-clients/${id}`;
+		return `/tenants/${selectedTenant.tenantId}/oauth-clients/${id}`;
 	}
 	function isActive(id: string) {
 		const url = clientHref(id);
@@ -32,17 +33,16 @@
 	}));
 </script>
 
+{#if selectedTenant.tenantId}
 <Sidebar.Group class="group-data-[collapsible=icon]:hidden">
-	<Sidebar.GroupLabel>OAuth Clients</Sidebar.GroupLabel>
+	<Sidebar.GroupLabel>{m.nav_oauth_clients()}</Sidebar.GroupLabel>
 	<Sidebar.Menu>
-		{#if !selectedTenant.tenantId}
-			<div class="text-sidebar-foreground/70 px-2 py-1.5 text-xs">Select a tenant first</div>
-		{:else if clientsQuery.isPending}
-			<div class="text-sidebar-foreground/70 px-2 py-1.5 text-xs">Loading…</div>
+		{#if clientsQuery.isPending}
+			<div class="text-sidebar-foreground/70 px-2 py-1.5 text-xs">{m.tenant_switcher_loading()}</div>
 		{:else if clientsQuery.isError}
 			<div class="text-destructive px-2 py-1.5 text-xs">{clientsQuery.error.message}</div>
 		{:else if clientsQuery.data.length === 0}
-			<div class="text-sidebar-foreground/70 px-2 py-1.5 text-xs">No OAuth clients</div>
+			<div class="text-sidebar-foreground/70 px-2 py-1.5 text-xs">{m.oauth_clients_sidebar_empty()}</div>
 		{:else}
 			{#each clientsQuery.data as client (client.id)}
 					{@const active = isActive(client.id)}
@@ -60,3 +60,4 @@
 		{/if}
 	</Sidebar.Menu>
 </Sidebar.Group>
+{/if}

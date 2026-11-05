@@ -7,7 +7,9 @@ use crate::{
             client_view::ClientView,
             update_oauth_client::{command::Command, response::Response},
             validation::{
-                normalize_optional, require_non_empty, validate_legal_uri, validate_redirect_uris,
+                normalize_optional, require_non_empty, validate_client_languages,
+                validate_initiate_login_uri, validate_legal_uri, validate_login_appearance,
+                validate_redirect_uris,
             },
         },
     },
@@ -49,6 +51,13 @@ impl UseCase {
         validate_legal_uri("tos_uri", &tos_uri)?;
         validate_legal_uri("policy_uri", &policy_uri)?;
 
+        let initiate_login_uri = normalize_optional(command.initiate_login_uri);
+        validate_initiate_login_uri(&initiate_login_uri)?;
+
+        let login_appearance = validate_login_appearance(command.login_appearance)?;
+        let (allowed_languages, default_language) =
+            validate_client_languages(command.allowed_languages, command.default_language)?;
+
         let mut client = uow
             .oauth_client_repository()
             .find_by_id(command.tenant_id, command.id)
@@ -56,6 +65,22 @@ impl UseCase {
             .ok_or_else(|| {
                 DomainError::OAuthClientNotFound(format!("OAuth client {} not found", command.id))
             })?;
+
+        // Turning external-login-only on with nothing to sign in through would lock
+        // every user out: the hosted login page would render zero sign-in methods and
+        // every password path is refused. Require at least one ACTIVE provider first.
+        if command.external_login_only {
+            let providers = uow
+                .external_identity_provider_repository()
+                .find_active_by_oauth_client_id(client.id())
+                .await?;
+            if providers.is_empty() {
+                return Err(DomainError::InvalidRequest(
+                    "external_login_only requires at least one active external identity provider"
+                        .to_string(),
+                ));
+            }
+        }
 
         client.update_details(
             command.name,
@@ -68,6 +93,11 @@ impl UseCase {
             command.email_provider_id,
             tos_uri,
             policy_uri,
+            initiate_login_uri,
+            login_appearance,
+            command.external_login_only,
+            allowed_languages,
+            default_language,
             MfaPolicy {
                 required: command.mfa_required,
                 email_enabled: command.mfa_email_enabled,

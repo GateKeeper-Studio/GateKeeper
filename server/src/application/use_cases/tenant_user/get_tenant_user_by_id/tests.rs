@@ -27,8 +27,7 @@ mod tests {
             true,                      // is_active
             true,                      // can_self_register
             true,                      // can_self_forgot_password
-            uuid::Uuid::now_v7(),      // subscription_id
-            false,                     // is_default
+            uuid::Uuid::now_v7(),      // organization_id
         )
     }
 

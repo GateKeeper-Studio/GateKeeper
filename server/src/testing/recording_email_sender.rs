@@ -7,23 +7,38 @@ use crate::{
     domain::{entities::email_provider::EmailProvider, errors::DomainError},
 };
 
+/// A rendered email captured by the test double.
+#[derive(Debug, Clone)]
+pub struct SentEmail {
+    pub to: String,
+    pub subject: String,
+    pub html: String,
+    pub text: String,
+}
+
 // Test double that records every email it is asked to send so tests can assert
-// the recipient and the code/link that was generated.
+// the recipient and the rendered content (which embeds the generated code/link).
 pub struct RecordingEmailSender {
-    pub sent: Mutex<Vec<(String, String)>>, // (recipient, code)
-    pub reset_links: Mutex<Vec<(String, String)>>, // (recipient, reset link)
-    pub mfa_codes: Mutex<Vec<(String, String)>>, // (recipient, MFA sign-in code)
-    pub test_emails: Mutex<Vec<String>>,    // recipients of test emails
+    pub sent: Mutex<Vec<SentEmail>>,
+    pub test_emails: Mutex<Vec<String>>, // recipients of test emails
 }
 
 impl RecordingEmailSender {
     pub fn new() -> Self {
         Self {
             sent: Mutex::new(Vec::new()),
-            reset_links: Mutex::new(Vec::new()),
-            mfa_codes: Mutex::new(Vec::new()),
             test_emails: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Convenience for assertions: the recipients of every non-test email sent.
+    pub fn recipients(&self) -> Vec<String> {
+        self.sent
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| e.to.clone())
+            .collect()
     }
 }
 
@@ -35,42 +50,20 @@ impl Default for RecordingEmailSender {
 
 #[async_trait]
 impl EmailSender for RecordingEmailSender {
-    async fn send_verification_code(
+    async fn send(
         &self,
         _provider: Option<&EmailProvider>,
         to: &str,
-        code: &str,
+        subject: &str,
+        html_body: &str,
+        text_body: &str,
     ) -> Result<(), DomainError> {
-        self.sent
-            .lock()
-            .unwrap()
-            .push((to.to_string(), code.to_string()));
-        Ok(())
-    }
-
-    async fn send_password_reset_link(
-        &self,
-        _provider: Option<&EmailProvider>,
-        to: &str,
-        link: &str,
-    ) -> Result<(), DomainError> {
-        self.reset_links
-            .lock()
-            .unwrap()
-            .push((to.to_string(), link.to_string()));
-        Ok(())
-    }
-
-    async fn send_mfa_code(
-        &self,
-        _provider: Option<&EmailProvider>,
-        to: &str,
-        code: &str,
-    ) -> Result<(), DomainError> {
-        self.mfa_codes
-            .lock()
-            .unwrap()
-            .push((to.to_string(), code.to_string()));
+        self.sent.lock().unwrap().push(SentEmail {
+            to: to.to_string(),
+            subject: subject.to_string(),
+            html: html_body.to_string(),
+            text: text_body.to_string(),
+        });
         Ok(())
     }
 

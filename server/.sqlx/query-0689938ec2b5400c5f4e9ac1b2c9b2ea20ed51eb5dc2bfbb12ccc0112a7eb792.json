@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM password_change_tokens WHERE expires_at < $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0689938ec2b5400c5f4e9ac1b2c9b2ea20ed51eb5dc2bfbb12ccc0112a7eb792"
+}

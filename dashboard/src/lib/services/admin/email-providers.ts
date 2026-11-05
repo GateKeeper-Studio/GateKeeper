@@ -1,4 +1,4 @@
-import { api } from '../base/api';
+import { adminApi as api } from '../base/admin-api';
 import { ApiError, type Result, type VoidResult } from '../types';
 
 // Mirrors the IdP's ProviderView (camelCase). The password is never returned.
@@ -85,11 +85,7 @@ export async function deleteEmailProvider(tenantId: string, id: string): Promise
 // Sends a one-off test email through the provider so the admin can verify its
 // SMTP credentials. On failure the ApiError carries the transport's exact
 // message (e.g. an SMTP 535 authentication failure).
-export async function sendTestEmail(
-	tenantId: string,
-	id: string,
-	to: string
-): Promise<VoidResult> {
+export async function sendTestEmail(tenantId: string, id: string, to: string): Promise<VoidResult> {
 	try {
 		await api.post(`/tenants/${tenantId}/email-providers/${id}/test`, { to });
 		return [null];

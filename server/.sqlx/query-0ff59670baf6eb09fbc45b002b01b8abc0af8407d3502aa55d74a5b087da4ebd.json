@@ -1,0 +1,138 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT u.id as \"id!\", u.email as \"email!\", u.tenant_id as \"tenant_id!\",\n            u.is_email_verified as \"is_email_verified!\", p.first_name as \"first_name?\",\n            p.last_name as \"last_name?\", p.display_name as \"display_name?\",\n            u.created_at, u.updated_at, u.is_active\n          FROM role_assignments ra\n          JOIN users u ON u.id = ra.user_id\n          LEFT JOIN user_profiles p ON p.user_id = u.id\n          WHERE ra.role_id = $1\n          ORDER BY u.created_at DESC\n          LIMIT $2 OFFSET $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "email!",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "tenant_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "is_email_verified!",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "is_email_verified"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "first_name?",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "user_profiles",
+            "name": "first_name"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "last_name?",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "user_profiles",
+            "name": "last_name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "display_name?",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "user_profiles",
+            "name": "display_name"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "is_active"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "0ff59670baf6eb09fbc45b002b01b8abc0af8407d3502aa55d74a5b087da4ebd"
+}

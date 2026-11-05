@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use p256::{
     SecretKey,
     pkcs8::{EncodePrivateKey, LineEnding},
@@ -6,7 +8,7 @@ use rand_core::OsRng;
 use uuid::Uuid;
 
 use crate::{
-    application::ports::signing_key_generator::SigningKeyGenerator,
+    application::ports::{secret_cipher::SecretCipher, signing_key_generator::SigningKeyGenerator},
     domain::{
         entities::signing_key::{SigningAlgorithm, SigningKey},
         errors::DomainError,
@@ -17,21 +19,17 @@ use crate::{
 // Generates ECDSA P-256 (ES256) signing keys — small tokens, fast keygen, and
 // supported by the `rust_crypto` backend of jsonwebtoken.
 //
-// The private key is exported as an unencrypted PKCS#8 PEM. The `SigningKey`
-// field is named `private_key_encrypted` because production should seal it with a
-// master key (or store a KMS reference); here, as elsewhere in this dev build, the
-// raw PEM is stored and `TokenSigner` loads it directly.
-pub struct EcdsaKeyGenerator;
-
-impl EcdsaKeyGenerator {
-    pub fn new() -> Self {
-        Self
-    }
+// The private key is exported as a PKCS#8 PEM and then SEALED with the SecretCipher
+// (AES-256-GCM) before it is handed to the `SigningKey` — so what reaches the
+// database in `private_key_encrypted` is ciphertext, never the raw key. `TokenSigner`
+// unseals it at sign time; only the public half (JWK) is ever exposed.
+pub struct EcdsaKeyGenerator {
+    cipher: Arc<dyn SecretCipher>,
 }
 
-impl Default for EcdsaKeyGenerator {
-    fn default() -> Self {
-        Self::new()
+impl EcdsaKeyGenerator {
+    pub fn new(cipher: Arc<dyn SecretCipher>) -> Self {
+        Self { cipher }
     }
 }
 
@@ -46,6 +44,9 @@ impl SigningKeyGenerator for EcdsaKeyGenerator {
             })?
             .to_string();
 
+        // Seal the private key at rest — the DB only ever sees ciphertext.
+        let private_key_sealed = self.cipher.encrypt(&private_key_pem)?;
+
         // Public half as a JWK object: {"kty":"EC","crv":"P-256","x":..,"y":..}. The
         // /jwks.json endpoint stamps in `kid`, `alg`, and `use` when it serves this.
         let public_jwk = secret.public_key().to_jwk_string();
@@ -58,7 +59,7 @@ impl SigningKeyGenerator for EcdsaKeyGenerator {
             kid,
             SigningAlgorithm::ES256,
             public_jwk.to_string(),
-            private_key_pem,
+            private_key_sealed,
         ))
     }
 }
@@ -69,12 +70,21 @@ mod tests {
     use crate::{
         application::ports::token_signer::TokenSigner,
         infraestructure::crypto::jwt_signing_service::JwtSigningService,
+        testing::stub_secret_cipher::StubSecretCipher,
     };
     use serde_json::json;
 
     #[test]
     fn generates_a_valid_es256_jwk() {
-        let key = EcdsaKeyGenerator::new().generate(Uuid::now_v7()).unwrap();
+        let key = EcdsaKeyGenerator::new(Arc::new(StubSecretCipher))
+            .generate(Uuid::now_v7())
+            .unwrap();
+
+        // The sealed private key is ciphertext at rest — never the raw PEM.
+        assert!(
+            !key.private_key_encrypted().starts_with("-----BEGIN"),
+            "private key must be sealed, not stored as plaintext PEM"
+        );
 
         assert_eq!(key.algorithm().as_str(), "ES256");
         assert!(key.is_active());
@@ -93,11 +103,17 @@ mod tests {
 
     #[tokio::test]
     async fn the_generated_private_key_actually_signs() {
-        let key = EcdsaKeyGenerator::new().generate(Uuid::now_v7()).unwrap();
+        // Generator seals, signer unseals — a shared cipher closes the loop and
+        // proves the sealed key round-trips back into a usable EncodingKey.
+        let cipher: Arc<dyn SecretCipher> = Arc::new(StubSecretCipher);
+        let key = EcdsaKeyGenerator::new(Arc::clone(&cipher))
+            .generate(Uuid::now_v7())
+            .unwrap();
 
-        // The PEM must be loadable by the real signer — this exercises the whole
-        // keygen → PEM → jsonwebtoken chain that the token endpoint depends on.
-        let token = JwtSigningService::new()
+        // The sealed key must be unsealable and loadable by the real signer — this
+        // exercises the whole keygen → seal → unseal → jsonwebtoken chain that the
+        // token endpoint depends on.
+        let token = JwtSigningService::new(Arc::clone(&cipher))
             .sign(&key, &json!({ "sub": "abc", "exp": 9_999_999_999i64 }))
             .await
             .expect("generated key should produce a signable JWT");
@@ -136,7 +152,14 @@ mod tests {
 
         let tenants = DbTenantRepository::new(pool.clone());
         let signing_keys = DbSigningKeyRepository::new(pool.clone());
-        let generator = EcdsaKeyGenerator::new();
+        // Seal new keys with the same AES-256-GCM key the server runs with, so the
+        // token endpoint can unseal them.
+        let cipher: Arc<dyn SecretCipher> = Arc::new(
+            crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::new(
+                crate::infraestructure::config::resolve_email_encryption_key(),
+            ),
+        );
+        let generator = EcdsaKeyGenerator::new(cipher);
 
         let all = tenants.find_all(1, 10_000).await.expect("list tenants");
         let mut provisioned = 0;
@@ -168,6 +191,59 @@ mod tests {
         );
     }
 
+    // One-off ops re-seal: encrypts any signing key whose `private_key_encrypted`
+    // column is still a plaintext PKCS#8 PEM (written before keys were sealed at
+    // rest). The signer transparently accepts both plaintext and sealed keys, so
+    // this closes the at-rest exposure with no downtime. Run against the live DB:
+    //
+    //   cargo test --lib reseal_plaintext_signing_keys -- --ignored --nocapture
+    //
+    // Idempotent: rows that are already sealed (not a PEM) are skipped. It must run
+    // with the SAME EMAIL_ENCRYPTION_KEY the server uses, or the signer won't be able
+    // to unseal afterwards.
+    #[tokio::test]
+    #[ignore = "touches the live database; run manually as an ops step"]
+    async fn reseal_plaintext_signing_keys() {
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let pool = sqlx::PgPool::connect(&database_url)
+            .await
+            .expect("connect to database");
+
+        let cipher = crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::new(
+            crate::infraestructure::config::resolve_email_encryption_key(),
+        );
+
+        // Every key across every tenant and status — even retired keys are a
+        // disclosure risk while their private half sits in the clear.
+        let rows = sqlx::query!("SELECT id, kid, private_key_encrypted FROM signing_keys")
+            .fetch_all(&pool)
+            .await
+            .expect("load signing keys");
+
+        let total = rows.len();
+        let mut resealed = 0;
+        for row in rows {
+            if !row.private_key_encrypted.starts_with("-----BEGIN") {
+                println!("key kid={} already sealed — skipping", row.kid);
+                continue;
+            }
+            let sealed = cipher
+                .encrypt(&row.private_key_encrypted)
+                .expect("seal private key");
+            sqlx::query!(
+                "UPDATE signing_keys SET private_key_encrypted = $2 WHERE id = $1",
+                row.id,
+                sealed,
+            )
+            .execute(&pool)
+            .await
+            .expect("persist sealed key");
+            resealed += 1;
+            println!("sealed key kid={}", row.kid);
+        }
+        println!("done: {resealed} of {total} key(s) sealed");
+    }
+
     // End-to-end proof, against the live DB, that the token endpoint now signs
     // instead of 500ing: provision a confirmed user, then run login → authorize →
     // token_exchange in-process and assert real JWTs come out.
@@ -195,12 +271,14 @@ mod tests {
                 },
                 repositories::{
                     oauth_client_repository::OAuthClientRepository,
+                    signing_key_repository::SigningKeyRepository,
                     tenant_repository::TenantRepository, user_repository::UserRepository,
                 },
             },
             infraestructure::database::{
                 repositories::{
                     oauth_client_repository::DbOAuthClientRepository,
+                    signing_key_repository::DbSigningKeyRepository,
                     tenant_repository::DbTenantRepository, user_repository::DbUserRepository,
                 },
                 unit_of_work::DbUnitOfWorkFactory,
@@ -208,9 +286,8 @@ mod tests {
             utils::{oauth_crypto::pkce_challenge_s256, password_hasher::hash_password},
         };
 
-        // Fixtures from the seeded dev data. We mint our own throwaway PUBLIC client so
-        // the flow needs no client secret (the seeded client is confidential).
-        const TENANT_ID: &str = "019e8e63-5c03-7b93-bfb2-2e32e8e4bba8";
+        // We mint our own throwaway PUBLIC client so the flow needs no client secret
+        // (the seeded client is confidential).
         const REDIRECT_URI: &str = "http://localhost:5174/auth/callback";
         const PASSWORD: &str = "Passw0rd!end-to-end";
         let issuer = "http://localhost:8080".to_string();
@@ -220,12 +297,30 @@ mod tests {
             .await
             .expect("connect to database");
 
-        let tenant_id = Uuid::parse_str(TENANT_ID).unwrap();
-        let tenant = DbTenantRepository::new(pool.clone())
+        // Resolve a real tenant that actually has an ACTIVE signing key, rather than a
+        // hardcoded id — proving the token endpoint signs with whatever (now sealed)
+        // key sits in the DB.
+        let tenants = DbTenantRepository::new(pool.clone());
+        let signing_keys = DbSigningKeyRepository::new(pool.clone());
+        let all_tenants = tenants.find_all(1, 10_000).await.expect("list tenants");
+        let mut chosen = None;
+        for t in &all_tenants {
+            if signing_keys
+                .find_active(t.id())
+                .await
+                .expect("find_active")
+                .is_some()
+            {
+                chosen = Some(t.id());
+                break;
+            }
+        }
+        let tenant_id = chosen.expect("at least one tenant must have an active signing key");
+        let tenant = tenants
             .find_by_id(tenant_id)
             .await
             .unwrap()
-            .expect("seed tenant exists");
+            .expect("chosen tenant exists");
 
         // A throwaway public client for this run.
         let public_client_id = Uuid::now_v7();
@@ -245,6 +340,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             false,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         );
         DbOAuthClientRepository::new(pool.clone())
@@ -280,7 +377,12 @@ mod tests {
 
         let uow_factory: Arc<dyn UnitOfWorkFactory> =
             Arc::new(DbUnitOfWorkFactory::new(pool.clone()));
-        let signer: Arc<dyn TokenSigner> = Arc::new(JwtSigningService::new());
+        let cipher: Arc<dyn SecretCipher> = Arc::new(
+            crate::infraestructure::crypto::aes_gcm_secret_cipher::AesGcmSecretCipher::new(
+                crate::infraestructure::config::resolve_email_encryption_key(),
+            ),
+        );
+        let signer: Arc<dyn TokenSigner> = Arc::new(JwtSigningService::new(cipher));
 
         // A real PKCE pair: keep the verifier, derive the challenge.
         let code_verifier = "e2e-code-verifier-0123456789-0123456789-0123456789";
@@ -289,8 +391,9 @@ mod tests {
         // Step 1: login → opaque session code.
         let login_uc = login::use_case::UseCase::new(
             Arc::clone(&uow_factory),
-            Arc::new(crate::testing::recording_email_sender::RecordingEmailSender::new()),
+            crate::testing::templated_email_support::recording_templated_email_sender().0,
             Arc::new(crate::testing::fake_webauthn_service::FakeWebauthnService::new()),
+            Arc::new(crate::testing::fake_risk_engine::FakeRiskEngine::allow()),
         );
         let login_res = login_uc
             .execute(login::command::Command {
@@ -306,6 +409,8 @@ mod tests {
                 nonce: Some("e2e-nonce".to_string()),
                 mfa_methods: None,
                 mfa_default_method: None,
+                ip_address: None,
+                user_agent: None,
             })
             .await
             .expect("login");

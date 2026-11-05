@@ -1,0 +1,102 @@
+# Production-shaped stack: the identity provider + its database.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Configuration comes from a `.env.prod` file next to this one (gitignored — see
+# .env.example for the full variable list). Every variable referenced below is
+# REQUIRED: compose substitutes nothing for an unset value, and `APP_ENV` is not
+# `development`, so `validate_environment` refuses to boot rather than falling back
+# to a localhost default. That is intentional — read the panic, fix the variable.
+#
+# TLS: this stack speaks plain HTTP. Terminate TLS at a reverse proxy in front of
+# it (the same proxy the dashboard sits behind). Two things depend on that proxy:
+#   - the rate limiter keys on X-Forwarded-For / X-Real-IP, which the proxy must
+#     OVERWRITE rather than pass through, or a client can spoof its own key;
+#   - HSTS and `Secure` cookies only mean anything over HTTPS.
+
+name: gatekeeper-prod
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - gatekeeper_pgdata:/var/lib/postgresql/data
+    # Not published to the host: only the server, on the internal network, needs it.
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gatekeeper-server:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        # `main()` runs migrations on boot, so the database must be accepting
+        # connections first or the process exits.
+        condition: service_healthy
+    environment:
+      # Selects strict startup validation (see config.rs).
+      APP_ENV: production
+
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PORT: 8080
+
+      # Independent secrets. Generate with:
+      #   JWT_SECRET:           openssl rand -base64 48
+      #   EMAIL_ENCRYPTION_KEY: openssl rand -base64 32
+      JWT_SECRET: ${JWT_SECRET}
+      EMAIL_ENCRYPTION_KEY: ${EMAIL_ENCRYPTION_KEY}
+
+      # Public identity. OAUTH_ISSUER is pinned as `iss` in every token issued and
+      # published at /.well-known/openid-configuration — changing it later
+      # invalidates every relying party's configuration.
+      OAUTH_ISSUER: ${OAUTH_ISSUER}
+      AUTH_UI_BASE_URL: ${AUTH_UI_BASE_URL}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+
+      WEBAUTHN_RP_ID: ${WEBAUTHN_RP_ID}
+      WEBAUTHN_RP_ORIGIN: ${WEBAUTHN_RP_ORIGIN}
+
+      REQUIRE_ADMIN_AUTH: "true"
+      # Refusing private/loopback webhook targets is the safe posture: with this on
+      # in a cloud environment a tenant admin can point a webhook at the instance
+      # metadata endpoint and read your IAM credentials.
+      WEBHOOK_ALLOW_PRIVATE_TARGETS: "false"
+
+      RUST_LOG: ${RUST_LOG:-info}
+    ports:
+      - "${SERVER_BIND:-127.0.0.1:8080}:8080"
+    healthcheck:
+      # /ready currently returns a static body and does NOT verify the database
+      # connection — treat it as liveness, not readiness, until that is fixed.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  gatekeeper_pgdata:

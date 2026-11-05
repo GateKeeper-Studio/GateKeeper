@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 // CLI: create a platform-admin account.
 //
 //   cargo run --bin create_admin -- <email> <password> [organization_id]
@@ -76,6 +78,9 @@ async fn main() {
     let admin = AdminUser::new(
         organization_id,
         email.to_string(),
+        // Seed a display name from the email local part; the admin can change it later
+        // from the account page.
+        name_from_email(email),
         password_hash,
         "argon2id".to_string(),
     );
@@ -90,6 +95,28 @@ async fn main() {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
+    }
+}
+
+// "jane.doe@acme.com" -> "Jane Doe": a friendly default display name from the email's
+// local part. Splits on . _ - + and title-cases each word; falls back to the raw email.
+fn name_from_email(email: &str) -> String {
+    let local = email.split('@').next().unwrap_or(email);
+    let words: Vec<String> = local
+        .split(['.', '_', '-', '+'])
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut chars = w.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect();
+    if words.is_empty() {
+        email.to_string()
+    } else {
+        words.join(" ")
     }
 }
 

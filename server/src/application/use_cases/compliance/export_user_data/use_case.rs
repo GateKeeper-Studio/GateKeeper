@@ -58,6 +58,7 @@ impl UseCase {
             display_name: profile.and_then(|p| p.display_name().cloned()),
             first_name: profile.map(|p| p.first_name().to_string()),
             last_name: profile.map(|p| p.last_name().to_string()),
+            custom_field_values: profile.and_then(|p| p.custom_field_values().cloned()),
             is_active: user.is_active(),
             created_at: user.created_at().to_rfc3339(),
             updated_at: user.updated_at().map(|t| t.to_rfc3339()),

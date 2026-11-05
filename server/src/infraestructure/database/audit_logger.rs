@@ -32,6 +32,16 @@ impl AuditLogger for DbAuditLogger {
         if let Err(e) = repo.record(&event).await {
             // Swallow: never let an audit write failure abort the audited operation.
             tracing::error!("failed to record audit event '{}': {e:?}", event.action());
+
+            // ...but do not let it be silent either. Swallowing means a sustained
+            // audit outage looks exactly like normal operation, which for a product
+            // whose promise is "audit everything security-relevant" is the worst
+            // possible failure mode. Alert on any non-zero rate here.
+            metrics::counter!(
+                crate::infraestructure::observability::metrics::AUDIT_WRITE_FAILURES,
+                "action" => event.action().to_string(),
+            )
+            .increment(1);
         }
         Ok(())
     }

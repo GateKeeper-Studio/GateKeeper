@@ -1,0 +1,21 @@
+# Machine-local cargo configuration. Copy to `config.toml` only if your system
+# needs it — `config.toml` itself is gitignored, because the paths below are
+# specific to one developer's machine and break CI and container builds.
+#
+# WHY THIS MAY BE NEEDED: `webauthn-rs` pulls in `openssl` (via
+# `webauthn-attestation-ca`), so the build needs OpenSSL *headers*, not just the
+# runtime library. Distributions that ship `libssl.so.3` without a matching
+# `-devel`/`-dev` package need to be pointed at a prefix that has them.
+#
+# Prefer installing the distribution's development package instead:
+#   Debian/Ubuntu:  apt install pkg-config libssl-dev
+#   Fedora:         dnf install pkg-config openssl-devel
+#
+# If that is not possible, extract the headers somewhere and point at them here.
+# Never switch to openssl's `vendored` feature to work around it: that statically
+# builds a private OpenSSL, so the binary stops receiving the distribution's
+# security updates.
+
+# [env]
+# OPENSSL_DIR = "/absolute/path/to/an/openssl/prefix"
+# OPENSSL_NO_VENDOR = "1"

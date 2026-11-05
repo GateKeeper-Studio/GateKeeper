@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     application::use_cases::oauth::{token_exchange, token_refresh},
     domain::errors::DomainError,
-    presentation::{errors::ApiError, routes::AppState},
+    presentation::{errors::ApiError, middleware::auth::RequestContext, routes::AppState},
 };
 
 // `POST /oauth/token` is application/x-www-form-urlencoded (per spec, not JSON).
@@ -36,6 +36,7 @@ pub struct TokenForm {
 // POST /oauth/token
 pub async fn token(
     State(state): State<AppState>,
+    ctx: RequestContext,
     headers: HeaderMap,
     Form(form): Form<TokenForm>,
 ) -> Result<impl IntoResponse, ApiError> {
@@ -77,6 +78,8 @@ pub async fn token(
                 refresh_token: form
                     .refresh_token
                     .ok_or_else(|| invalid_request("refresh_token is required"))?,
+                ip_address: ctx.ip_address.clone(),
+                user_agent: ctx.user_agent.clone(),
             };
             let response = state.token_refresh.execute(command).await?;
             serde_json::to_value(response).map_err(|_| ApiError::Internal)?

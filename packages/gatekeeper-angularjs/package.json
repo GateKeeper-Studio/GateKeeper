@@ -1,0 +1,34 @@
+{
+  "name": "@gatekeeper/angularjs",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "AngularJS (1.x) bindings for the GateKeeper public OAuth (Auth Code + PKCE) SPA client.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@gatekeeper/spa-oauth": "file:../gatekeeper-spa-oauth"
+  },
+  "peerDependencies": {
+    "angular": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/angular": "^1.8.9",
+    "typescript": "^6.0.0"
+  }
+}

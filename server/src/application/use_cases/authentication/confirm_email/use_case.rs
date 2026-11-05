@@ -1,14 +1,21 @@
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
+use subtle::ConstantTimeEq;
 
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
-        use_cases::authentication::confirm_email::{command::Command, response::Response},
+        use_cases::{
+            authentication::confirm_email::{command::Command, response::Response},
+            webhook::user_event_payload::user_event,
+        },
     },
     domain::{
-        entities::{authorization_code::AuthorizationCode, consent_grant::ConsentGrant},
+        entities::{
+            authorization_code::AuthorizationCode, consent_grant::ConsentGrant,
+            domain_event_type::DomainEventType,
+        },
         errors::DomainError,
     },
     utils::oauth_crypto::{generate_opaque_token, sha256_hex},
@@ -96,9 +103,16 @@ impl UseCase {
             return Err(invalid());
         }
 
-        // 6. Constant-time-equivalent hash comparison prevents timing attacks on the
-        //    6-digit code space.
-        if sha256_hex(&command.token) != token.token_hash() {
+        // 6. Constant-time hash comparison. The code space is only 10^6, so a
+        //    non-constant-time compare could leak the stored hash byte-by-byte via
+        //    timing, and the code is then trivially recoverable offline from that hash.
+        let submitted = sha256_hex(&command.token);
+        if submitted
+            .as_bytes()
+            .ct_eq(token.token_hash().as_bytes())
+            .unwrap_u8()
+            != 1
+        {
             token.register_failed_attempt();
             uow.email_verification_token_repository()
                 .update(&token)
@@ -110,6 +124,12 @@ impl UseCase {
         // 7. Correct code — mark email verified.
         user.verify_email();
         uow.user_repository().update(&user).await?;
+
+        // A downstream mirroring `email_verified` needs this flip: the user.created
+        // it already received said false, and nothing else would ever correct it.
+        uow.outbox_event_repository()
+            .enqueue(&user_event(DomainEventType::UserUpdated, &user, None))
+            .await?;
 
         // 8. Burn the code (single-use).
         token.consume(Utc::now());

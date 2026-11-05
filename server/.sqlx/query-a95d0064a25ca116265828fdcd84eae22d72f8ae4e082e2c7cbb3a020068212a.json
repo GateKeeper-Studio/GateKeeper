@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO refresh_tokens (id, tenant_id, token_hash, client_id, user_id, scopes,\n            family_id, rotated_at, revoked_at, expires_at, created_at)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Uuid",
+        "TextArray",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a95d0064a25ca116265828fdcd84eae22d72f8ae4e082e2c7cbb3a020068212a"
+}

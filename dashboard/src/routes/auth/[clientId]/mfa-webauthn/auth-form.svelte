@@ -10,14 +10,24 @@
 	import ErrorAlert from '$lib/components/error-alert.svelte';
 	import LoadingSpinner from '$lib/components/loading-spinner.svelte';
 	import MfaModal from '$lib/components/auth/mfa-modal.svelte';
+	import SessionExpiryGuard from '$lib/components/auth/session-expiry-guard.svelte';
 
 	import { buildOidcParams } from '$lib/utils/form';
+	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { authorizeApi } from '$lib/services/auth/authorize';
 	import { startWebAuthnMfaApi } from '$lib/services/auth/start-webauthn-mfa';
 	import { verifyWebAuthnMfaApi } from '$lib/services/auth/verify-webauthn-mfa';
 	import { EMfaType } from '$lib/services/auth/login';
+	import {
+		SessionClock,
+		clearSession,
+		readSessionCode
+	} from '$lib/state/auth-session-expiry.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	type StartAuthOptions = Parameters<typeof startAuthentication>[0]['optionsJSON'];
+
+	let { client }: { client: ClientAuthData | null } = $props();
 
 	const clientId = page.params.clientId as string;
 	const searchParams = page.url.searchParams;
@@ -35,16 +45,25 @@
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
 
-	function getSessionCode() {
-		return sessionStorage.getItem(`auth_session_${clientId}`) || '';
+	// Past the password step the clock is our own AuthSession, whose deadlines were
+	// stored alongside the session code at login.
+	const clock = new SessionClock();
+	clock.hydrateFromStorage(clientId);
+
+	function onExpire() {
+		isLoading = false;
+		error = null;
 	}
 
 	async function handleWebAuthn() {
+		if (clock.phase === 'expired') return;
+
 		isLoading = true;
 		error = null;
-		const sessionCode = getSessionCode();
+		// Read late, never cached: a refresh rotates the code out from under us.
+		const sessionCode = readSessionCode(clientId);
 		if (!sessionCode) {
-			error = 'Your sign-in session expired. Please sign in again.';
+			clock.expireNow();
 			isLoading = false;
 			return;
 		}
@@ -66,7 +85,12 @@
 		if (!storedOptions) {
 			const [startData, startErr] = await startWebAuthnMfaApi({ clientId, sessionCode });
 			if (startErr || !startData) {
-				error = startErr?.data?.message || 'Could not start passkey verification.';
+				if (startErr?.status === 401) {
+					clock.expireNow();
+					isLoading = false;
+					return;
+				}
+				error = startErr?.message || m.auth_mfa_webauthn_start_error();
 				isLoading = false;
 				return;
 			}
@@ -82,7 +106,7 @@
 			assertionOptions = (parsed?.publicKey ?? parsed) as StartAuthOptions;
 		} catch (err) {
 			console.error('Failed to parse WebAuthn options:', storedOptions, err);
-			error = 'Invalid WebAuthn options. Please sign in again.';
+			error = m.auth_mfa_webauthn_invalid_options();
 			isLoading = false;
 			return;
 		}
@@ -92,8 +116,7 @@
 			assertionResponse = await startAuthentication({ optionsJSON: assertionOptions });
 		} catch (err: unknown) {
 			console.error('WebAuthn authentication error:', err);
-			error =
-				err instanceof Error ? err.message : 'Passkey authentication was cancelled or failed.';
+			error = err instanceof Error ? err.message : m.auth_mfa_webauthn_cancelled();
 			isLoading = false;
 			return;
 		}
@@ -107,13 +130,20 @@
 
 		if (verifyErr) {
 			console.error('WebAuthn verification error:', verifyErr);
-			error = verifyErr.data?.message || 'Passkey verification failed.';
+			// A dead session is unrecoverable here; hand it to the guard rather than showing
+			// an error the user can only stare at.
+			if (verifyErr.message === 'invalid or expired session') {
+				clock.expireNow();
+				isLoading = false;
+				return;
+			}
+			error = verifyErr.message || m.auth_mfa_webauthn_verify_failed();
 			isLoading = false;
 			return;
 		}
 
 		if (!verifyData) {
-			error = 'An error occurred during verification.';
+			error = m.auth_mfa_webauthn_verification_error();
 			isLoading = false;
 			return;
 		}
@@ -134,20 +164,25 @@
 		});
 
 		if (authorizeErr) {
-			error = authorizeErr.data?.message || 'Authorization failed.';
+			if (authorizeErr.status === 401) {
+				clock.expireNow();
+				isLoading = false;
+				return;
+			}
+			error = authorizeErr.message || m.auth_mfa_webauthn_authorization_failed();
 			isLoading = false;
 			return;
 		}
 
 		if (!authorizeData) {
-			error = 'An error occurred during authorization.';
+			error = m.auth_mfa_webauthn_authorization_error();
 			isLoading = false;
 			return;
 		}
 
 		isLoading = false;
-		toast.success('You have successfully signed in');
-		sessionStorage.removeItem(`auth_session_${clientId}`);
+		toast.success(m.signin_success());
+		clearSession(clientId);
 
 		window.location.href = `${redirectUri}?code=${authorizeData.authorizationCode}&state=${oidcState}&redirect_uri=${redirectUri}&client_id=${clientId}`;
 	}
@@ -163,20 +198,28 @@
 </script>
 
 <div class="grid gap-4">
+	<SessionExpiryGuard
+		{clock}
+		{clientId}
+		mode="session"
+		initiateLoginUri={client?.initiateLoginUri ?? null}
+		{onExpire}
+	/>
+
 	{#if error}
-		<ErrorAlert message={error} title="An error occurred..." />
+		<ErrorAlert message={error} title={m.auth_error_title()} />
 	{/if}
 
 	<div class="flex flex-col items-center gap-3">
 		{#if isLoading}
 			<div class="flex items-center gap-2 text-muted-foreground">
 				<LoadingSpinner />
-				<span>Waiting for passkey...</span>
+				<span>{m.auth_mfa_webauthn_waiting()}</span>
 			</div>
 		{:else}
 			{#if !error}
 				<p class="text-center text-sm text-muted-foreground">
-					Your passkey prompt should appear automatically.
+					{m.auth_mfa_webauthn_prompt_hint()}
 				</p>
 			{/if}
 
@@ -184,11 +227,11 @@
 				{#if isLoading}
 					<LoadingSpinner class="absolute left-4" />
 				{/if}
-				Use Passkey
+				{m.auth_mfa_webauthn_use_passkey()}
 			</Button>
 
 			<Button type="button" variant="ghost" class="w-full" onclick={handleSignInAgain}>
-				Sign in again
+				{m.auth_mfa_webauthn_sign_in_again()}
 			</Button>
 		{/if}
 	</div>

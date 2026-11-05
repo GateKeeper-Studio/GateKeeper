@@ -120,6 +120,23 @@ impl PasswordResetTokenRepository for DbPasswordResetTokenRepository {
 
         Ok(())
     }
+
+    async fn delete_expired(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, DomainError> {
+        let result = run!(
+            self.executor,
+            sqlx::query!(
+                r#"DELETE FROM password_reset_tokens WHERE expires_at < $1"#,
+                before
+            ),
+            execute
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(result.rows_affected())
+    }
 }
 
 fn map_sqlx_error(e: sqlx::Error) -> DomainError {

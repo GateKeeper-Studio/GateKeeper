@@ -1,0 +1,29 @@
+{
+  "name": "gatekeeper-remix-example",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "remix vite:dev",
+    "build": "remix vite:build",
+    "start": "remix-serve ./build/server/index.js",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@gatekeeper/remix": "file:../../packages/gatekeeper-remix",
+    "@remix-run/node": "^2.12.0",
+    "@remix-run/react": "^2.12.0",
+    "@remix-run/serve": "^2.12.0",
+    "isbot": "^5.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@remix-run/dev": "^2.12.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "~5.6.0",
+    "vite": "^5.4.0",
+    "vite-tsconfig-paths": "^5.0.0"
+  }
+}

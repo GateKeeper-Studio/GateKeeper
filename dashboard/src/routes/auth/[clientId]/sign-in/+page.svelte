@@ -2,6 +2,7 @@
 	import Background from '$lib/components/auth/background.svelte';
 	import ErrorAlert from '$lib/components/error-alert.svelte';
 	import AuthForm from './auth-form.svelte';
+	import { m } from '$lib/paraglide/messages.js';
 
 	import type { PageData } from './$types';
 
@@ -9,19 +10,19 @@
 </script>
 
 <svelte:head>
-	<title>Sign In - GateKeeper</title>
-	<meta name="description" content="Sign in to your account" />
+	<title>{m.auth_sign_in_meta_title()} - GateKeeper</title>
+	<meta name="description" content={m.auth_sign_in_meta_description()} />
 </svelte:head>
 
 <Background client={data.client}>
 	<div class="flex flex-col space-y-2 text-center">
-		<h1 class="text-2xl font-semibold tracking-tight">Sign in to your account</h1>
+		<h1 class="text-2xl font-semibold tracking-tight">{m.auth_sign_in_heading()}</h1>
 
-		<p class="text-sm text-muted-foreground">Enter your data below to sign in</p>
+		<p class="text-sm text-muted-foreground">{m.auth_sign_in_description()}</p>
 	</div>
 
 	{#if data.loadError}
-		<ErrorAlert message={data.loadError.message} title="An error occurred..." />
+		<ErrorAlert message={data.loadError.message} title={m.auth_error_title()} />
 	{:else}
 		<AuthForm client={data.client} />
 	{/if}

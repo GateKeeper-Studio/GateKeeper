@@ -1,4 +1,4 @@
-import { api } from '../base/api';
+import { adminApi as api } from '../base/admin-api';
 import { ApiError, type Result } from '../types';
 
 // Mirrors the IdP's organization Response (camelCase projection). An admin is bound

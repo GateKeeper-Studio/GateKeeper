@@ -1,12 +1,14 @@
 use axum::{
     Json,
-    extract::{FromRequestParts, Request, State},
+    extract::{ConnectInfo, FromRequestParts, RawPathParams, Request, State},
     http::{HeaderMap, StatusCode, header, request::Parts},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use base64::Engine;
 use serde_json::json;
+use std::net::{IpAddr, SocketAddr};
+use tracing::Instrument;
 use uuid::Uuid;
 
 use crate::{
@@ -18,12 +20,17 @@ use crate::{
         },
         repositories::signing_key_repository::SigningKeyRepository,
     },
+    infraestructure::cache::caching_signing_key_repository::CachingSigningKeyRepository,
     presentation::routes::AppState,
 };
 
 // Roles that authorize tenant-admin (dashboard) actions. Deny-by-default: an
 // authenticated user without one of these is forbidden from the admin surface.
-pub const ADMIN_ROLES: [&str; 2] = ["admin", "tenant_admin"];
+//
+// Defined in the domain (and enforced as reserved at role creation) so tenants
+// cannot mint a role with one of these names and grant themselves the admin
+// surface. Note this establishes *role*, not tenant — see `TenantScope`.
+pub use crate::domain::entities::role::ADMIN_ROLE_NAMES as ADMIN_ROLES;
 
 // The authenticated caller, derived from a verified access token. Placed into the
 // request extensions by the auth middleware and pulled out by handlers (either via
@@ -41,7 +48,7 @@ pub struct AuthPrincipal {
     // (token carrying a `tid`) has this false and stays pinned to its own tenant.
     pub is_platform_admin: bool,
     // The single organization a platform-admin token is bound to (`org` claim). Every
-    // org/subscription action is scoped to it, so an admin can only ever manage its own
+    // organization action is scoped to it, so an admin can only ever manage its own
     // organization. `None` for end-user tokens and the synthetic `system()` principal.
     pub organization_id: Option<Uuid>,
 }
@@ -106,9 +113,16 @@ pub struct RequestContext {
 }
 
 impl RequestContext {
-    pub fn from_headers(headers: &HeaderMap) -> Self {
-        // Prefer the left-most X-Forwarded-For hop (the original client) when behind a
-        // proxy; fall back to X-Real-IP. No header ⇒ None (direct/unknown).
+    // Prefer a proxy-supplied client IP — the left-most X-Forwarded-For hop (the
+    // original client), then X-Real-IP — and fall back to the TCP peer address when
+    // no proxy header is present (a direct connection). `peer_ip` comes from Axum's
+    // `ConnectInfo`, available because `main` serves with
+    // `into_make_service_with_connect_info`.
+    //
+    // SECURITY: X-Forwarded-For is client-spoofable; it should only be trusted when
+    // this service sits behind a known reverse proxy that overwrites it. The socket
+    // address is the unspoofable fallback for direct/unproxied deployments.
+    pub fn from_request(headers: &HeaderMap, peer_ip: Option<IpAddr>) -> Self {
         let ip_address = headers
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
@@ -119,7 +133,8 @@ impl RequestContext {
                     .get("x-real-ip")
                     .and_then(|v| v.to_str().ok())
                     .map(|s| s.to_string())
-            });
+            })
+            .or_else(|| peer_ip.map(|ip| ip.to_string()));
 
         let user_agent = headers
             .get(header::USER_AGENT)
@@ -131,7 +146,80 @@ impl RequestContext {
             user_agent,
         }
     }
+
+    // Header-only context (no socket fallback). Retained for the few call sites that
+    // don't have the peer address; handlers should prefer the `RequestContext`
+    // extractor, which `capture_client_context` populates with the socket fallback.
+    pub fn from_headers(headers: &HeaderMap) -> Self {
+        Self::from_request(headers, None)
+    }
 }
+
+// Middleware (applied to the whole app): capture the per-request network context
+// (client IP + User-Agent) ONCE and store it in extensions, so every handler and the
+// auth middlewares read a single, enriched value. The peer socket address — present
+// because `main` serves with `into_make_service_with_connect_info::<SocketAddr>()` —
+// is used as the IP fallback when no X-Forwarded-For / X-Real-IP proxy header is set.
+pub async fn capture_client_context(mut request: Request, next: Next) -> Response {
+    let peer_ip = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(addr)| addr.ip());
+    let ctx = RequestContext::from_request(request.headers(), peer_ip);
+    request.extensions_mut().insert(ctx);
+    next.run(request).await
+}
+
+// The header carrying a correlation id, in and out.
+const REQUEST_ID_HEADER: &str = "x-request-id";
+
+/// Middleware: give every request a correlation id and put it on a tracing span.
+///
+/// Without this there was no way to tie the several log lines a single request
+/// produces — a repository error, an audit-write failure, the access log — back to
+/// one another, which is what makes a production log searchable at all.
+///
+/// An inbound `x-request-id` is honoured so a trace started at the reverse proxy or
+/// the dashboard BFF continues here rather than restarting. It is echoed on the
+/// response so a caller can quote it in a bug report.
+///
+/// SECURITY: the inbound value is attacker-controlled, so it is length-capped and
+/// filtered to an unambiguous character set before being logged — an unchecked
+/// header would let a caller inject newlines and forge log entries.
+pub async fn request_id(mut request: Request, next: Next) -> Response {
+    let incoming = request
+        .headers()
+        .get(REQUEST_ID_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= 64
+                && value
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        })
+        .map(str::to_string);
+
+    let id = incoming.unwrap_or_else(|| Uuid::now_v7().to_string());
+
+    request.extensions_mut().insert(RequestId(id.clone()));
+
+    // `Instrument` rather than `span.enter()`: a guard held across an await point
+    // stays entered while the task is parked, so the span would bleed onto whatever
+    // else the executor runs on that thread. Instrumenting the future attaches the
+    // span to the task instead, which is the only correct form in async code.
+    let span = tracing::info_span!("request", request_id = %id);
+    let mut response = next.run(request).instrument(span).await;
+    if let Ok(value) = header::HeaderValue::from_str(&id) {
+        response.headers_mut().insert(REQUEST_ID_HEADER, value);
+    }
+    response
+}
+
+/// The correlation id for the current request, readable by handlers.
+#[derive(Debug, Clone)]
+pub struct RequestId(pub String);
 
 fn bearer_token(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
@@ -190,10 +278,26 @@ fn try_admin_token(token: &str, admin_issuer: &dyn AdminTokenIssuer) -> Option<A
 // token is verified against the server-wide admin secret; everything else is
 // verified against the signing tenant's published keys. Returns the standard OAuth
 // 401 challenge on any failure.
+// Verifies against a key set, collapsing "no keys" and "no key matched" into the
+// same `None`. Both mean the same thing to the caller and must produce the same
+// generic response — distinguishing them would tell an attacker whether a tenant
+// id exists.
+async fn verify_against(
+    verifier: &dyn TokenVerifier,
+    token: &str,
+    keys: &[crate::domain::entities::signing_key::SigningKey],
+) -> Option<crate::application::ports::token_verifier::VerifiedToken> {
+    if keys.is_empty() {
+        return None;
+    }
+    verifier.verify(token, keys).await.ok()
+}
+
 async fn authenticate(
     headers: &HeaderMap,
     verifier: &dyn TokenVerifier,
     keys_reader: &dyn SigningKeyRepository,
+    key_cache: Option<&CachingSigningKeyRepository>,
     admin_issuer: &dyn AdminTokenIssuer,
 ) -> Result<AuthPrincipal, Response> {
     let token = bearer_token(headers).ok_or_else(|| unauthorized("missing bearer token"))?;
@@ -207,18 +311,41 @@ async fn authenticate(
     let tenant_id =
         unverified_tenant_id(&token).ok_or_else(|| unauthorized("token missing tid"))?;
 
+    // The published key set is cached (see `CachingSigningKeyRepository`), so the
+    // common path costs no query at all.
     let keys = keys_reader
         .find_published(tenant_id)
         .await
         .map_err(|_| unauthorized("key lookup failed"))?;
-    if keys.is_empty() {
-        return Err(unauthorized("no published keys for tenant"));
-    }
 
-    let verified = verifier
-        .verify(&token, &keys)
-        .await
-        .map_err(|_| unauthorized("invalid_token"))?;
+    let verified = match verify_against(verifier, &token, &keys).await {
+        Some(verified) => verified,
+        None => {
+            // Either the tenant has no published keys, or none of the cached ones
+            // verified this token. The benign explanation is a key published since
+            // the entry was cached — a rotation, or a tenant created moments ago —
+            // so drop the entry and retry once against the database. Without this,
+            // rotation would reject valid tokens for the whole TTL.
+            //
+            // A genuinely invalid token also lands here and costs one query, which
+            // is what every request cost before the cache existed; the credential
+            // rate limiter bounds how often that can be provoked.
+            let refreshed = match key_cache {
+                Some(cache) => {
+                    cache.invalidate(tenant_id);
+                    keys_reader
+                        .find_published(tenant_id)
+                        .await
+                        .map_err(|_| unauthorized("key lookup failed"))?
+                }
+                None => Vec::new(),
+            };
+
+            verify_against(verifier, &token, &refreshed)
+                .await
+                .ok_or_else(|| unauthorized("invalid_token"))?
+        }
+    };
 
     let user_id =
         Uuid::parse_str(&verified.subject).map_err(|_| unauthorized("invalid subject"))?;
@@ -269,11 +396,18 @@ pub async fn require_admin(
     mut request: Request,
     next: Next,
 ) -> Response {
-    let ctx = RequestContext::from_headers(request.headers());
+    // `capture_client_context` (applied app-wide) already put the enriched context
+    // (socket-IP fallback included) into extensions; read it for audit attribution.
+    let ctx = request
+        .extensions()
+        .get::<RequestContext>()
+        .cloned()
+        .unwrap_or_default();
     let auth = authenticate(
         request.headers(),
         state.token_verifier.as_ref(),
         state.signing_key_reader.as_ref(),
+        state.signing_key_cache.as_deref(),
         state.admin_token_service.as_ref(),
     )
     .await;
@@ -316,7 +450,8 @@ pub async fn require_admin(
         request.extensions_mut().insert(principal);
     }
 
-    request.extensions_mut().insert(ctx);
+    // `ctx` is already in extensions (inserted by `capture_client_context`); no
+    // re-insert needed.
     next.run(request).await
 }
 
@@ -327,25 +462,24 @@ pub async fn require_auth(
     mut request: Request,
     next: Next,
 ) -> Response {
-    let ctx = RequestContext::from_headers(request.headers());
+    // The per-request context is already in extensions (`capture_client_context`).
     match authenticate(
         request.headers(),
         state.token_verifier.as_ref(),
         state.signing_key_reader.as_ref(),
+        state.signing_key_cache.as_deref(),
         state.admin_token_service.as_ref(),
     )
     .await
     {
         Ok(principal) => {
             request.extensions_mut().insert(principal);
-            request.extensions_mut().insert(ctx);
             next.run(request).await
         }
         Err(resp) => {
             if state.require_admin_auth {
                 resp
             } else {
-                request.extensions_mut().insert(ctx);
                 next.run(request).await
             }
         }
@@ -370,6 +504,93 @@ where
     }
 }
 
+// The authenticated caller, already proven to be authorized for the `:tenant_id`
+// in the request path.
+//
+// WHY THIS EXISTS: `require_admin` authorizes on ROLE ONLY — it checks
+// `principal.is_admin()` and never looks at which tenant the request targets.
+// Tenant isolation therefore has to be enforced per handler, and "remember to
+// call `can_access_tenant` in every handler" is a rule that was silently missed
+// on most of the admin surface: a token minted for tenant A could read and write
+// tenant B's users, groups, roles, OAuth clients (including rotating their
+// secrets), SMTP credentials, email templates, legal documents and consents.
+//
+// Making the check a *type* rather than a convention means a handler cannot read
+// `tenant_id` without having been authorized for it — forgetting the guard is no
+// longer expressible. Prefer this over `Path<Uuid>` in every `/tenants/:tenant_id`
+// handler.
+//
+// Uses `RawPathParams` rather than `Path<Uuid>` so it composes with handlers that
+// take further path segments (e.g. `/tenants/:tenant_id/groups/:group_id`).
+#[derive(Debug, Clone)]
+pub struct TenantScope {
+    pub tenant_id: Uuid,
+    pub principal: AuthPrincipal,
+}
+
+impl TenantScope {
+    pub fn tenant_id(&self) -> Uuid {
+        self.tenant_id
+    }
+
+    pub fn principal(&self) -> &AuthPrincipal {
+        &self.principal
+    }
+}
+
+// The authorization decision, split out from the extractor so it is unit-testable:
+// `from_request_parts` needs an `AppState`, which carries ~100 use-case handles and
+// cannot be built in a test.
+//
+// `enforced` mirrors `AppState::require_admin_auth`. When admin-auth enforcement is
+// off (a migration aid, refused outside development by `validate_environment`), the
+// admin layer already waves the request through, so pinning the tenant here would
+// reject requests the guard above accepted.
+fn tenant_access_allowed(enforced: bool, principal: &AuthPrincipal, tenant_id: Uuid) -> bool {
+    !enforced || principal.can_access_tenant(tenant_id)
+}
+
+impl FromRequestParts<AppState> for TenantScope {
+    type Rejection = crate::presentation::errors::ApiError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        use crate::presentation::errors::ApiError;
+
+        let principal = parts
+            .extensions
+            .get::<AuthPrincipal>()
+            .cloned()
+            .ok_or_else(|| ApiError::Unauthorized("authentication required".to_string()))?;
+
+        let params = RawPathParams::from_request_parts(parts, state)
+            .await
+            // Only happens if this extractor is used on a route with no path params
+            // at all — a wiring mistake, not something a client can provoke.
+            .map_err(|_| ApiError::Internal)?;
+
+        let raw = params
+            .iter()
+            .find(|(name, _)| *name == "tenant_id")
+            .map(|(_, value)| value)
+            .ok_or(ApiError::Internal)?;
+
+        let tenant_id = Uuid::parse_str(raw)
+            .map_err(|_| ApiError::BadRequest("tenant_id must be a UUID".to_string()))?;
+
+        if !tenant_access_allowed(state.require_admin_auth, &principal, tenant_id) {
+            return Err(ApiError::Forbidden("tenant mismatch".to_string()));
+        }
+
+        Ok(Self {
+            tenant_id,
+            principal,
+        })
+    }
+}
+
 // Extractor: the per-request audit context (never rejects — defaults to empty).
 impl<S> FromRequestParts<S> for RequestContext
 where
@@ -390,6 +611,32 @@ where
 mod tests {
     use super::*;
     use base64::Engine;
+    use std::net::Ipv4Addr;
+
+    #[test]
+    fn request_context_prefers_proxy_headers_then_socket_fallback() {
+        let peer = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 7));
+
+        // No proxy header ⇒ fall back to the TCP peer address (direct connection).
+        let ctx = RequestContext::from_request(&HeaderMap::new(), Some(peer));
+        assert_eq!(ctx.ip_address.as_deref(), Some("203.0.113.7"));
+
+        // X-Forwarded-For (left-most hop) wins over the socket IP.
+        let mut xff = HeaderMap::new();
+        xff.insert("x-forwarded-for", "198.51.100.9, 10.0.0.1".parse().unwrap());
+        let ctx = RequestContext::from_request(&xff, Some(peer));
+        assert_eq!(ctx.ip_address.as_deref(), Some("198.51.100.9"));
+
+        // X-Real-IP wins over the socket IP when no X-Forwarded-For is present.
+        let mut real = HeaderMap::new();
+        real.insert("x-real-ip", "192.0.2.5".parse().unwrap());
+        let ctx = RequestContext::from_request(&real, Some(peer));
+        assert_eq!(ctx.ip_address.as_deref(), Some("192.0.2.5"));
+
+        // No header and no socket ⇒ None (unknown).
+        let ctx = RequestContext::from_request(&HeaderMap::new(), None);
+        assert_eq!(ctx.ip_address, None);
+    }
 
     fn principal(roles: &[&str]) -> AuthPrincipal {
         AuthPrincipal {
@@ -417,6 +664,113 @@ mod tests {
         let p = principal(&["editor", "viewer"]);
         assert!(p.has_role("editor"));
         assert!(!p.has_role("admin"));
+    }
+
+    // ── TenantScope: the cross-tenant authorization boundary ──────────────────
+    //
+    // `require_admin` authorizes on role alone, so these cases are the only thing
+    // standing between a tenant-scoped admin and every other tenant's data.
+
+    #[test]
+    fn a_tenant_admin_may_act_on_its_own_tenant() {
+        let p = principal(&["tenant_admin"]);
+        assert!(tenant_access_allowed(true, &p, p.tenant_id));
+    }
+
+    #[test]
+    fn a_tenant_admin_may_not_act_on_another_tenant() {
+        // The bug this whole extractor exists for: holding `tenant_admin` in tenant
+        // A must not grant anything in tenant B.
+        let p = principal(&["tenant_admin"]);
+        assert!(!tenant_access_allowed(true, &p, Uuid::now_v7()));
+    }
+
+    #[test]
+    fn an_admin_role_name_alone_does_not_cross_tenants() {
+        // `admin` and `tenant_admin` both satisfy `is_admin()`; neither may widen
+        // the tenant boundary.
+        for role in ADMIN_ROLES {
+            let p = principal(&[role]);
+            assert!(
+                !tenant_access_allowed(true, &p, Uuid::now_v7()),
+                "role {role} must not reach another tenant"
+            );
+        }
+    }
+
+    #[test]
+    fn a_platform_admin_reaches_every_tenant() {
+        // Platform admins are deliberately cross-tenant — that is how the dashboard
+        // administers all tenants, and `can_access_tenant`'s existing contract.
+        let mut p = principal(&["admin"]);
+        p.is_platform_admin = true;
+        assert!(tenant_access_allowed(true, &p, Uuid::now_v7()));
+    }
+
+    // Guards the *next* handler someone writes, not the ones fixed today.
+    //
+    // `TenantScope` makes the check unforgettable only if handlers actually use it;
+    // a new handler that goes back to `Path(tenant_id): Path<Uuid>` would silently
+    // reopen the cross-tenant hole and still compile. This scans the handler sources
+    // for that shape and fails with instructions.
+    #[test]
+    fn no_handler_reads_tenant_id_straight_from_the_path() {
+        // tenant_handler is the one legitimate exception: its endpoints operate on
+        // the tenant *record* and scope by organization instead, via
+        // `principal.require_org()` (a tenant-scoped admin carries no `org` claim,
+        // so it 403s there). It is asserted below rather than merely skipped.
+        const ORG_SCOPED: &str = "tenant_handler.rs";
+
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/presentation/handlers");
+        let mut offenders = Vec::new();
+
+        for entry in std::fs::read_dir(&dir).expect("handlers directory") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
+            let src = std::fs::read_to_string(&path).expect("read handler");
+
+            let binds_tenant_from_path =
+                src.contains("Path(tenant_id)") || src.contains("Path((tenant_id");
+
+            if name == ORG_SCOPED {
+                assert!(
+                    src.contains("require_org()"),
+                    "{name} binds tenant_id from the path but no longer scopes by \
+                     organization — it must use TenantScope instead"
+                );
+                continue;
+            }
+
+            if binds_tenant_from_path {
+                offenders.push(name);
+            }
+        }
+
+        assert!(
+            offenders.is_empty(),
+            "these handlers read `tenant_id` from the path without authorizing it: {offenders:?}\n\
+             `require_admin` checks the caller's ROLE, not which tenant they may touch, so this \
+             lets any tenant's admin act on any other tenant.\n\
+             Take `TenantScope {{ tenant_id, .. }}: TenantScope` instead of `Path<Uuid>`; for \
+             extra path segments use `Path((_, other_id))`."
+        );
+    }
+
+    #[test]
+    fn disabling_enforcement_bypasses_the_tenant_pin() {
+        // Matches `require_admin`: with REQUIRE_ADMIN_AUTH=false the admin layer
+        // already lets the request through, so this must not 403 it instead.
+        // `validate_environment` refuses that setting outside development.
+        let p = principal(&["tenant_admin"]);
+        assert!(tenant_access_allowed(false, &p, Uuid::now_v7()));
     }
 
     #[test]

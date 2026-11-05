@@ -73,4 +73,15 @@ impl AdminRefreshTokenRepository for InMemoryAdminRefreshTokenRepository {
         }
         Ok(())
     }
+
+    async fn revoke_all_for_admin(&self, admin_id: Uuid) -> Result<(), DomainError> {
+        let now = Utc::now();
+        let mut tokens = self.tokens.lock().unwrap();
+        for token in tokens.iter_mut() {
+            if token.admin_id() == admin_id && token.revoked_at().is_none() {
+                token.revoke(now);
+            }
+        }
+        Ok(())
+    }
 }

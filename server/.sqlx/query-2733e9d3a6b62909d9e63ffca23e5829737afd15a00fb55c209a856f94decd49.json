@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO \"security_blocks\"\n            (id, tenant_id, block_type, ip_address, user_id, reason, source,\n             expires_at, created_at, created_by)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2733e9d3a6b62909d9e63ffca23e5829737afd15a00fb55c209a856f94decd49"
+}

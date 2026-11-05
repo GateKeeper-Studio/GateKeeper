@@ -32,6 +32,7 @@ mod tests {
         let mut admin = AdminUser::new(
             uuid::Uuid::now_v7(),
             EMAIL.to_string(),
+            "Ada Admin".to_string(),
             hash,
             "argon2id".to_string(),
         );
@@ -40,6 +41,7 @@ mod tests {
                 admin.id(),
                 admin.organization_id(),
                 admin.email().to_string(),
+                admin.name().to_string(),
                 admin.password_hash().to_string(),
                 admin.password_algorithm().to_string(),
                 false,

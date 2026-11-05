@@ -1,15 +1,13 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-// Organization is the top-level owner. It has many admin_users and may own a
-// single subscription; tenants (and their children) hang off that subscription.
+// Organization is the top-level owner of admins and tenants.
 #[derive(Debug, Clone)]
 pub struct Organization {
     id: Uuid,
     name: String,
     description: Option<String>,
     is_active: bool,
-
     created_at: DateTime<Utc>,
     updated_at: Option<DateTime<Utc>>,
 }
@@ -33,6 +31,7 @@ impl Organization {
         self.updated_at = Some(Utc::now());
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn reconstruct(
         id: Uuid,
         name: String,

@@ -45,7 +45,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
-            expires_at, created_at
+            expires_at, absolute_expires_at, created_at
           FROM auth_sessions
           WHERE tenant_id = $1 AND id = $2
         "#,
@@ -74,6 +74,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 r.pending_code_challenge_method,
                 r.pending_nonce,
                 r.expires_at,
+                r.absolute_expires_at,
                 r.created_at,
             )
         }))
@@ -92,7 +93,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
-            expires_at, created_at
+            expires_at, absolute_expires_at, created_at
           FROM auth_sessions
           WHERE tenant_id = $1 AND session_token_hash = $2
         "#,
@@ -121,6 +122,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 r.pending_code_challenge_method,
                 r.pending_nonce,
                 r.expires_at,
+                r.absolute_expires_at,
                 r.created_at,
             )
         }))
@@ -135,8 +137,8 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
-            expires_at, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            expires_at, absolute_expires_at, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
         "#,
                 session.id(),
                 session.tenant_id(),
@@ -154,6 +156,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 session.pending_code_challenge_method(),
                 session.pending_nonce(),
                 session.expires_at(),
+                session.absolute_expires_at(),
                 session.created_at(),
             ),
             execute
@@ -164,18 +167,20 @@ impl AuthSessionRepository for DbAuthSessionRepository {
     }
 
     async fn update(&self, session: &AuthSession) -> Result<(), DomainError> {
-        // Only the authentication outcome mutates after creation; the frozen
-        // /authorize request fields are never rewritten.
+        // Only the authentication outcome, the idle deadline, and the token itself
+        // mutate after creation. The frozen /authorize request fields and the absolute
+        // ceiling are never rewritten — that is the whole point of freezing them.
         run!(
             self.executor,
             sqlx::query!(
                 r#"
           UPDATE auth_sessions
-          SET user_id = $2, authenticated_at = $3, expires_at = $4,
-            mfa_required = $5, mfa_verified_at = $6, mfa_method = $7
+          SET session_token_hash = $2, user_id = $3, authenticated_at = $4, expires_at = $5,
+            mfa_required = $6, mfa_verified_at = $7, mfa_method = $8
           WHERE id = $1
         "#,
                 session.id(),
+                session.session_token_hash(),
                 session.user_id(),
                 session.authenticated_at(),
                 session.expires_at(),

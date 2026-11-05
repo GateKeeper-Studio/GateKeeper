@@ -13,6 +13,7 @@ mod tests {
         },
         testing::{
             in_memory_repositories::{
+                in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
                 in_memory_tenant_repository::InMemoryTenantRepository,
                 in_memory_user_repository::InMemoryUserRepository,
             },
@@ -32,8 +33,7 @@ mod tests {
             true,                      // is_active
             true,                      // can_self_register
             true,                      // can_self_forgot_password
-            uuid::Uuid::now_v7(),      // subscription_id
-            false,                     // is_default
+            uuid::Uuid::now_v7(),      // organization_id
         )
     }
 
@@ -50,8 +50,20 @@ mod tests {
     }
 
     fn setup(tenant: &Tenant) -> (Arc<InMemoryUserRepository>, UseCase) {
+        let (user_repo, use_case, _) = setup_with_outbox(tenant);
+        (user_repo, use_case)
+    }
+
+    fn setup_with_outbox(
+        tenant: &Tenant,
+    ) -> (
+        Arc<InMemoryUserRepository>,
+        UseCase,
+        Arc<InMemoryOutboxEventRepository>,
+    ) {
         let user_repo = Arc::new(InMemoryUserRepository::new());
         let tenant_repo = Arc::new(InMemoryTenantRepository::new());
+        let outbox = Arc::new(InMemoryOutboxEventRepository::new());
 
         tenant_repo
             .memory
@@ -60,14 +72,14 @@ mod tests {
             .unwrap()
             .insert(tenant.id(), tenant.clone());
 
-        let uow_factory = Arc::new(InMemoryUnitOfWorkFactory::new(
-            user_repo.clone(),
-            tenant_repo.clone(),
-        ));
+        let uow_factory = Arc::new(
+            InMemoryUnitOfWorkFactory::new(user_repo.clone(), tenant_repo.clone())
+                .with_outbox_event_repository(outbox.clone()),
+        );
 
         let use_case = UseCase::new(uow_factory);
 
-        (user_repo, use_case)
+        (user_repo, use_case, outbox)
     }
 
     // ── Tests ──────────────────────────────────────────────────────────────────
@@ -176,5 +188,52 @@ mod tests {
             .unwrap()
             .email()
             .to_string()
+    }
+
+    // ── Outbound events ────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn enqueues_a_user_created_event_with_the_admin_source() {
+        let tenant = make_tenant();
+        let (_, use_case, outbox) = setup_with_outbox(&tenant);
+
+        let response = use_case.execute(make_command(tenant.id())).await.unwrap();
+
+        let stored = outbox.memory.data.lock().unwrap();
+        assert_eq!(stored.len(), 1);
+        let event = stored.values().next().unwrap();
+        assert_eq!(event.tenant_id(), tenant.id());
+        assert_eq!(event.event_type().as_str(), "user.created");
+        assert!(!event.is_published());
+
+        let data = &event.payload()["data"];
+        assert_eq!(data["user_id"], response.user_id.to_string());
+        assert_eq!(data["email"], "user@example.com");
+        assert_eq!(data["source"], "admin");
+        assert_eq!(data["email_verified"], false);
+    }
+
+    // THE property the whole outbox design exists for: the event and the user share a
+    // transaction, so a use case that fails partway leaves NEITHER behind. Without
+    // this, a downstream could be told about a user that does not exist.
+    #[tokio::test]
+    async fn a_failed_creation_leaves_no_event_behind() {
+        let tenant = make_tenant();
+        let (user_repo, use_case, outbox) = setup_with_outbox(&tenant);
+
+        // First call succeeds and commits.
+        use_case.execute(make_command(tenant.id())).await.unwrap();
+        assert_eq!(outbox.memory.data.lock().unwrap().len(), 1);
+
+        // Second call fails on the duplicate-email guard, before commit.
+        let err = use_case
+            .execute(make_command(tenant.id()))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::UserAlreadyExists(_)));
+
+        // Neither a second user nor a second event was committed.
+        assert_eq!(user_repo.memory.data.lock().unwrap().len(), 1);
+        assert_eq!(outbox.memory.data.lock().unwrap().len(), 1);
     }
 }

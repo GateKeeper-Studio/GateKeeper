@@ -1,0 +1,184 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, name, host, port, username, password_encrypted,\n            from_email, from_name, encryption, is_default, is_active, created_at, updated_at\n          FROM tenant_emails\n          WHERE tenant_id = $1 AND is_default = TRUE\n          LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "host",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "host"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "port",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "port"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "username",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "username"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "password_encrypted",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "password_encrypted"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "from_email",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "from_email"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "from_name",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "from_name"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "encryption",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "encryption"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "is_default",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "is_default"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "tenant_emails",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "d1ddd2ddaad91509ca7a05bc1caa4b71b7e4203fd3224fbb5bfd5cb20adc77a1"
+}

@@ -1,0 +1,196 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, state_hash, external_provider_id, oauth_client_id, tenant_id, provider,\n            client_redirect_uri, client_response_type, client_scope, client_state, client_nonce,\n            client_code_challenge, client_code_challenge_method, expires_at, created_at\n          FROM external_login_flows\n          WHERE state_hash = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "state_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "state_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "external_provider_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "external_provider_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "oauth_client_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "oauth_client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "provider",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "client_redirect_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "client_redirect_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "client_response_type",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "client_response_type"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "client_scope",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "client_scope"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "client_state",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "client_state"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "client_nonce",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "client_nonce"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "client_code_challenge",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "client_code_challenge"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "client_code_challenge_method",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "client_code_challenge_method"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "external_login_flows",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "85a986f873ab8d0f5f5c1029a62bf9abb87753e6e9462c2ec066da9b9b762541"
+}

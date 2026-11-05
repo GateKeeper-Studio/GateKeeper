@@ -71,6 +71,7 @@ impl UserRepository for DbUserRepository {
         r#"
           SELECT u.id as "id!", u.email as "email!", u.tenant_id as "tenant_id!", u.is_email_verified as "is_email_verified!",
             p.first_name as "first_name?", p.last_name as "last_name?", p.display_name as "display_name?",
+            p.custom_field_values as "custom_field_values?: sqlx::types::Json<serde_json::Value>",
             u.created_at as "created_at!", u.updated_at, u.is_active as "is_active!"
           FROM users u
           LEFT JOIN user_profiles p ON p.user_id = u.id
@@ -87,7 +88,9 @@ impl UserRepository for DbUserRepository {
                 .first_name
                 .zip(r.last_name)
                 .map(|(first_name, last_name)| {
-                    UserProfile::new(r.id, r.display_name, first_name, last_name)
+                    let mut profile = UserProfile::new(r.id, r.display_name, first_name, last_name);
+                    profile.hydrate_custom_field_values(r.custom_field_values.map(|j| j.0));
+                    profile
                 });
 
             User::reconstruct(
@@ -162,7 +165,7 @@ impl UserRepository for DbUserRepository {
             is_email_verified as "is_email_verified!", is_active as "is_active!", 
             created_at as "created_at!", updated_at
           FROM users
-          WHERE tenant_id = $1 AND email = $2
+          WHERE tenant_id = $1 AND lower(email) = lower($2)
         "#,
                 tenant_id,
                 email
@@ -196,9 +199,10 @@ impl UserRepository for DbUserRepository {
             self.executor,
             sqlx::query!(
                 r#"
-          SELECT u.id as "id!", u.email as "email!", u.tenant_id as "tenant_id!", 
-            u.is_email_verified as "is_email_verified!", p.first_name as "first_name?", 
+          SELECT u.id as "id!", u.email as "email!", u.tenant_id as "tenant_id!",
+            u.is_email_verified as "is_email_verified!", p.first_name as "first_name?",
             p.last_name as "last_name?", p.display_name as "display_name?",
+            p.custom_field_values as "custom_field_values?: sqlx::types::Json<serde_json::Value>",
             u.created_at, u.updated_at, u.is_active
           FROM users u
           LEFT JOIN user_profiles p ON p.user_id = u.id
@@ -222,7 +226,14 @@ impl UserRepository for DbUserRepository {
                     .first_name
                     .zip(r.last_name)
                     .map(|(first_name, last_name)| {
-                        UserProfile::reconstruct(r.id, r.display_name, first_name, last_name, None)
+                        UserProfile::reconstruct(
+                            r.id,
+                            r.display_name,
+                            first_name,
+                            last_name,
+                            None,
+                            r.custom_field_values.map(|j| j.0),
+                        )
                     });
 
                 User::reconstruct(
@@ -259,7 +270,7 @@ impl UserRepository for DbUserRepository {
         let exists = run!(
             self.executor,
             sqlx::query_scalar!(
-                "SELECT EXISTS(SELECT 1 FROM users WHERE tenant_id = $1 AND email = $2)",
+                "SELECT EXISTS(SELECT 1 FROM users WHERE tenant_id = $1 AND lower(email) = lower($2))",
                 tenant_id,
                 email
             ),
@@ -268,6 +279,26 @@ impl UserRepository for DbUserRepository {
         .map_err(map_sqlx_error)?;
 
         Ok(exists.unwrap_or(false))
+    }
+
+    async fn find_user_ids_with_password(
+        &self,
+        user_ids: &[Uuid],
+    ) -> Result<Vec<Uuid>, DomainError> {
+        if user_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = run!(
+            self.executor,
+            sqlx::query_scalar!(
+                "SELECT user_id FROM user_credentials WHERE user_id = ANY($1)",
+                user_ids
+            ),
+            fetch_all
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(rows)
     }
 
     async fn delete_by_id(&self, user_id: Uuid) -> Result<(), DomainError> {
@@ -327,11 +358,11 @@ impl UserRepository for DbUserRepository {
             };
         }
 
-        // Clear profile names and drop credentials.
+        // Clear profile names, tenant-collected custom field values, and drop credentials.
         run!(
       self.executor,
       sqlx::query!(
-        r#"UPDATE user_profiles SET first_name = '', last_name = '', display_name = '' WHERE user_id = $1"#,
+        r#"UPDATE user_profiles SET first_name = '', last_name = '', display_name = '', custom_field_values = NULL WHERE user_id = $1"#,
         user_id
       ),
       execute
@@ -413,13 +444,15 @@ impl UserRepository for DbUserRepository {
                 self.executor,
                 sqlx::query!(
                     r#"
-            INSERT INTO user_profiles (user_id, display_name, first_name, last_name)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO user_profiles (user_id, display_name, first_name, last_name, custom_field_values)
+            VALUES ($1, $2, $3, $4, $5)
           "#,
                     profile.user_id(),
                     profile.display_name().map(|s| s.as_str()).unwrap_or(""),
                     profile.first_name(),
                     profile.last_name(),
+                    profile.custom_field_values().map(sqlx::types::Json)
+                        as Option<sqlx::types::Json<&serde_json::Value>>,
                 ),
                 execute
             )
@@ -472,17 +505,20 @@ impl UserRepository for DbUserRepository {
                 self.executor,
                 sqlx::query!(
                     r#"
-            INSERT INTO user_profiles (user_id, display_name, first_name, last_name)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO user_profiles (user_id, display_name, first_name, last_name, custom_field_values)
+            VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (user_id) DO UPDATE
             SET display_name = EXCLUDED.display_name,
                 first_name = EXCLUDED.first_name,
-                last_name = EXCLUDED.last_name
+                last_name = EXCLUDED.last_name,
+                custom_field_values = EXCLUDED.custom_field_values
           "#,
                     profile.user_id(),
                     profile.display_name().map(|s| s.as_str()).unwrap_or(""),
                     profile.first_name(),
                     profile.last_name(),
+                    profile.custom_field_values().map(sqlx::types::Json)
+                        as Option<sqlx::types::Json<&serde_json::Value>>,
                 ),
                 execute
             )

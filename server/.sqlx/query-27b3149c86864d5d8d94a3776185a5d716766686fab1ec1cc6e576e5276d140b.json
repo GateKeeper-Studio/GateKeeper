@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tenant_emails SET is_default = FALSE WHERE tenant_id = $1 AND is_default = TRUE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "27b3149c86864d5d8d94a3776185a5d716766686fab1ec1cc6e576e5276d140b"
+}

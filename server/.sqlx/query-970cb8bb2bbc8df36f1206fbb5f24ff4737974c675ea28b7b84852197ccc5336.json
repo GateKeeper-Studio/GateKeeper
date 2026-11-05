@@ -1,0 +1,119 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, kid, algorithm, public_jwk::text as \"public_jwk!\",\n            private_key_encrypted, status, rotates_at, created_at\n          FROM signing_keys\n          WHERE tenant_id = $1 AND status IN ('active', 'retiring')\n          ORDER BY created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "kid",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "kid"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "algorithm",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "public_jwk!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "private_key_encrypted",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "private_key_encrypted"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "rotates_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "rotates_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "signing_keys",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "970cb8bb2bbc8df36f1206fbb5f24ff4737974c675ea28b7b84852197ccc5336"
+}

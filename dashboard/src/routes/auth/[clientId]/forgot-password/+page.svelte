@@ -7,6 +7,7 @@
 	import ErrorAlert from '$lib/components/error-alert.svelte';
 	import AuthForm from './auth-form.svelte';
 	import type { PageData } from './$types';
+	import { m } from '$lib/paraglide/messages.js';
 
 	let { data }: { data: PageData } = $props();
 
@@ -18,29 +19,26 @@
 </script>
 
 <svelte:head>
-	<title>Forgot Password - GateKeeper</title>
+	<title>{m.auth_forgot_password_meta_title()} - GateKeeper</title>
 </svelte:head>
 
 <Background client={data.client} termsAndConditionsEnabled={false}>
-	<a
-		href={backHref}
-		class="absolute top-4 left-4 flex items-center gap-3 text-primary hover:underline"
-	>
+	<a href={backHref} class="mb-6 flex items-center gap-3 text-primary hover:underline">
 		<div
 			class="flex items-center justify-center rounded-md bg-secondary p-2 text-primary transition-all hover:brightness-90"
 		>
 			<ArrowLeftIcon />
 		</div>
-		Back to sign in
+		{m.auth_forgot_password_back_to_sign_in()}
 	</a>
 
 	<div class="flex flex-col space-y-2 text-center">
-		<h1 class="text-2xl font-semibold tracking-tight">Forgot your password?</h1>
-		<p class="text-sm text-muted-foreground">Enter your e-mail below to continue</p>
+		<h1 class="text-2xl font-semibold tracking-tight">{m.auth_forgot_password_heading()}</h1>
+		<p class="text-sm text-muted-foreground">{m.auth_forgot_password_description()}</p>
 	</div>
 
 	{#if data.loadError}
-		<ErrorAlert message={data.loadError.message} title="An error occurred..." />
+		<ErrorAlert message={data.loadError.message} title={m.auth_error_title()} />
 	{:else}
 		<AuthForm />
 	{/if}

@@ -1,0 +1,28 @@
+{
+  "name": "@gatekeeper/bff-core",
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Framework-agnostic server-side GateKeeper OAuth/OIDC Backend-for-Frontend core (confidential clients).",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^6.0.0"
+  }
+}

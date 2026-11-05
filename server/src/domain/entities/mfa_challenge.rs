@@ -107,6 +107,39 @@ impl MfaChallenge {
         }
     }
 
+    // An attempt counter for a TOTP verification, carrying no secret of its own.
+    //
+    // TOTP has no server-issued code to store — the user reads it off their
+    // authenticator — so unlike email OTP there was nothing tracking wrong tries,
+    // and a caller holding a valid post-password session code could brute-force
+    // the 6-digit space (10^6, no HTTP rate limit) until the session idled out.
+    // This row exists purely to make `MAX_ATTEMPTS` apply to TOTP as well; it is
+    // created lazily on the first verification attempt for a session.
+    //
+    // `code_hash` and `state_json` are None: there is nothing secret to keep.
+    pub fn new_totp_attempt_counter(
+        tenant_id: Uuid,
+        user_id: Uuid,
+        auth_session_id: Option<Uuid>,
+        purpose: MfaChallengePurpose,
+        expires_at: DateTime<Utc>,
+    ) -> Self {
+        MfaChallenge {
+            id: Uuid::now_v7(),
+            tenant_id,
+            user_id,
+            auth_session_id,
+            purpose,
+            method: MfaMethod::Totp,
+            code_hash: None,
+            state_json: None,
+            attempts: 0,
+            consumed_at: None,
+            expires_at,
+            created_at: Utc::now(),
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn reconstruct(
         id: Uuid,

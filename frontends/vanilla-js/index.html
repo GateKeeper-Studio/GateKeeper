@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GateKeeper Public OAuth Client</title>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Vanilla JavaScript</p>
+          <h1 id="page-title">Public OAuth client</h1>
+          <p class="summary">
+            Browser-only Authorization Code + PKCE flow for public GateKeeper clients.
+            No client secret and no backend-for-frontend are used.
+          </p>
+        </div>
+        <div class="auth-actions">
+          <button class="button button-primary" type="button" data-action="sign-in">Sign in</button>
+          <button class="button" type="button" data-action="refresh-token">Refresh token</button>
+          <button class="button button-danger" type="button" data-action="sign-out">Sign out</button>
+        </div>
+      </section>
+
+      <section class="status-grid" aria-label="Session status">
+        <article class="panel">
+          <span class="panel-label">Status</span>
+          <strong id="session-status">Loading</strong>
+        </article>
+        <article class="panel">
+          <span class="panel-label">Subject</span>
+          <strong id="session-email">-</strong>
+        </article>
+        <article class="panel">
+          <span class="panel-label">Access token expires</span>
+          <strong id="session-expiry">-</strong>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Runtime</p>
+              <h2>OAuth settings</h2>
+            </div>
+          </div>
+          <pre id="runtime-config" class="code-block"></pre>
+        </article>
+
+        <article class="panel">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">OIDC</p>
+              <h2>UserInfo</h2>
+            </div>
+            <button class="button" type="button" data-action="load-userinfo">Load</button>
+          </div>
+          <pre id="userinfo-body" class="code-block">No userinfo loaded.</pre>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Token</p>
+              <h2>Decoded claims</h2>
+            </div>
+          </div>
+          <pre id="token-claims" class="code-block">No token claims loaded.</pre>
+        </article>
+
+        <article class="panel events-panel">
+          <div class="section-header">
+            <div>
+              <p class="eyebrow">Flow</p>
+              <h2>Events</h2>
+            </div>
+            <button class="button" type="button" data-action="clear-log">Clear</button>
+          </div>
+          <ol id="event-log" class="event-log"></ol>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+

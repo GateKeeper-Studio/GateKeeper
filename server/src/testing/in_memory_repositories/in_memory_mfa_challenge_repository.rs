@@ -116,4 +116,14 @@ impl MfaChallengeRepository for InMemoryMfaChallengeRepository {
         }
         Ok(())
     }
+
+    async fn delete_expired(
+        &self,
+        before: chrono::DateTime<chrono::Utc>,
+    ) -> Result<u64, DomainError> {
+        let mut data = self.memory.data.lock().unwrap();
+        let before_count = data.len();
+        data.retain(|_, row| row.expires_at() >= before);
+        Ok((before_count - data.len()) as u64)
+    }
 }

@@ -1,8 +1,19 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { resolve } from '$app/paths';
-	import ThemeToggle from '$lib/components/theme-toggle.svelte';
+	import { page } from '$app/state';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
+	import { resolveLocalized } from '$lib/i18n/resolve-localized';
+	import {
+		DEFAULT_RESOLVED_LOGIN_APPEARANCE,
+		fontStackFor,
+		type LoginAppearance,
+		type ResolvedLoginAppearance
+	} from '$lib/types/login-appearance';
+	import Centered from './layouts/centered.svelte';
+	import SplitImage from './layouts/split-image.svelte';
+	import Card from './layouts/card.svelte';
+	import Minimal from './layouts/minimal.svelte';
 
 	let {
 		client,
@@ -14,71 +25,79 @@
 		children: Snippet;
 	} = $props();
 
-	// Prefer the client's own external legal URLs; otherwise link to this tenant's
-	// hosted pages (resolved by client id), falling back to the platform default
-	// pages when there is no client context.
-	const termsHref = $derived(
-		client?.tosUri ??
-			(client ? resolve('/terms/[clientId]', { clientId: client.id }) : resolve('/terms'))
+	// Live-preview mode: the admin dashboard embeds this page in a sandboxed iframe
+	// (?preview=1) and postMessages a draft appearance as the admin edits. We only
+	// listen when explicitly in preview mode, and only accept same-origin messages.
+	const preview = $derived(page.url.searchParams.get('preview') === '1');
+	// undefined = nothing received yet (show the client's saved look); null = the
+	// admin toggled customization OFF (default look); object = a draft to render.
+	let previewAppearance = $state<ResolvedLoginAppearance | null | undefined>(undefined);
+
+	$effect(() => {
+		if (!preview || typeof window === 'undefined') return;
+
+		function onMessage(event: MessageEvent) {
+			if (event.origin !== window.location.origin) return;
+			const data = event.data;
+			if (data && data.type === 'gk-preview-appearance') {
+				// The admin's draft is still map-based (per-language heading/subtext) —
+				// resolve it to this page's own current locale before rendering, same
+				// fallback chain the server uses for the real (non-preview) response.
+				const draft = (data.appearance as LoginAppearance | null) ?? null;
+				const loc = getLocale();
+				const fallback = client?.defaultLanguage ?? 'en';
+				previewAppearance = draft
+					? {
+							...draft,
+							heading: resolveLocalized(draft.heading, loc, fallback) || null,
+							subtext: resolveLocalized(draft.subtext, loc, fallback) || null
+						}
+					: null;
+			}
+		}
+
+		window.addEventListener('message', onMessage);
+		// Tell the embedder we're ready so it can send the current draft immediately.
+		window.parent?.postMessage({ type: 'gk-preview-ready' }, window.location.origin);
+		return () => window.removeEventListener('message', onMessage);
+	});
+
+	// The appearance actually rendered: a live preview draft wins in preview mode,
+	// otherwise the client's saved appearance. Merged over the defaults so every
+	// field is always present.
+	const effective = $derived(
+		preview && previewAppearance !== undefined
+			? previewAppearance
+			: (client?.loginAppearance ?? null)
 	);
-	const privacyHref = $derived(
-		client?.policyUri ??
-			(client ? resolve('/privacy/[clientId]', { clientId: client.id }) : resolve('/privacy'))
-	);
+	const appearance = $derived<ResolvedLoginAppearance>({
+		...DEFAULT_RESOLVED_LOGIN_APPEARANCE,
+		...(effective ?? {})
+	});
+
+	const layouts = { centered: Centered, split_image: SplitImage, card: Card, minimal: Minimal };
+	const LayoutComponent = $derived(layouts[appearance.layout] ?? SplitImage);
+
+	// Empty-string guards keep `style:` from emitting a blank custom property.
+	const fontFamily = $derived(fontStackFor(appearance.fontFamily));
 </script>
 
+<!--
+  Theme tokens are applied here via `style:` directives — Svelte sets each via the
+  CSSOM (element.style.setProperty), never string concatenation. Every value was
+  validated server-side (hex color, bounded rem/px radius, whitelisted font key),
+  so there is no way to break out of the CSS context. `display:contents` means this
+  wrapper generates no box but still cascades the inherited custom properties and
+  font-family into the chosen layout.
+-->
 <div
-	class="relative flex h-screen flex-col items-center justify-center lg:grid lg:max-w-none lg:grid-cols-2 lg:px-0"
+	class="contents"
+	style:--primary={appearance.primaryColor || null}
+	style:--accent={appearance.accentColor || null}
+	style:--radius={appearance.borderRadius || null}
+	style:font-family={fontFamily || null}
 >
-	<div class="relative hidden h-screen flex-col bg-muted p-10 text-white lg:flex dark:border-r">
-		<div
-			class="absolute inset-0 bg-cover"
-			style="background-image: url(https://images.unsplash.com/photo-1590069261209-f8e9b8642343?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1376&q=80)"
-		></div>
-
-		<div class="relative z-20 flex items-center text-lg font-medium">
-			{client?.name}
-		</div>
-
-		<div class="relative z-20 mt-auto">
-			<blockquote class="space-y-2">
-				<p class="text-lg">
-					&ldquo;This library has saved me countless hours of work and helped me deliver stunning
-					designs to my clients faster than ever before. Highly recommended!&rdquo;
-				</p>
-
-				<footer class="text-sm">Sofia Davis</footer>
-			</blockquote>
-		</div>
-	</div>
-
-	<div class="relative flex h-full w-full flex-1 items-center justify-center overflow-auto">
-		<div class="flex w-full justify-center p-6 sm:p-8">
-			<span class="absolute right-4 bottom-4">
-				<ThemeToggle />
-			</span>
-
-			<div class="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]">
-				{@render children()}
-
-				{#if termsAndConditionsEnabled}
-					<p class="px-8 text-center text-sm text-muted-foreground">
-						By clicking continue, you agree to our
-						<!-- Client-provided tosUri may be external; fallback is already resolved above. -->
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-						<a href={termsHref} class="mx-1 underline underline-offset-4 hover:text-primary">
-							Terms of Service
-						</a>
-						and
-						<!-- Client-provided policyUri may be external; fallback is already resolved above. -->
-						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-						<a href={privacyHref} class="ml-1 underline underline-offset-4 hover:text-primary">
-							Privacy Policy
-						</a>
-						.
-					</p>
-				{/if}
-			</div>
-		</div>
-	</div>
+	<LayoutComponent {client} {appearance} {termsAndConditionsEnabled}>
+		{@render children()}
+	</LayoutComponent>
 </div>

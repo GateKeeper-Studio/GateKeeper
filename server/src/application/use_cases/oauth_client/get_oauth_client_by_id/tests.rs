@@ -33,6 +33,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }
@@ -48,7 +50,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
             chrono::Utc::now(),
             None,
         );

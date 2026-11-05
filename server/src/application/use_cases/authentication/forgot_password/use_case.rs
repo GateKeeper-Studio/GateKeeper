@@ -5,7 +5,8 @@ use uuid::Uuid;
 
 use crate::{
     application::{
-        ports::{email_sender::EmailSender, unit_of_work::UnitOfWorkFactory},
+        ports::unit_of_work::UnitOfWorkFactory,
+        services::templated_email_sender::TemplatedEmailSender,
         use_cases::authentication::forgot_password::command::Command,
     },
     domain::{entities::password_reset_token::PasswordResetToken, errors::DomainError},
@@ -18,7 +19,7 @@ const RESET_TOKEN_TTL_MINUTES: i64 = 30;
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
-    email_sender: Arc<dyn EmailSender>,
+    templated_email: Arc<TemplatedEmailSender>,
     // Base URL of the hosted login UI (dashboard) the reset link points at.
     auth_ui_base_url: String,
 }
@@ -26,12 +27,12 @@ pub struct UseCase {
 impl UseCase {
     pub fn new(
         unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
-        email_sender: Arc<dyn EmailSender>,
+        templated_email: Arc<TemplatedEmailSender>,
         auth_ui_base_url: String,
     ) -> Self {
         Self {
             unit_of_work_factory,
-            email_sender,
+            templated_email,
             auth_ui_base_url,
         }
     }
@@ -51,6 +52,16 @@ impl UseCase {
             .ok_or_else(|| DomainError::InvalidClient("unknown or inactive client".to_string()))?;
 
         let tenant_id = client.tenant_id();
+
+        // 1b. There is no password to reset on an external-login-only client. Unlike
+        //     the checks below, this one is not an enumeration risk: the flag is part
+        //     of the client's PUBLIC auth data, so refusing outright is safe and tells
+        //     the caller something it could already read.
+        if !client.allows_password_login() {
+            return Err(DomainError::AccessDenied(
+                "this application signs in with an external provider only".to_string(),
+            ));
+        }
 
         let tenant = uow
             .tenant_repository()
@@ -119,8 +130,15 @@ impl UseCase {
             &raw_token,
             reset_id,
         );
-        self.email_sender
-            .send_password_reset_link(email_provider.as_ref(), &command.email, &link)
+        self.templated_email
+            .send_password_reset_link(
+                tenant_id,
+                email_provider.as_ref(),
+                &command.email,
+                &link,
+                client.name(),
+                &format!("{RESET_TOKEN_TTL_MINUTES} minutes"),
+            )
             .await?;
 
         Ok(())

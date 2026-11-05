@@ -24,6 +24,7 @@ mod tests {
                 in_memory_consent_grant_repository::InMemoryConsentGrantRepository,
                 in_memory_email_verification_token_repository::InMemoryEmailVerificationTokenRepository,
                 in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
+                in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
                 in_memory_tenant_repository::InMemoryTenantRepository,
                 in_memory_user_repository::InMemoryUserRepository,
             },
@@ -42,6 +43,7 @@ mod tests {
         tokens: Arc<InMemoryEmailVerificationTokenRepository>,
         codes: Arc<InMemoryAuthorizationCodeRepository>,
         consents: Arc<InMemoryConsentGrantRepository>,
+        outbox: Arc<InMemoryOutboxEventRepository>,
         user_id: Uuid,
         email: String,
     }
@@ -63,6 +65,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }
@@ -87,7 +91,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
             Utc::now(),
             None,
         );
@@ -119,12 +122,14 @@ mod tests {
 
         let codes = Arc::new(InMemoryAuthorizationCodeRepository::new());
         let consents = Arc::new(InMemoryConsentGrantRepository::new());
+        let outbox = Arc::new(InMemoryOutboxEventRepository::new());
 
         let factory = InMemoryUnitOfWorkFactory::new(users.clone(), tenants)
             .with_oauth_client_repository(clients)
             .with_email_verification_token_repository(tokens.clone())
             .with_authorization_code_repository(codes.clone())
-            .with_consent_grant_repository(consents.clone());
+            .with_consent_grant_repository(consents.clone())
+            .with_outbox_event_repository(outbox.clone());
 
         Ctx {
             use_case: UseCase::new(Arc::new(factory)),
@@ -132,6 +137,7 @@ mod tests {
             tokens,
             codes,
             consents,
+            outbox,
             user_id,
             email,
         }
@@ -292,5 +298,39 @@ mod tests {
 
         let err = ctx.use_case.execute(command).await.unwrap_err();
         assert!(matches!(err, DomainError::InvalidRequest(_)));
+    }
+
+    // ── Outbound events ────────────────────────────────────────────────────────
+
+    // A downstream mirroring `email_verified` needs this flip: the user.created it
+    // already received said false, and nothing else would ever correct it.
+    #[tokio::test]
+    async fn enqueues_a_user_updated_event_when_the_email_is_verified() {
+        let tenant_id = Uuid::now_v7();
+        let ctx = setup(tenant_id, false, false);
+
+        ctx.use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap();
+
+        let stored = ctx.outbox.memory.data.lock().unwrap();
+        assert_eq!(stored.len(), 1);
+        let event = stored.values().next().unwrap();
+        assert_eq!(event.event_type().as_str(), "user.updated");
+        assert_eq!(event.payload()["data"]["user_id"], ctx.user_id.to_string());
+        assert_eq!(event.payload()["data"]["email_verified"], true);
+    }
+
+    #[tokio::test]
+    async fn a_wrong_code_leaves_no_event_behind() {
+        let tenant_id = Uuid::now_v7();
+        let ctx = setup(tenant_id, false, false);
+
+        let mut cmd = make_command(&ctx.email);
+        cmd.token = "999999".to_string();
+
+        assert!(ctx.use_case.execute(cmd).await.is_err());
+        assert_eq!(ctx.outbox.memory.data.lock().unwrap().len(), 0);
     }
 }

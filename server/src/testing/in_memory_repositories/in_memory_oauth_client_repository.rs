@@ -114,11 +114,48 @@ impl OAuthClientRepository for InMemoryOAuthClientRepository {
                 "OAuth client not found".to_string(),
             ));
         }
+        // Mirror Postgres: `update` leaves the stored secret hash alone, so a
+        // use case that persists a rotation through it fails its tests here too.
+        let stored_hash = self
+            .memory
+            .draft
+            .lock()
+            .unwrap()
+            .get(&client.id())
+            .or(self.memory.data.lock().unwrap().get(&client.id()))
+            .and_then(|c| c.client_secret_hash().map(str::to_string));
+        let mut updated = client.clone();
+        if let Some(hash) = stored_hash {
+            updated.rotate_secret_hash(hash);
+        }
         self.memory
             .draft
             .lock()
             .unwrap()
-            .insert(client.id(), client.clone());
+            .insert(client.id(), updated);
+        Ok(())
+    }
+
+    async fn update_secret_hash(&self, client: &OAuthClient) -> Result<(), DomainError> {
+        let mut stored = self
+            .memory
+            .draft
+            .lock()
+            .unwrap()
+            .get(&client.id())
+            .or(self.memory.data.lock().unwrap().get(&client.id()))
+            .cloned()
+            .ok_or_else(|| {
+                DomainError::OAuthClientNotFound("OAuth client not found".to_string())
+            })?;
+        if let Some(hash) = client.client_secret_hash() {
+            stored.rotate_secret_hash(hash.to_string());
+        }
+        self.memory
+            .draft
+            .lock()
+            .unwrap()
+            .insert(client.id(), stored);
         Ok(())
     }
 

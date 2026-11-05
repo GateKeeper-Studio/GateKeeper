@@ -2,13 +2,12 @@
 	import type { Snippet } from 'svelte';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
-
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Separator } from '$lib/components/ui/separator/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import ThemeToggle from '$lib/components/theme-toggle.svelte';
+	import LanguageSwitcher from '$lib/components/language-switcher.svelte';
+	import { websiteHref } from '$lib/external-urls';
 
 	let {
 		title,
@@ -24,7 +23,7 @@
 		if (typeof window !== 'undefined' && window.history.length > 1) {
 			window.history.back();
 		} else {
-			goto(resolve('/'));
+			window.location.assign(websiteHref('/'));
 		}
 	}
 </script>
@@ -37,7 +36,7 @@
 				Back
 			</Button>
 
-			<ThemeToggle />
+			<div class="flex items-center gap-2"><LanguageSwitcher /><ThemeToggle /></div>
 		</div>
 	</header>
 

@@ -149,17 +149,8 @@ impl From<DomainError> for ApiError {
             DomainError::UserAlreadyExists(message) => ApiError::Conflict(message),
             DomainError::TenantNotFound(message) => ApiError::NotFound(message),
             DomainError::TenantAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::CannotDeleteDefaultTenant(message) => ApiError::Conflict(message),
             DomainError::OrganizationNotFound(message) => ApiError::NotFound(message),
             DomainError::OrganizationAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::OrganizationAlreadyHasSubscription(message) => ApiError::Conflict(message),
-            DomainError::SubscriptionNotFound(message) => ApiError::NotFound(message),
-            DomainError::SubscriptionPlanNotFound(message) => ApiError::NotFound(message),
-            DomainError::SubscriptionPlanAlreadyExists(message) => ApiError::Conflict(message),
-            DomainError::SubscriptionPlanInactive(message) => ApiError::Conflict(message),
-            DomainError::SubscriptionPlanInUse(message) => ApiError::Conflict(message),
-            DomainError::SubscriptionLimitReached(message) => ApiError::Conflict(message),
-            DomainError::PlanDowngradeNotAllowed(message) => ApiError::Conflict(message),
             DomainError::GroupNotFound(message) => ApiError::NotFound(message),
             DomainError::GroupAlreadyExists(message) => ApiError::Conflict(message),
             DomainError::RoleNotFound(message) => ApiError::NotFound(message),
@@ -175,9 +166,27 @@ impl From<DomainError> for ApiError {
             DomainError::MfaEnrollmentConflict(message) => ApiError::Conflict(message),
             DomainError::PasswordResetError(message) => ApiError::BadRequest(message),
             DomainError::PasswordChangeError(message) => ApiError::BadRequest(message),
+            DomainError::SecurityBlockNotFound(message) => ApiError::NotFound(message),
             DomainError::EmailProviderNotFound(message) => ApiError::NotFound(message),
             DomainError::EmailProviderError(message) => ApiError::BadRequest(message),
-            _ => ApiError::Internal,
+            DomainError::WebhookSubscriptionNotFound(message) => ApiError::NotFound(message),
+            DomainError::ExternalIdentityProviderNotFound(message) => ApiError::NotFound(message),
+            DomainError::ExternalIdentityProviderAlreadyExists(message) => {
+                ApiError::Conflict(message)
+            }
+            DomainError::ExternalProviderError(message) => ApiError::BadRequest(message),
+            DomainError::EmailTemplateError(message) => ApiError::BadRequest(message),
+            DomainError::CustomFieldNotFound(message) => ApiError::NotFound(message),
+            DomainError::CustomFieldKeyAlreadyExists(message) => ApiError::Conflict(message),
+            DomainError::CustomFieldLimitReached(message) => ApiError::BadRequest(message),
+            DomainError::InvalidCustomFieldValue(message) => ApiError::BadRequest(message),
+            DomainError::CustomFieldReorderMismatch(message) => ApiError::BadRequest(message),
+            // The client only ever sees a generic 500, so record the real cause here;
+            // otherwise the server log has nothing but "500 Internal Server Error".
+            other => {
+                tracing::error!(error = ?other, "unhandled domain error mapped to 500");
+                ApiError::Internal
+            }
         }
     }
 }

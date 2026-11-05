@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO \"policy_acceptances\"\n            (id, tenant_id, user_id, document_type, document_version, accepted_at, ip_address)\n          VALUES ($1, $2, $3, $4, $5, $6, $7)\n          ON CONFLICT (user_id, document_type, document_version) DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e1259eee9230b15f6f483807a91a2ed4f05bdb863f32195421df475d17dab217"
+}

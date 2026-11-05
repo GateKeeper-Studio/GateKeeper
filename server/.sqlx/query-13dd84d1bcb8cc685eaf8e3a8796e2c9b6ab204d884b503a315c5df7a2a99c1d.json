@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE users\n          SET email = 'deleted+' || id::text || '@anonymized.invalid',\n              is_active = false,\n              is_email_verified = false,\n              anonymized_at = now(),\n              updated_at = now()\n          WHERE id = $1 AND legal_hold = false AND anonymized_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "13dd84d1bcb8cc685eaf8e3a8796e2c9b6ab204d884b503a315c5df7a2a99c1d"
+}

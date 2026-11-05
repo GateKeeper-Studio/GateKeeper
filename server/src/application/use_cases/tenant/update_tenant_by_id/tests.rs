@@ -28,7 +28,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
         )
     }
 
@@ -58,11 +57,13 @@ mod tests {
         let response = use_case
             .execute(Command {
                 tenant_id: tenant.id(),
+                organization_id: tenant.organization_id(),
                 name: "Updated Name".to_string(),
                 description: Some("Updated description".to_string()),
                 is_active: false,
                 can_self_register: false,
                 can_self_forgot_password: false,
+                default_language: "es".to_string(),
             })
             .await
             .unwrap();
@@ -76,6 +77,7 @@ mod tests {
         assert!(!response.is_active);
         assert!(!response.can_self_register);
         assert!(!response.can_self_forgot_password);
+        assert_eq!(response.default_language, "es");
         assert!(response.updated_at.is_some());
     }
 
@@ -93,11 +95,13 @@ mod tests {
         use_case
             .execute(Command {
                 tenant_id: tenant.id(),
+                organization_id: tenant.organization_id(),
                 name: "Persisted Name".to_string(),
                 description: None,
                 is_active: true,
                 can_self_register: false,
                 can_self_forgot_password: true,
+                default_language: "en".to_string(),
             })
             .await
             .unwrap();
@@ -116,15 +120,84 @@ mod tests {
         let err = use_case
             .execute(Command {
                 tenant_id: Uuid::new_v4(),
+                organization_id: Uuid::new_v4(),
                 name: "Any Name".to_string(),
                 description: None,
                 is_active: true,
                 can_self_register: false,
                 can_self_forgot_password: false,
+                default_language: "en".to_string(),
             })
             .await
             .unwrap_err();
 
         assert!(matches!(err, DomainError::TenantNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn refuses_to_update_tenant_from_another_organization() {
+        let (tenant_repo, use_case) = setup();
+        let tenant = make_tenant();
+        tenant_repo
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(tenant.id(), tenant.clone());
+
+        let err = use_case
+            .execute(Command {
+                tenant_id: tenant.id(),
+                organization_id: Uuid::now_v7(),
+                name: "Unauthorized change".to_string(),
+                description: None,
+                is_active: true,
+                can_self_register: false,
+                can_self_forgot_password: false,
+                default_language: "en".to_string(),
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::TenantNotFound(_)));
+        assert_eq!(
+            tenant_repo
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .get(&tenant.id())
+                .unwrap()
+                .name(),
+            tenant.name()
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_unsupported_default_language() {
+        let (tenant_repo, use_case) = setup();
+        let tenant = make_tenant();
+        tenant_repo
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(tenant.id(), tenant.clone());
+
+        let err = use_case
+            .execute(Command {
+                tenant_id: tenant.id(),
+                organization_id: tenant.organization_id(),
+                name: "Any Name".to_string(),
+                description: None,
+                is_active: true,
+                can_self_register: false,
+                can_self_forgot_password: false,
+                default_language: "fr".to_string(),
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::InvalidRequest(_)));
     }
 }

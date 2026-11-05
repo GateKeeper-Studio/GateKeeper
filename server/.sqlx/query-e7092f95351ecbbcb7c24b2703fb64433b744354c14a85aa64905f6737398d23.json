@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE mfa_enrollments\n          SET secret_enc = $2, totp_last_step = $3, passkey_json = $4, name = $5,\n            confirmed_at = $6, last_used_at = $7\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int8",
+        "Jsonb",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e7092f95351ecbbcb7c24b2703fb64433b744354c14a85aa64905f6737398d23"
+}

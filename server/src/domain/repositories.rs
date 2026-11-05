@@ -1,11 +1,10 @@
 pub mod admin_refresh_token_repository;
 pub mod admin_user_repository;
+pub mod custom_field_definition_repository;
 pub mod group_repository;
 pub mod legal_document_repository;
 pub mod organization_repository;
 pub mod role_repository;
-pub mod subscription_plan_repository;
-pub mod subscription_repository;
 pub mod tenant_repository;
 pub mod user_repository;
 
@@ -13,7 +12,10 @@ pub mod auth_session_repository;
 pub mod authorization_code_repository;
 pub mod consent_grant_repository;
 pub mod email_provider_repository;
+pub mod email_template_repository;
 pub mod email_verification_token_repository;
+pub mod external_identity_provider_repository;
+pub mod external_login_flow_repository;
 pub mod mfa_challenge_repository;
 pub mod mfa_enrollment_repository;
 pub mod oauth_client_repository;
@@ -21,8 +23,19 @@ pub mod password_change_token_repository;
 pub mod password_reset_token_repository;
 pub mod refresh_token_repository;
 pub mod signing_key_repository;
+pub mod social_identity_repository;
 
 // Compliance / audit (WI-02)
 pub mod audit_event_repository;
 // Compliance / policy acceptance (WI-04)
 pub mod policy_acceptance_repository;
+
+// Fraud / suspicious-login detection (Risk Engine)
+pub mod login_event_repository;
+pub mod security_block_repository;
+pub mod tenant_risk_policy_repository;
+
+// Outbound events: transactional outbox + signed webhook delivery.
+pub mod outbox_event_repository;
+pub mod webhook_delivery_repository;
+pub mod webhook_subscription_repository;

@@ -27,7 +27,7 @@ mod tests {
                 in_memory_user_repository::InMemoryUserRepository,
             },
             in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
-            recording_email_sender::RecordingEmailSender,
+            templated_email_support::recording_templated_email_sender,
             user_factory::{TEST_PASSWORD, TEST_PASSWORD_SECRET, generate_user},
         },
         utils::oauth_crypto::sha256_hex,
@@ -64,6 +64,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             MfaPolicy::default(),
         )
     }
@@ -85,6 +87,8 @@ mod tests {
             vec!["authorization_code".to_string()],
             true,
             true,
+            vec!["en".to_string()],
+            "en".to_string(),
             mfa_policy,
         )
     }
@@ -96,6 +100,20 @@ mod tests {
     }
 
     fn setup_with_client(tenant_id: Uuid, verified: bool, client: OAuthClient) -> Ctx {
+        setup_with_client_and_risk(
+            tenant_id,
+            verified,
+            client,
+            Arc::new(crate::testing::fake_risk_engine::FakeRiskEngine::allow()),
+        )
+    }
+
+    fn setup_with_client_and_risk(
+        tenant_id: Uuid,
+        verified: bool,
+        client: OAuthClient,
+        risk_engine: Arc<dyn crate::application::ports::risk_engine::RiskEngine>,
+    ) -> Ctx {
         let clients = Arc::new(InMemoryOAuthClientRepository::new());
         clients
             .memory
@@ -116,7 +134,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
             Utc::now(),
             None,
         );
@@ -145,8 +162,9 @@ mod tests {
         Ctx {
             use_case: UseCase::new(
                 Arc::new(factory),
-                Arc::new(RecordingEmailSender::new()),
+                recording_templated_email_sender().0,
                 Arc::new(FakeWebauthnService::new()),
+                risk_engine,
             ),
             client,
             sessions,
@@ -171,6 +189,8 @@ mod tests {
             nonce: Some("n-1".to_string()),
             mfa_methods: None,
             mfa_default_method: None,
+            ip_address: None,
+            user_agent: None,
         }
     }
 
@@ -213,6 +233,27 @@ mod tests {
             .insert(enrollment.id(), enrollment);
     }
 
+    // An external-login-only client refuses password sign-in outright. The command
+    // below carries the user's REAL password and a verified account, so a pass here
+    // would mean the gate runs after authentication instead of before it — this asserts
+    // the credentials are never spent, and no session is opened.
+    #[tokio::test]
+    async fn refuses_password_login_for_an_external_login_only_client() {
+        let tenant_id = Uuid::now_v7();
+        let mut client = make_client(tenant_id);
+        client.set_external_login_only(true);
+        let ctx = setup_with_client(tenant_id, true, client);
+
+        let err = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::AccessDenied(_)));
+        assert!(ctx.sessions.memory.data.lock().unwrap().is_empty());
+    }
+
     #[tokio::test]
     async fn opens_authenticated_session_and_freezes_request() {
         let tenant_id = Uuid::now_v7();
@@ -250,6 +291,23 @@ mod tests {
         );
         assert_eq!(session.pending_state(), "xyz");
         assert_eq!(session.pending_nonce(), Some("n-1"));
+    }
+
+    #[tokio::test]
+    async fn logs_in_when_email_case_differs() {
+        // The stored email is canonical (lowercase); a login using a different case
+        // must still resolve the same account.
+        let tenant_id = Uuid::now_v7();
+        let ctx = setup(tenant_id, true);
+
+        let response = ctx
+            .use_case
+            .execute(make_command(&ctx.email.to_uppercase()))
+            .await
+            .unwrap();
+
+        assert!(!response.session_code.is_empty());
+        assert_eq!(response.user_id, ctx.user_id.to_string());
     }
 
     #[tokio::test]
@@ -424,5 +482,91 @@ mod tests {
             Some(MfaMethod::Webauthn.as_str())
         );
         assert!(response.web_authn_options.is_some());
+    }
+
+    // ── Risk Engine integration ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn pre_auth_ip_block_denies_login_generically() {
+        use crate::testing::fake_risk_engine::FakeRiskEngine;
+        let tenant_id = Uuid::now_v7();
+        let client = make_client(tenant_id);
+        let ctx = setup_with_client_and_risk(
+            tenant_id,
+            true,
+            client,
+            Arc::new(FakeRiskEngine::blocking_pre_auth()),
+        );
+
+        let err = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::AuthenticationError(_)));
+    }
+
+    #[tokio::test]
+    async fn block_temporarily_decision_denies_valid_login() {
+        use crate::domain::entities::login_event::RiskDecision;
+        use crate::testing::fake_risk_engine::FakeRiskEngine;
+        let tenant_id = Uuid::now_v7();
+        let client = make_client(tenant_id);
+        let ctx = setup_with_client_and_risk(
+            tenant_id,
+            true,
+            client,
+            Arc::new(FakeRiskEngine::with_decision(
+                RiskDecision::BlockTemporarily,
+            )),
+        );
+
+        // Credentials are valid, but the risk decision blocks — still a generic error.
+        let err = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::AuthenticationError(_)));
+    }
+
+    #[tokio::test]
+    async fn allow_with_mfa_forces_step_up_on_non_mfa_client() {
+        use crate::domain::entities::login_event::RiskDecision;
+        use crate::testing::fake_risk_engine::FakeRiskEngine;
+        let tenant_id = Uuid::now_v7();
+        // Client does NOT require MFA, but allows email as a factor.
+        let client = make_client_with_mfa_policy(
+            tenant_id,
+            MfaPolicy {
+                required: false,
+                email_enabled: true,
+                totp_enabled: false,
+                webauthn_enabled: false,
+            },
+        );
+        let ctx = setup_with_client_and_risk(
+            tenant_id,
+            true,
+            client,
+            Arc::new(FakeRiskEngine::with_decision(RiskDecision::AllowWithMfa)),
+        );
+
+        let response = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap();
+
+        // Risk raised the login to ALLOW_WITH_MFA → email OTP step-up engaged.
+        assert_eq!(
+            response.mfa_type.as_deref(),
+            Some(MfaMethod::Email.as_str())
+        );
+        assert!(
+            response
+                .available_mfa_methods
+                .contains(&MfaMethod::Email.as_str().to_string())
+        );
     }
 }

@@ -1,9 +1,4 @@
-use axum::{
-    Json,
-    extract::State,
-    http::{HeaderMap, StatusCode},
-    response::IntoResponse,
-};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 
 use crate::{
     application::use_cases::admin_auth::{login, logout, refresh},
@@ -26,10 +21,9 @@ use crate::{
 // the first place. Both success and failure are audited (brute-force visibility).
 pub async fn login(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    ctx: RequestContext,
     AppJson(payload): AppJson<login::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ctx = RequestContext::from_headers(&headers);
     // Don't store the submitted email in metadata on failure (PII minimization); the
     // IP/User-Agent in the request context is enough for brute-force detection.
 
@@ -82,10 +76,9 @@ pub async fn refresh(
 // so it always returns 204 and never leaks whether the token was valid.
 pub async fn logout(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    ctx: RequestContext,
     AppJson(payload): AppJson<logout::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let ctx = RequestContext::from_headers(&headers);
     state.admin_logout.execute(payload).await?;
 
     let event = AuditEvent::new(None, ActorType::Admin, None, ADMIN_LOGOUT, Outcome::Success)

@@ -1,4 +1,4 @@
-import { api } from '../base/api';
+import { adminApi as api } from '../base/admin-api';
 import { ApiError, type Result, type VoidResult } from '../types';
 import type { Paged } from './users';
 export type { Paged };
@@ -38,10 +38,7 @@ export async function getTenantGroup(
 	fetchFn: typeof fetch = fetch
 ): Promise<Result<TenantGroupView>> {
 	try {
-		const data = await api.get<TenantGroupView>(
-			`/tenants/${tenantId}/groups/${groupId}`,
-			fetchFn
-		);
+		const data = await api.get<TenantGroupView>(`/tenants/${tenantId}/groups/${groupId}`, fetchFn);
 		return [data, null];
 	} catch (error) {
 		return [null, error as ApiError];
@@ -121,10 +118,9 @@ export async function addGroupMembers(
 	userIds: string[]
 ): Promise<Result<TenantGroupView>> {
 	try {
-		const data = await api.post<TenantGroupView>(
-			`/tenants/${tenantId}/groups/${groupId}/members`,
-			{ user_ids: userIds }
-		);
+		const data = await api.post<TenantGroupView>(`/tenants/${tenantId}/groups/${groupId}/members`, {
+			user_ids: userIds
+		});
 		return [data, null];
 	} catch (error) {
 		return [null, error as ApiError];
@@ -149,9 +145,7 @@ export async function listUserGroups(
 	userId: string
 ): Promise<Result<TenantGroupView[]>> {
 	try {
-		const data = await api.get<TenantGroupView[]>(
-			`/tenants/${tenantId}/users/${userId}/groups`
-		);
+		const data = await api.get<TenantGroupView[]>(`/tenants/${tenantId}/users/${userId}/groups`);
 		return [data, null];
 	} catch (error) {
 		return [null, error as ApiError];

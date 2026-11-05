@@ -2,8 +2,18 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::application::use_cases::oauth_client::validation::LoginAppearanceInput;
+
 fn default_true() -> bool {
     true
+}
+
+fn default_allowed_languages() -> Vec<String> {
+    vec!["en".to_string()]
+}
+
+fn default_language_code() -> String {
+    "en".to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize, Validate)]
@@ -61,4 +71,31 @@ pub struct Command {
 
     #[serde(default)]
     pub policy_uri: Option<String>,
+
+    // Optional OIDC initiate_login_uri: the RP endpoint that starts a fresh
+    // authorization request. The hosted login page offers "restart sign-in" only when
+    // this is set — without it, an expired OAuth state is a dead end for the user.
+    #[serde(default)]
+    pub initiate_login_uri: Option<String>,
+
+    // Optional per-client login-page template + branding. Validated by
+    // validate_login_appearance before it reaches the entity.
+    #[serde(default)]
+    pub login_appearance: Option<LoginAppearanceInput>,
+
+    // When true, this client authenticates ONLY through its external identity
+    // providers — no password registration or sign-in. Allowed on create even with
+    // no providers configured yet (they are added afterwards); update_oauth_client
+    // is where the "at least one active provider" invariant is enforced.
+    #[serde(default)]
+    pub external_login_only: bool,
+
+    // Which supported locales this client's hosted login/sign-up page offers,
+    // and which one it defaults to absent a user choice. Validated by
+    // validate_client_languages before it reaches the entity.
+    #[serde(default = "default_allowed_languages")]
+    pub allowed_languages: Vec<String>,
+
+    #[serde(default = "default_language_code")]
+    pub default_language: String,
 }

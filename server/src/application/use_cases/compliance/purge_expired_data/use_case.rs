@@ -36,13 +36,54 @@ impl UseCase {
             .delete_expired(now)
             .await?;
 
+        // Short-lived credential and challenge rows. Every one of these tables has an
+        // `expires_at` and a migration comment promising a background job would clear
+        // it; none was ever wired, so they accumulated indefinitely. An expired row
+        // here is already unusable — `is_redeemable` and friends reject it — so
+        // deleting it changes no behaviour, only storage.
+        let email_verification_tokens = uow
+            .email_verification_token_repository()
+            .delete_expired(now)
+            .await?;
+        let password_reset_tokens = uow
+            .password_reset_token_repository()
+            .delete_expired(now)
+            .await?;
+        let password_change_tokens = uow
+            .password_change_token_repository()
+            .delete_expired(now)
+            .await?;
+        let mfa_challenges = uow.mfa_challenge_repository().delete_expired(now).await?;
+        let external_login_flows = uow
+            .external_login_flow_repository()
+            .delete_expired(now)
+            .await?;
+        // Expired IP blocks: the risk engine already ignores them (it filters on
+        // expires_at), so removing them frees storage without unblocking anyone.
+        let security_blocks = uow.security_block_repository().delete_expired(now).await?;
+
         uow.commit().await?;
 
-        let total = refresh_tokens + auth_sessions + authorization_codes;
+        let total = refresh_tokens
+            + auth_sessions
+            + authorization_codes
+            + email_verification_tokens
+            + password_reset_tokens
+            + password_change_tokens
+            + mfa_challenges
+            + external_login_flows
+            + security_blocks;
+
         Ok(Response {
             refresh_tokens,
             auth_sessions,
             authorization_codes,
+            email_verification_tokens,
+            password_reset_tokens,
+            password_change_tokens,
+            mfa_challenges,
+            external_login_flows,
+            security_blocks,
             total,
         })
     }

@@ -28,7 +28,6 @@ mod tests {
             true,
             true,
             uuid::Uuid::now_v7(),
-            false,
         )
     }
 
@@ -146,5 +145,34 @@ mod tests {
 
         assert_eq!(response.name, "Same");
         assert_eq!(response.description, Some("now with desc".to_string()));
+    }
+
+    // Renaming into a reserved name is the obvious way around the check on create,
+    // so it is refused here too. See `create_role::rejects_reserved_role_names`.
+    #[tokio::test]
+    async fn rejects_renaming_to_a_reserved_name() {
+        let tenant = make_tenant();
+        let (role_repo, use_case) = setup(&tenant);
+        let role_id = seed_role(&role_repo, tenant.id(), "Original");
+
+        for name in ["admin", "tenant_admin", "Admin"] {
+            let err = use_case
+                .execute(Command {
+                    tenant_id: tenant.id(),
+                    role_id,
+                    name: name.into(),
+                    description: None,
+                })
+                .await
+                .unwrap_err();
+
+            assert!(
+                matches!(err, DomainError::InvalidRequest(_)),
+                "{name:?} should be rejected as reserved, got {err:?}"
+            );
+        }
+
+        let saved = role_repo.memory.data.lock().unwrap();
+        assert_eq!(saved.get(&role_id).unwrap().name(), "Original");
     }
 }

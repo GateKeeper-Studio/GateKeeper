@@ -10,4 +10,8 @@ pub struct Response {
     pub email: String,
     pub created_at: String,
     pub updated_at: Option<String>,
+    // Login methods attached to this account, so the UI can render badges and
+    // make linked native + social identities visible as one user.
+    pub has_password: bool,
+    pub providers: Vec<String>,
 }

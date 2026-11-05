@@ -64,7 +64,8 @@ impl OrganizationRepository for DbOrganizationRepository {
             sqlx::query!(
                 r#"
         SELECT id as "id!", name as "name!", description,
-          is_active as "is_active!", created_at as "created_at!", updated_at
+          is_active as "is_active!",
+          created_at as "created_at!", updated_at
         FROM organizations
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -138,7 +139,8 @@ impl OrganizationRepository for DbOrganizationRepository {
             self.executor,
             sqlx::query!(
                 r#"
-        INSERT INTO organizations (id, name, description, is_active, created_at, updated_at)
+        INSERT INTO organizations
+          (id, name, description, is_active, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6)
         "#,
                 organization.id(),

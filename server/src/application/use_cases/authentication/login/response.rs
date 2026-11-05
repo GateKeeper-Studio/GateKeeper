@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -31,5 +32,14 @@ pub struct Response {
     pub enrollable_methods: Vec<String>,
 
     pub change_password_code: Option<String>,
+
+    // The session's two deadlines, so the SPA can run an honest countdown instead of
+    // hardcoding the TTL (which would then lie after any page reload). `sessionExpiresAt`
+    // is the idle deadline the user can push forward via POST /v1/auth/session/refresh;
+    // `sessionAbsoluteExpiresAt` is the ceiling they cannot, and is what tells the UI
+    // when to stop offering "keep me signed in".
+    pub session_expires_at: DateTime<Utc>,
+    pub session_absolute_expires_at: DateTime<Utc>,
+
     pub message: String,
 }
