@@ -11,6 +11,7 @@ multi-tenant OAuth 2.1 / OIDC identity provider). Start here.
 | [`FLOWS-OAUTH2-OIDC.md`](FLOWS-OAUTH2-OIDC.md) | OAuth 2.1 / OIDC roles, client model, endpoints, Authorization Code + PKCE flow, token exchange, refresh-token rotation & reuse detection, signing keys / JWKS |
 | [`FLOWS-AUTHENTICATION.md`](FLOWS-AUTHENTICATION.md) | First-party login SPA flow, MFA (email OTP / TOTP / WebAuthn), registration & email confirmation, password reset / forced change, platform-admin auth, request authentication & RBAC |
 | [`FLOWS-WEBHOOKS.md`](FLOWS-WEBHOOKS.md) | Outbound user-lifecycle events: the transactional outbox, HMAC-signed delivery contract, consumer verification, at-least-once/retry semantics, SSRF hardening of subscription URLs, dispatcher operations |
+| [`ARCHITECTURE-REVIEW.md`](ARCHITECTURE-REVIEW.md) | Security and architecture review (findings S1–S10, A1–A6, C1–C4), what was implemented, and the checklist to follow before deploying |
 | [`WEBHOOK-CONSUMER-GUIDE.md`](WEBHOOK-CONSUMER-GUIDE.md) | Integration guide for the *other* service: registering a subscription, the receiver algorithm, signature verification in five languages, idempotent projection into your own user table, secret rotation, backfill, troubleshooting |
 
 The agent guide for the crate is [`../CLAUDE.md`](../CLAUDE.md).

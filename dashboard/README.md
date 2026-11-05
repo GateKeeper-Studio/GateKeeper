@@ -32,7 +32,8 @@ token.
   SameSite=Lax` cookie plus the admin's display name.
 - Admin API calls go to `/api/*` on this origin. `src/routes/api/[...path]/+server.ts`
   attaches the bearer token and forwards to the IdP, refreshing once (single-flight) on a
-  401. The client wrapper is `src/lib/services/base/admin-api.ts`.
+  401. The client wrapper is `src/lib/services/base/admin-api.ts`. Admin access tokens
+  live 15 minutes, so this refresh is the normal path, not an edge case.
 - `(dashboard)/+layout.server.ts` refuses unauthenticated requests **before** anything
   renders. There is no client-side-only guard.
 
@@ -63,6 +64,8 @@ Put a TLS-terminating reverse proxy in front of it. Three things depend on that 
 - `Strict-Transport-Security` only means anything over HTTPS;
 - the proxy must **overwrite** `X-Forwarded-For` rather than pass it through, since the
   BFF forwards that address to the IdP, where it keys rate limiting and audit records.
+  The IdP believes that header only from peers in its `TRUSTED_PROXIES` setting, so list
+  this dashboard server's address there (locally: `127.0.0.1/32,::1/128`).
 
 Set `ORIGIN` to the public URL so SvelteKit's CSRF origin check accepts form posts.
 
@@ -77,3 +80,7 @@ Required environment (see `.env.example`):
 
 The API server's `AUTH_UI_BASE_URL`, WebAuthn origin, and CORS allowlist must reference the
 deployed dashboard origin.
+
+Creating a tenant no longer asks for a password hash secret: the server generates each
+tenant's pepper and keeps it sealed. The OAuth-client form offers the `account` and
+`admin` scopes; grant them only to first-party apps.

@@ -29,5 +29,11 @@ Public SPAs call `/oauth/token` and `/oauth/userinfo` directly from the browser,
 each app origin (dev ports 5174–5178) must be added to the IdP's `CORS_ALLOWED_ORIGINS`.
 BFF apps are server→server and need no CORS.
 
+The BFF apps also call the IdP's `/me` API (profile, MFA), which needs the `account`
+scope: add `account` to the OAuth client's allowed scopes in the dashboard (the apps
+request it by default through `OAUTH_SCOPE`). Removing an MFA method sends the user's
+current password, which the IdP requires for that action. If a BFF forwards the
+browser's IP, add its address to the IdP's `TRUSTED_PROXIES`.
+
 New frontend libraries should get their own directory under `frontends/<library>`
 unless they are a product application like `dashboard`.
