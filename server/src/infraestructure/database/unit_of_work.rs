@@ -21,6 +21,7 @@ use crate::{
             external_identity_provider_repository::ExternalIdentityProviderRepository,
             external_login_flow_repository::ExternalLoginFlowRepository,
             group_repository::GroupRepository, login_event_repository::LoginEventRepository,
+            magic_link_token_repository::MagicLinkTokenRepository,
             mfa_challenge_repository::MfaChallengeRepository,
             mfa_enrollment_repository::MfaEnrollmentRepository,
             oauth_client_repository::OAuthClientRepository,
@@ -53,6 +54,7 @@ use crate::{
             external_identity_provider_repository::DbExternalIdentityProviderRepository,
             external_login_flow_repository::DbExternalLoginFlowRepository,
             group_repository::DbGroupRepository, login_event_repository::DbLoginEventRepository,
+            magic_link_token_repository::DbMagicLinkTokenRepository,
             mfa_challenge_repository::DbMfaChallengeRepository,
             mfa_enrollment_repository::DbMfaEnrollmentRepository,
             oauth_client_repository::DbOAuthClientRepository,
@@ -92,6 +94,7 @@ pub struct DbUnitOfWork {
     mfa_enrollment_repository: Arc<DbMfaEnrollmentRepository>,
     mfa_challenge_repository: Arc<DbMfaChallengeRepository>,
     password_reset_token_repository: Arc<DbPasswordResetTokenRepository>,
+    magic_link_token_repository: Arc<DbMagicLinkTokenRepository>,
     password_change_token_repository: Arc<DbPasswordChangeTokenRepository>,
     email_provider_repository: Arc<DbEmailProviderRepository>,
     external_identity_provider_repository: Arc<DbExternalIdentityProviderRepository>,
@@ -159,6 +162,9 @@ impl DbUnitOfWork {
                 transaction_context.clone(),
             )),
             password_reset_token_repository: Arc::new(DbPasswordResetTokenRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            magic_link_token_repository: Arc::new(DbMagicLinkTokenRepository::with_tx(
                 transaction_context.clone(),
             )),
             password_change_token_repository: Arc::new(DbPasswordChangeTokenRepository::with_tx(
@@ -269,6 +275,10 @@ impl UnitOfWork for DbUnitOfWork {
 
     fn password_reset_token_repository(&self) -> Arc<dyn PasswordResetTokenRepository> {
         self.password_reset_token_repository.clone()
+    }
+
+    fn magic_link_token_repository(&self) -> Arc<dyn MagicLinkTokenRepository> {
+        self.magic_link_token_repository.clone()
     }
 
     fn password_change_token_repository(&self) -> Arc<dyn PasswordChangeTokenRepository> {

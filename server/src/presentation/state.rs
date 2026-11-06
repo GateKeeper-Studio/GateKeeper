@@ -19,8 +19,8 @@ use crate::{
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
             authentication::{
                 authorize_session, change_password, confirm_current_password, confirm_email,
-                external_login, forgot_password, login, refresh_session, register,
-                resend_confirm_email, reset_password,
+                external_login, forgot_password, login, redeem_magic_link, refresh_session,
+                register, request_magic_link, resend_confirm_email, reset_password,
             },
             compliance::{
                 erase_user, export_user_data, list_audit_events, list_required_documents,
@@ -198,6 +198,8 @@ pub struct AuthenticationUseCases {
     pub authorize_session: Arc<authorize_session::use_case::UseCase>,
     pub refresh_session: Arc<refresh_session::use_case::UseCase>,
     pub forgot_password: Arc<forgot_password::use_case::UseCase>,
+    pub request_magic_link: Arc<request_magic_link::use_case::UseCase>,
+    pub redeem_magic_link: Arc<redeem_magic_link::use_case::UseCase>,
     pub reset_password: Arc<reset_password::use_case::UseCase>,
     pub change_password: Arc<change_password::use_case::UseCase>,
     pub confirm_current_password: Arc<confirm_current_password::use_case::UseCase>,

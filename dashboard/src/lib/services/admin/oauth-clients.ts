@@ -29,6 +29,8 @@ export type OAuthClientView = {
 	// providers: the IdP refuses every password path for it (register, sign-in,
 	// forgot/reset/change), and its hosted login page renders provider buttons only.
 	external_login_only: boolean;
+	// Magic link login ("email me a sign-in link") is switched on for this client.
+	magic_link_enabled: boolean;
 	allowed_languages: string[];
 	default_language: string;
 	is_active: boolean;
@@ -76,6 +78,7 @@ export type CreateOAuthClientInput = {
 	// Turning this on requires the client to already have at least one ACTIVE external
 	// provider — the IdP rejects the update otherwise, so users can never be locked out.
 	externalLoginOnly: boolean;
+	magicLinkEnabled: boolean;
 	allowedLanguages: string[];
 	defaultLanguage: string;
 };
@@ -107,6 +110,7 @@ export type UpdateOAuthClientInput = {
 	// Turning this on requires the client to already have at least one ACTIVE external
 	// provider — the IdP rejects the update otherwise, so users can never be locked out.
 	externalLoginOnly: boolean;
+	magicLinkEnabled: boolean;
 	allowedLanguages: string[];
 	defaultLanguage: string;
 };
@@ -135,6 +139,7 @@ export async function createOAuthClient(
 			initiate_login_uri: input.initiateLoginUri,
 			login_appearance: input.loginAppearance,
 			external_login_only: input.externalLoginOnly,
+			magic_link_enabled: input.magicLinkEnabled,
 			allowed_languages: input.allowedLanguages,
 			default_language: input.defaultLanguage
 		});
@@ -169,6 +174,7 @@ export async function updateOAuthClient(
 			initiate_login_uri: input.initiateLoginUri,
 			login_appearance: input.loginAppearance,
 			external_login_only: input.externalLoginOnly,
+			magic_link_enabled: input.magicLinkEnabled,
 			allowed_languages: input.allowedLanguages,
 			default_language: input.defaultLanguage
 		});

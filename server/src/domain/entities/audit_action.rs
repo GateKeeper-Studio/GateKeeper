@@ -16,6 +16,9 @@ pub const USER_EMAIL_VERIFIED: &str = "user.email.verified";
 pub const USER_PASSWORD_RESET_REQUESTED: &str = "user.password.reset_requested";
 pub const USER_PASSWORD_RESET: &str = "user.password.reset";
 pub const USER_PASSWORD_CHANGED: &str = "user.password.changed";
+// A one-time sign-in link was emailed (magic link login). Recorded only for an
+// existing, eligible account — the request endpoint itself answers the same for all.
+pub const USER_MAGIC_LINK_SENT: &str = "user.login.magic_link_sent";
 pub const USER_MFA_ENROLLED: &str = "user.mfa.enrolled";
 pub const USER_MFA_REMOVED: &str = "user.mfa.removed";
 // The user explicitly extended a pre-authorization session from the login UI. Worth

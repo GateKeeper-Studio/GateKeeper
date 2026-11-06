@@ -95,6 +95,8 @@ so the SPA can complete `POST /oauth/token` (see
 login SPA needs to render its screens (client name, allowed MFA methods, etc.).
 `passkeyLoginEnabled` tells the hosted page whether to offer "Sign in with a passkey"
 (the client takes email sign-in and allows WebAuthn).
+`magicLinkLoginEnabled` tells it whether to offer "Email me a sign-in link" (see
+[Magic link login](#magic-link-login-a-one-time-link-by-email)).
 
 ### Passwordless login (a passkey as the primary factor)
 
@@ -173,6 +175,100 @@ configured, require WebAuthn", and every later step is the existing one.
   passes for an account with no password, and enrolling a passkey needs only the
   `account`-scoped token. A stolen token could therefore plant a passkey; notify on
   enrollment / require recent authentication before relying on this broadly.
+
+### Magic link login (a one-time link by email)
+
+On clients where an admin turns it on (`oauth_clients.magic_link_enabled`, off by
+default), any active account with a verified email can ask for a one-time sign-in link
+instead of typing a password. It is the same flow as a password login from the moment
+the link is redeemed: same session, same MFA gate, same `authorize`.
+
+```
+  Asking tab (sign-in page)                Provider                       Mailbox
+     │ 1. POST /v1/auth/magic-link { email, …frozen request }
+     │                                       │  request_magic_link (SAME work for every email)
+     │                                       │  · client offers links? request valid? IP gate
+     │                                       │  · AuthSession primary_factor = magic_link,
+     │   ← 202 { sessionCode, expiresAt }    │    NO user bound
+     │◀──────────────────────────────────────│  · spawn the dispatch, return
+     │ keep sessionCode in localStorage      │
+     │ ("check your email" page)             │  MagicLinkDispatcher (background)
+     │                                       │  · eligible account? cooldown?
+     │                                       │  · magic_link_token (hash) → session
+     │                                       │──────── link …/magic-link#id=…&token=… ──▶
+     │                                                                              │
+  Link tab (same browser)                                                           │
+     │ 2. reads #id, #token + sessionCode from localStorage ◀──────────────────────┘
+     │ 3. POST /v1/auth/magic-link/redeem { id, token, sessionCode }
+     │                                       │  redeem_magic_link
+     │                                       │  · token hash (ct-eq), unexpired, unused
+     │                                       │  · sessionCode opens THE session of this link
+     │                                       │  · account still active + verified; IP gate
+     │                                       │  · consume, risk-score, audit the LOGIN
+     │   ← login-shaped response, new code   │  · authenticate, rotate code, MFA gate
+     │◀──────────────────────────────────────│
+     │ 4. BroadcastChannel → asking tab: MFA page or authorize → redirect to the RP
+```
+
+- **Constant time (S6).** The request takes only an email, so it must look the same
+  whether that email has an account. `request_magic_link` only touches public inputs
+  (the client, the authorization request, the caller's IP), opens a session that binds
+  nobody, and answers `202`. Everything that depends on the account — the lookup, the
+  token insert, the audit row, the SMTP round trip — runs in `MagicLinkDispatcher`
+  after the response, through the `TaskSpawner` port (`TokioTaskSpawner` in production).
+  Unknown, inactive and unverified accounts simply get no email.
+- **Same browser only (the "racing" defence).** Redeeming needs both the link's token
+  (the mailbox) and the code of the session that asked for it, which the hosted login
+  keeps in this browser's `localStorage`. A forwarded link, a corporate scanner that
+  opens links before the user, or a mail app's built-in browser has the token but not
+  the code: it is refused (`magic_link_wrong_browser` in the risk log), and **the token
+  is not consumed**, so it still works where it belongs. The page the link opens makes
+  no API call at all when it finds no binding.
+- **The secret is in the fragment** (`#id=…&token=…`): fragments never leave the
+  browser, so the token stays out of server, proxy and `Referer` logs; the page also
+  removes it from the address bar and sets `referrer: no-referrer`.
+- **Single use, short-lived, hashed.** `magic_link_tokens` stores SHA-256 of a 256-bit
+  token, looked up by row id and compared in constant time; 15 minutes
+  (`MAGIC_LINK_TTL_MINUTES`), the same as the waiting session. Deleting the session
+  (the retention purge) cascades to its links.
+- **The asking tab finishes.** The relying party keeps its PKCE verifier and `state` in
+  the asking tab's `sessionStorage`, so the link tab hands the redeem response back over
+  a `BroadcastChannel`; the asking tab acknowledges and continues exactly as after a
+  password (`continueAfterLogin`). With no answer within 2 s (asking tab closed), the
+  link tab finishes the sign-in itself.
+- **MFA still applies, but never by email.** The mailbox is the primary factor, so an
+  email code would prove it twice: `AuthSession::accepts_mfa_method` refuses `email` for
+  a `magic_link` session (`send-mfa`/`verify-mfa/email` refuse it; `is_mfa_pending`
+  enforces it again). TOTP and passkeys qualify, for `client.mfa_required` and for a
+  risk `ALLOW_WITH_MFA`. A client that requires MFA but allows only email cannot
+  complete a magic-link sign-in, so it does not offer one
+  (`OAuthClient::allows_magic_link_login`).
+- **Forced password change still applies** — a change code is issued exactly as on
+  login.
+- **No per-user invalidation.** Anyone who knows an email can request a link, so a new
+  request never cancels a link already sent; each link only works with its own session.
+  Mailbox flooding is bounded by a per-account cooldown (60 s,
+  `MAGIC_LINK_RESEND_COOLDOWN_SECONDS`) on top of the per-IP credential rate limit.
+  Only the newest request's binding is kept per browser, so only the newest link works
+  there.
+- **Audit and risk.** `user.login.magic_link_sent` when a link is mailed;
+  `user.login.success` / `user.login.failure` with `metadata.method = "magic_link"` at
+  redemption, in the same transaction. Every refused redemption is recorded by the risk
+  engine (`invalid_magic_link`, `magic_link_wrong_browser`, `account_unavailable`,
+  `ip_blocked`); a `BLOCK_TEMPORARILY` burns the link and the session.
+- **Known trade-offs.**
+  - Mail apps that open links in their own built-in browser fail the same-browser
+    check; the user must open the link in the browser where they asked for it.
+  - A background send is not durable: a restart between the `202` and the send loses
+    that email (the user presses "Send a new link").
+  - `forgot-password` and `confirm-email/resend` still send synchronously, so their
+    response time still differs between existing and unknown emails. `TaskSpawner` is
+    the tool to fix them.
+  - Requests for unknown emails leave sessions that bind nobody; they are cheap, purged
+    with the others and rate-limited per IP.
+- **Rolling deploys** — upgrade every replica before enabling the flag: an older binary
+  reads `primary_factor = 'magic_link'` as `passkey` (it fails closed), so such a
+  sign-in cannot complete there.
 
 ### External-provider-only clients (`external_login_only`)
 
@@ -357,7 +453,8 @@ cannot pick its own IP.
 
 | Credential | TTL | Storage |
 |---|---|---|
-| Auth session (`session_code`) | 10 min | hash only |
+| Auth session (`session_code`) | 10 min (15 min while waiting for a magic link) | hash only |
+| Magic sign-in link | 15 min | hash only, single-use, same browser only |
 | Email OTP (MFA) | 10 min | hash only |
 | WebAuthn challenge | 5 min | opaque state |
 | Authorization code | 60 s | hash only, single-use |

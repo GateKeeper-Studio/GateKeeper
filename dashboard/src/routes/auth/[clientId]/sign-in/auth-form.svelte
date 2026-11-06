@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
+	import MailIcon from '@lucide/svelte/icons/mail';
 
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -18,9 +19,11 @@
 	import { formSchema, passkeySchema } from './schema';
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { EMfaType, loginApi } from '$lib/services/auth/login';
-	import { authorizeApi } from '$lib/services/auth/authorize';
+	import { requestMagicLinkApi } from '$lib/services/auth/magic-link';
 	import { oauthProviderLoginApi } from '$lib/services/auth/oauth-provider-login';
 	import { SessionClock, storeSession } from '$lib/state/auth-session-expiry.svelte';
+	import { saveMagicLinkBinding } from '$lib/state/magic-link-binding';
+	import { continueAfterLogin, type ContinueLoginOutcome } from '$lib/utils/continue-login';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { client }: { client: ClientAuthData | null } = $props();
@@ -34,6 +37,8 @@
 	const noSignInMethod = $derived(externalOnly && (client?.oauthProviders.length ?? 0) === 0);
 	// Passwordless login: an account with no password signs in with its passkey alone.
 	const passkeyEnabled = $derived(!externalOnly && (client?.passkeyLoginEnabled ?? false));
+	// Magic link login: "email me a sign-in link".
+	const magicLinkEnabled = $derived(!externalOnly && (client?.magicLinkLoginEnabled ?? false));
 
 	const clientId = page.params.clientId as string;
 	const searchParams = page.url.searchParams;
@@ -214,114 +219,74 @@
 			return;
 		}
 
-		isLoading = false;
 		toast.success(m.signin_success());
 
-		// From here on the session's own clock takes over from the RP's, so the deadlines
-		// travel with the code — otherwise the countdown would restart from scratch on
-		// each hop to an MFA page and cheerfully over-promise.
-		storeSession(
+		const outcome = await continueAfterLogin(loginData, {
 			clientId,
-			loginData.sessionCode,
-			loginData.sessionExpiresAt,
-			loginData.sessionAbsoluteExpiresAt
-		);
+			email: trimmedEmail,
+			oidcParams: urlParams
+		});
+		handleOutcome(outcome);
+	}
 
-		urlParams.set('mfa_auth_app_required', 'true');
-		urlParams.set('email', trimmedEmail);
-
-		if (loginData.changePasswordCode) {
-			urlParams.set('change_password_code', loginData.changePasswordCode);
-		}
-		if (loginData.userId) {
-			urlParams.set('user_id', loginData.userId);
-		}
-		if (loginData.availableMfaMethods?.length) {
-			urlParams.set('available_mfa_methods', loginData.availableMfaMethods.join(','));
-		}
-
-		const mfaSuffix = loginData.mfaId ? `&mfa_id=${loginData.mfaId}` : '';
-
-		if (loginData.mfaEnrollmentRequired) {
+	// What `continueAfterLogin` could not do by itself: tell the user.
+	function handleOutcome(outcome: ContinueLoginOutcome) {
+		if (outcome.kind !== 'navigated') isLoading = false;
+		if (outcome.kind === 'enrollment-required') {
 			showError(m.signin_mfa_enrollment_required());
+		} else if (outcome.kind === 'session-expired') {
+			// The server says the session is gone: show the recovery dialog rather than a
+			// red alert the user can do nothing with.
+			clock.expireNow();
+		} else if (outcome.kind === 'error') {
+			showError(outcome.message || m.auth_generic_error());
+		}
+	}
+
+	// Magic link login: the email alone. The IdP answers the same for every address and
+	// mails a link only to an eligible account. The session code it returns is kept in
+	// this browser — the link works only together with it — and the waiting page takes
+	// over from there.
+	async function onMagicLinkSignIn() {
+		if (clock.phase === 'expired') return;
+
+		const result = validate(passkeySchema, { email });
+		if (!result.success) {
+			errors = result.errors;
 			return;
 		}
-
-		if (loginData.mfaType === EMfaType.MfaEmail) {
-			await goto(
-				resolve(`/auth/[clientId]/mfa-mail?${urlParams.toString()}${mfaSuffix}`, {
-					clientId
-				})
-			);
-			return;
-		}
-
-		if (loginData.mfaType === EMfaType.MfaApp) {
-			await goto(
-				resolve(`/auth/[clientId]/mfa-app?${urlParams.toString()}${mfaSuffix}`, {
-					clientId
-				})
-			);
-			return;
-		}
-
-		if (loginData.mfaType === EMfaType.MfaWebauthn && loginData.mfaId) {
-			await goToWebauthn(loginData.mfaId, loginData.webAuthnOptions);
-			return;
-		}
-
-		if (loginData.changePasswordCode && loginData.userId) {
-			urlParams.set('session_code', loginData.sessionCode);
-			await goto(
-				resolve(`/auth/[clientId]/update-password?${urlParams.toString()}${mfaSuffix}`, {
-					clientId
-				})
-			);
-			return;
-		}
-
+		errors = {};
 		isLoading = true;
 
-		const [authorizeData, authorizeErr] = await authorizeApi({
+		const trimmedEmail = result.data.email.trim();
+		const [data, err] = await requestMagicLinkApi({
 			email: trimmedEmail,
-			sessionCode: loginData.sessionCode,
 			clientId,
 			redirectUri,
 			responseType,
 			scope,
-			codeChallengeMethod,
+			state: oidcState,
 			codeChallenge,
-			state: oidcState,
-			nonce: nonce || undefined,
-			mfaId: loginData.mfaId
+			codeChallengeMethod,
+			nonce: nonce || undefined
 		});
 
-		if (authorizeErr) {
-			console.error(authorizeErr);
-			// The server is the source of truth: if it says the session is gone, believe it
-			// over our local timer (clock skew, a suspended laptop) and show the recovery
-			// dialog rather than a red alert the user can do nothing with.
-			if (authorizeErr.status === 401) {
-				clock.expireNow();
-				return;
-			}
-			showError(authorizeErr.message || m.auth_generic_error());
+		if (err || !data) {
+			console.error(err);
+			showError(err?.message || m.auth_generic_error());
 			return;
 		}
 
-		if (!authorizeData) {
-			showError(m.auth_generic_error());
-			return;
-		}
-
-		const params = new URLSearchParams({
-			code: authorizeData.authorizationCode,
-			state: oidcState,
-			redirect_uri: redirectUri,
-			client_id: clientId
+		saveMagicLinkBinding(clientId, {
+			sessionCode: data.sessionCode,
+			email: trimmedEmail,
+			oidcSearch: urlParams.toString(),
+			expiresAt: data.sessionExpiresAt
 		});
 
-		window.location.href = `${redirectUri}?${params.toString()}`;
+		isLoading = false;
+		const sentSearch = `${urlParams.toString()}&email=${encodeURIComponent(trimmedEmail)}`;
+		await goto(resolve(`/auth/[clientId]/magic-link-sent?${sentSearch}`, { clientId }));
 	}
 
 	async function handleOAuthLogin(provider: ClientAuthData['oauthProviders'][number]) {
@@ -445,6 +410,19 @@
 				>
 					<KeyRoundIcon class="size-4" />
 					{m.signin_with_passkey()}
+				</Button>
+			{/if}
+
+			{#if magicLinkEnabled}
+				<Button
+					type="button"
+					variant="outline"
+					class="flex w-full items-center justify-center gap-2"
+					disabled={isLoading || clock.phase === 'expired'}
+					onclick={onMagicLinkSignIn}
+				>
+					<MailIcon class="size-4" />
+					{m.signin_with_magic_link()}
 				</Button>
 			{/if}
 		</form>

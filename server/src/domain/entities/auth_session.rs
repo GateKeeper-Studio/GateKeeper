@@ -12,10 +12,16 @@ use crate::domain::entities::mfa_method::MfaMethod;
 //   opened from the email alone and binds a user who has proven NOTHING yet. Only a
 //   WebAuthn assertion may clear it — a mailbox or a TOTP code on its own must never
 //   become a primary factor.
+// * `MagicLink`: magic link login. The session is opened from the email alone with NO
+//   user bound (so the request looks the same for every email); redeeming the emailed
+//   link from this same browser binds and authenticates the user. The mailbox is then
+//   the primary factor, so an email code cannot be the second one — it would prove
+//   the same mailbox twice. TOTP and WebAuthn can.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryFactor {
     Password,
     Passkey,
+    MagicLink,
 }
 
 impl PrimaryFactor {
@@ -24,16 +30,17 @@ impl PrimaryFactor {
         match self {
             PrimaryFactor::Password => "password",
             PrimaryFactor::Passkey => "passkey",
+            PrimaryFactor::MagicLink => "magic_link",
         }
     }
 
-    // Fails closed: anything that is not exactly "password" reads back as the more
+    // Fails closed: anything that is not a known value reads back as the most
     // restrictive `Passkey`, which only a WebAuthn assertion can unlock.
     pub fn from_db(value: &str) -> Self {
-        if value == "password" {
-            PrimaryFactor::Password
-        } else {
-            PrimaryFactor::Passkey
+        match value {
+            "password" => PrimaryFactor::Password,
+            "magic_link" => PrimaryFactor::MagicLink,
+            _ => PrimaryFactor::Passkey,
         }
     }
 }
@@ -197,6 +204,20 @@ impl AuthSession {
         self.mfa_required = true;
     }
 
+    // Magic link login: the session freezes the OAuth request but binds NO user — the
+    // email has not been looked up on the request path at all. Redeeming the emailed
+    // link (with this session's code) calls `authenticate`.
+    pub fn await_magic_link(&mut self) {
+        self.user_id = None;
+        self.authenticated_at = None;
+        self.primary_factor = PrimaryFactor::MagicLink;
+    }
+
+    // A magic-link session whose link has not been redeemed yet.
+    pub fn is_awaiting_magic_link(&self) -> bool {
+        self.primary_factor == PrimaryFactor::MagicLink && self.user_id.is_none()
+    }
+
     // Flag that this session may not be spent until a second factor succeeds.
     pub fn require_mfa(&mut self) {
         self.mfa_required = true;
@@ -208,6 +229,7 @@ impl AuthSession {
         match self.primary_factor {
             PrimaryFactor::Password => true,
             PrimaryFactor::Passkey => *method == MfaMethod::Webauthn,
+            PrimaryFactor::MagicLink => *method != MfaMethod::Email,
         }
     }
 
@@ -231,6 +253,9 @@ impl AuthSession {
                 PrimaryFactor::Password => true,
                 PrimaryFactor::Passkey => {
                     self.mfa_method.as_deref() == Some(MfaMethod::Webauthn.as_str())
+                }
+                PrimaryFactor::MagicLink => {
+                    self.mfa_method.as_deref() != Some(MfaMethod::Email.as_str())
                 }
             };
         required && !satisfied
@@ -398,11 +423,59 @@ mod tests {
     }
 
     #[test]
+    fn a_magic_link_session_binds_nobody_until_redeemed() {
+        let mut s = session();
+        s.await_magic_link();
+
+        assert_eq!(s.primary_factor(), PrimaryFactor::MagicLink);
+        assert!(s.is_awaiting_magic_link());
+        assert!(
+            !s.is_authenticated(),
+            "no user is bound before the link is redeemed"
+        );
+        assert!(s.user_id().is_none());
+
+        let user_id = Uuid::now_v7();
+        s.authenticate(user_id, Utc::now());
+        assert!(!s.is_awaiting_magic_link());
+        assert!(s.is_authenticated());
+        assert_eq!(s.primary_factor(), PrimaryFactor::MagicLink);
+        assert!(!s.is_mfa_pending(), "no MFA policy, nothing pending");
+    }
+
+    #[test]
+    fn an_email_code_cannot_be_the_second_factor_of_a_magic_link_session() {
+        let mut s = session();
+        s.await_magic_link();
+        s.authenticate(Uuid::now_v7(), Utc::now());
+        s.require_mfa();
+
+        assert!(!s.accepts_mfa_method(&MfaMethod::Email));
+        assert!(s.accepts_mfa_method(&MfaMethod::Totp));
+        assert!(s.accepts_mfa_method(&MfaMethod::Webauthn));
+
+        // A verifier that forgot its gate still cannot open the session.
+        s.verify_mfa(&MfaMethod::Email, Utc::now());
+        assert!(s.is_mfa_pending());
+
+        s.verify_mfa(&MfaMethod::Totp, Utc::now());
+        assert!(!s.is_mfa_pending());
+    }
+
+    #[test]
     fn primary_factor_round_trips_and_fails_closed() {
         assert_eq!(PrimaryFactor::from_db("password"), PrimaryFactor::Password);
         assert_eq!(PrimaryFactor::from_db("passkey"), PrimaryFactor::Passkey);
+        assert_eq!(
+            PrimaryFactor::from_db("magic_link"),
+            PrimaryFactor::MagicLink
+        );
         assert_eq!(PrimaryFactor::from_db("garbage"), PrimaryFactor::Passkey);
-        for f in [PrimaryFactor::Password, PrimaryFactor::Passkey] {
+        for f in [
+            PrimaryFactor::Password,
+            PrimaryFactor::Passkey,
+            PrimaryFactor::MagicLink,
+        ] {
             assert_eq!(PrimaryFactor::from_db(f.as_str()), f);
         }
     }

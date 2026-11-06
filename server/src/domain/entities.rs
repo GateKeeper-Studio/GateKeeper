@@ -25,6 +25,7 @@ pub mod email_template;
 pub mod email_verification_token;
 pub mod external_identity_provider;
 pub mod external_login_flow;
+pub mod magic_link_token;
 pub mod mfa_challenge;
 pub mod mfa_enrollment;
 pub mod mfa_method;

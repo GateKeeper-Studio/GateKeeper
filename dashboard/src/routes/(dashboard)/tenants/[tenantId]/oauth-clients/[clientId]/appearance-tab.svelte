@@ -103,9 +103,12 @@
 
 	const draft = $derived(buildAppearance());
 
-	const fontLabel = $derived(fontFamily ? FONT_LABELS[fontFamily] : m.oauth_clients_appearance_tab_default_option());
+	const fontLabel = $derived(
+		fontFamily ? FONT_LABELS[fontFamily] : m.oauth_clients_appearance_tab_default_option()
+	);
 	const radiusLabel = $derived(
-		RADIUS_PRESETS.find((r) => r.value === borderRadius)?.label ?? m.oauth_clients_appearance_tab_default_option()
+		RADIUS_PRESETS.find((r) => r.value === borderRadius)?.label ??
+			m.oauth_clients_appearance_tab_default_option()
 	);
 	const heroPositionLabel = $derived(
 		heroPosition === 'right'
@@ -201,6 +204,8 @@
 			policyUri: client.policy_uri,
 			initiateLoginUri: client.initiate_login_uri,
 			externalLoginOnly: client.external_login_only,
+			// The update replaces the whole client: omitting this would switch it off.
+			magicLinkEnabled: client.magic_link_enabled,
 			loginAppearance: buildAppearance(),
 			allowedLanguages,
 			defaultLanguage
@@ -208,7 +213,9 @@
 		saving = false;
 
 		if (err) {
-			toast.error(err.data?.message || err.data?.error || m.oauth_clients_appearance_tab_save_error());
+			toast.error(
+				err.data?.message || err.data?.error || m.oauth_clients_appearance_tab_save_error()
+			);
 			return;
 		}
 		toast.success(m.oauth_clients_appearance_tab_save_success());
@@ -288,7 +295,11 @@
 
 			<div class="space-y-2">
 				<Label>{m.oauth_clients_appearance_tab_default_language_label()}</Label>
-				<Select.Root type="single" value={defaultLanguage} onValueChange={(v) => v && (defaultLanguage = v)}>
+				<Select.Root
+					type="single"
+					value={defaultLanguage}
+					onValueChange={(v) => v && (defaultLanguage = v)}
+				>
 					<Select.Trigger class="w-full">
 						{LOCALES.find((l) => l.code === defaultLanguage)?.nativeLabel ?? defaultLanguage}
 					</Select.Trigger>
@@ -391,7 +402,7 @@
 				<div class="space-y-2">
 					<Tabs.Root value={activeLanguageTab} onValueChange={(v) => v && (activeLanguageTab = v)}>
 						<Tabs.List>
-							{#each LOCALES.filter((l) => allowedLanguages.includes(l.code)) as locale (locale.code)}
+							{#each LOCALES.filter( (l) => allowedLanguages.includes(l.code) ) as locale (locale.code)}
 								<Tabs.Trigger value={locale.code}>{locale.nativeLabel}</Tabs.Trigger>
 							{/each}
 						</Tabs.List>
@@ -404,7 +415,8 @@
 									<Input
 										id="heading-{locale.code}"
 										value={heading[locale.code] ?? ''}
-										oninput={(e) => (heading = { ...heading, [locale.code]: e.currentTarget.value })}
+										oninput={(e) =>
+											(heading = { ...heading, [locale.code]: e.currentTarget.value })}
 										placeholder={m.oauth_clients_appearance_tab_heading_placeholder()}
 										maxlength={120}
 									/>
@@ -503,7 +515,9 @@
 		<Card.Header>
 			<div>
 				<Card.Title>{m.oauth_clients_appearance_tab_preview_card_title()}</Card.Title>
-				<Card.Description>{m.oauth_clients_appearance_tab_preview_card_description()}</Card.Description>
+				<Card.Description
+					>{m.oauth_clients_appearance_tab_preview_card_description()}</Card.Description
+				>
 			</div>
 			<Card.Action>
 				<Button variant="outline" size="sm" onclick={() => (previewDialogOpen = true)}>
@@ -535,7 +549,9 @@
 	>
 		<Dialog.Header class="border-b px-5 py-4 pr-16">
 			<Dialog.Title>{m.oauth_clients_appearance_tab_preview_title()}</Dialog.Title>
-			<Dialog.Description>{m.oauth_clients_appearance_tab_preview_fullscreen_description()}</Dialog.Description>
+			<Dialog.Description
+				>{m.oauth_clients_appearance_tab_preview_fullscreen_description()}</Dialog.Description
+			>
 		</Dialog.Header>
 		<div class="min-h-0 bg-muted">
 			<iframe

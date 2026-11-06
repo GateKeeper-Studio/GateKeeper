@@ -13,6 +13,7 @@ pub mod external_login_flow_repository;
 pub mod group_repository;
 pub mod legal_document_repository;
 pub mod login_event_repository;
+pub mod magic_link_token_repository;
 pub mod mfa_challenge_repository;
 pub mod mfa_enrollment_repository;
 pub mod oauth_client_repository;

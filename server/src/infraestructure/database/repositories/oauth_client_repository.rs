@@ -109,7 +109,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
-            is_active, created_at, updated_at, external_login_only,
+            is_active, created_at, updated_at, external_login_only, magic_link_enabled,
             login_appearance as "login_appearance?: sqlx::types::Json<LoginAppearanceRow>"
           FROM oauth_clients
           WHERE tenant_id = $1 AND client_id = $2
@@ -153,6 +153,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             );
             client.set_login_appearance(r.login_appearance.map(|j| j.0.into_domain()));
             client.set_external_login_only(r.external_login_only);
+            client.set_magic_link_enabled(r.magic_link_enabled);
             client
         }))
     }
@@ -175,7 +176,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
-            is_active, created_at, updated_at, external_login_only,
+            is_active, created_at, updated_at, external_login_only, magic_link_enabled,
             login_appearance as "login_appearance?: sqlx::types::Json<LoginAppearanceRow>"
           FROM oauth_clients
           WHERE client_id = $1
@@ -218,6 +219,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             );
             client.set_login_appearance(r.login_appearance.map(|j| j.0.into_domain()));
             client.set_external_login_only(r.external_login_only);
+            client.set_magic_link_enabled(r.magic_link_enabled);
             client
         }))
     }
@@ -236,7 +238,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
-            is_active, created_at, updated_at, external_login_only,
+            is_active, created_at, updated_at, external_login_only, magic_link_enabled,
             login_appearance as "login_appearance?: sqlx::types::Json<LoginAppearanceRow>"
           FROM oauth_clients
           WHERE tenant_id = $1 AND id = $2
@@ -280,6 +282,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             );
             client.set_login_appearance(r.login_appearance.map(|j| j.0.into_domain()));
             client.set_external_login_only(r.external_login_only);
+            client.set_magic_link_enabled(r.magic_link_enabled);
             client
         }))
     }
@@ -299,7 +302,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
-            is_active, created_at, updated_at, external_login_only,
+            is_active, created_at, updated_at, external_login_only, magic_link_enabled,
             login_appearance as "login_appearance?: sqlx::types::Json<LoginAppearanceRow>"
           FROM oauth_clients
           WHERE tenant_id = $1
@@ -348,6 +351,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
                 );
                 client.set_login_appearance(r.login_appearance.map(|j| j.0.into_domain()));
                 client.set_external_login_only(r.external_login_only);
+                client.set_magic_link_enabled(r.magic_link_enabled);
                 client
             })
             .collect())
@@ -380,8 +384,9 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
-            is_active, created_at, updated_at, login_appearance, external_login_only)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
+            is_active, created_at, updated_at, login_appearance, external_login_only,
+            magic_link_enabled)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
         "#,
         client.id(),
         client.tenant_id(),
@@ -410,6 +415,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
         client.updated_at(),
         login_appearance as _,
         client.external_login_only(),
+        client.magic_link_enabled(),
       ),
       execute
     )
@@ -435,7 +441,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             initiate_login_uri = $13, allowed_languages = $14, default_language = $15,
             mfa_required = $16, mfa_email_enabled = $17, mfa_totp_enabled = $18, mfa_webauthn_enabled = $19,
             is_active = $20, updated_at = $21, login_appearance = $22,
-            external_login_only = $23
+            external_login_only = $23, magic_link_enabled = $24
           WHERE tenant_id = $1 AND id = $2
         "#,
         client.tenant_id(),
@@ -461,6 +467,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
         client.updated_at(),
         login_appearance as _,
         client.external_login_only(),
+        client.magic_link_enabled(),
       ),
       execute
     )

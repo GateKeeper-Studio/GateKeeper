@@ -92,6 +92,16 @@ pub(super) fn router() -> Router<AppState> {
         )
         // SPA login flow: step 1 authenticates, step 2 exchanges the session for a code.
         .route("/v1/auth/login", post(authentication_handler::login))
+        // Magic link login: request a sign-in link (an email-sending endpoint, so an
+        // unbounded rate is a spam vector), then redeem it (a credential).
+        .route(
+            "/v1/auth/magic-link",
+            post(authentication_handler::request_magic_link),
+        )
+        .route(
+            "/v1/auth/magic-link/redeem",
+            post(authentication_handler::redeem_magic_link),
+        )
         .route(
             "/v1/auth/verify-mfa/email/send",
             post(mfa_handler::send_email_otp),

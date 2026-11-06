@@ -21,7 +21,7 @@ use crate::{
             geoip_resolver::GeoIpResolver, password_hasher::PasswordHasher,
             risk_engine::RiskEngine, secret_cipher::SecretCipher,
             signing_key_cache::SigningKeyCache, signing_key_generator::SigningKeyGenerator,
-            token_signer::TokenSigner, token_verifier::TokenVerifier,
+            task_spawner::TaskSpawner, token_signer::TokenSigner, token_verifier::TokenVerifier,
             unit_of_work::UnitOfWorkFactory, webauthn::WebauthnService,
             webhook_sender::WebhookSender,
         },
@@ -36,8 +36,8 @@ use crate::{
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
             authentication::{
                 authorize_session, change_password, confirm_current_password, confirm_email,
-                external_login, forgot_password, login, refresh_session, register,
-                resend_confirm_email, reset_password,
+                external_login, forgot_password, login, redeem_magic_link, refresh_session,
+                register, request_magic_link, resend_confirm_email, reset_password,
             },
             compliance::{
                 erase_user, export_user_data, list_audit_events, list_required_documents,
@@ -171,6 +171,7 @@ use crate::{
         email::{mjml_renderer::MjmlEmailRenderer, smtp_email_sender::SmtpEmailSender},
         external_providers::reqwest_client::ReqwestExternalIdentityProviderClient,
         geoip::maxmind_geoip_resolver::{MaxmindGeoIpResolver, NoopGeoIpResolver},
+        runtime::tokio_task_spawner::TokioTaskSpawner,
         webhooks::reqwest_webhook_sender::ReqwestWebhookSender,
     },
     presentation::{
@@ -311,6 +312,8 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
     // link back to its `/auth/{client_id}/change-password` page, so the provider
     // must know where that UI lives.
     let auth_ui_base_url = config.auth_ui_base_url.clone();
+    // Background work that must stay off the request path (magic link dispatch).
+    let task_spawner: Arc<dyn TaskSpawner> = Arc::new(TokioTaskSpawner);
 
     let webauthn_rp_id = &config.webauthn.rp_id;
     let webauthn_origin = webauthn_rs::prelude::Url::parse(&config.webauthn.origin)
@@ -639,7 +642,22 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             forgot_password: Arc::new(forgot_password::use_case::UseCase::new(
                 Arc::clone(&uow_factory),
                 Arc::clone(&templated_email),
-                auth_ui_base_url,
+                auth_ui_base_url.clone(),
+            )),
+            request_magic_link: Arc::new(request_magic_link::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&risk_engine),
+                Arc::clone(&task_spawner),
+                Arc::new(request_magic_link::dispatcher::MagicLinkDispatcher::new(
+                    Arc::clone(&uow_factory),
+                    Arc::clone(&templated_email),
+                    auth_ui_base_url,
+                )),
+            )),
+            redeem_magic_link: Arc::new(redeem_magic_link::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&webauthn),
+                Arc::clone(&risk_engine),
             )),
             reset_password: Arc::new(reset_password::use_case::UseCase::new(
                 Arc::clone(&uow_factory),

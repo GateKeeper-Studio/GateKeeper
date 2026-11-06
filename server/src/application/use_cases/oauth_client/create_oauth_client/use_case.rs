@@ -110,6 +110,7 @@ impl UseCase {
         // No provider check here — a brand-new client has none yet. The invariant is
         // enforced on update, where the admin has had a chance to configure one.
         client.set_external_login_only(command.external_login_only);
+        client.set_magic_link_enabled(command.magic_link_enabled);
 
         uow.oauth_client_repository().add(&client).await?;
         uow.commit().await?;

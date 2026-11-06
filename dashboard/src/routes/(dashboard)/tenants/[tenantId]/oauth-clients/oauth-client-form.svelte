@@ -74,6 +74,7 @@
 	let requirePkce = $state(client?.require_pkce ?? true);
 	let requireConsent = $state(client?.require_consent ?? true);
 	let externalLoginOnly = $state(client?.external_login_only ?? false);
+	let magicLinkEnabled = $state(client?.magic_link_enabled ?? false);
 	let mfaRequired = $state(client?.mfa_required ?? false);
 	let mfaEmailEnabled = $state(client?.mfa_email_enabled ?? true);
 	let mfaTotpEnabled = $state(client?.mfa_totp_enabled ?? true);
@@ -155,6 +156,7 @@
 			requirePkce,
 			requireConsent,
 			externalLoginOnly,
+			magicLinkEnabled,
 			mfaRequired,
 			mfaEmailEnabled,
 			mfaTotpEnabled,
@@ -477,6 +479,18 @@
 				{m.oauth_clients_form_external_login_only_hint()}
 			</p>
 		{/if}
+
+		<!-- A sign-in link is not an external provider: an external-only client never
+		     offers one, so the box is disabled while that is on. -->
+		<label class="flex items-start gap-2 text-sm">
+			<Checkbox bind:checked={magicLinkEnabled} disabled={externalLoginOnly} class="mt-0.5" />
+			<span>
+				{m.oauth_clients_form_magic_link_label()}
+				<span class="text-muted-foreground">
+					{m.oauth_clients_form_magic_link_description()}
+				</span>
+			</span>
+		</label>
 
 		<label class="flex items-center gap-2 text-sm">
 			<Checkbox bind:checked={mfaRequired} />

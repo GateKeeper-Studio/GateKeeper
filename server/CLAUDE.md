@@ -189,6 +189,11 @@ exempt list because their caller comes from the token.
   `session.accepts_mfa_method(..)`. Code reachable from a passkey session must not
   invalidate challenges per user (that session was opened from an email alone) — use
   `invalidate_active_by_session`.
+- **Magic link login:** a `primary_factor = magic_link` session refuses email as its
+  second factor (`accepts_mfa_method`). An endpoint that takes only an email must do
+  the same work for every email: anything that depends on whether the account exists
+  (lookup, inserts, sending email) goes through the `TaskSpawner` port, off the request
+  path (see `request_magic_link`).
 - **Refresh tokens rotate** with **reuse detection** — presenting an already-rotated
   token revokes the whole token family and emits `token.reuse_detected`. A refresh (and
   the social-login callback) is also **risk-scored** by the same engine as an interactive

@@ -111,6 +111,7 @@ impl UseCase {
             },
             command.is_active,
         );
+        client.set_magic_link_enabled(command.magic_link_enabled);
 
         uow.oauth_client_repository().update(&client).await?;
         uow.commit().await?;

@@ -8,6 +8,8 @@ pub mod fake_webauthn_service;
 pub mod fake_webhook_sender;
 pub mod in_memory_repositories;
 pub mod in_memory_unit_of_work;
+pub mod magic_link_fixture;
+pub mod manual_task_spawner;
 pub mod oauth_fakes;
 pub mod password_hasher;
 pub mod recording_email_sender;

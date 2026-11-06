@@ -13,6 +13,7 @@ pub mod in_memory_external_login_flow_repository;
 pub mod in_memory_group_repository;
 pub mod in_memory_legal_document_repository;
 pub mod in_memory_login_event_repository;
+pub mod in_memory_magic_link_token_repository;
 pub mod in_memory_mfa_challenge_repository;
 pub mod in_memory_mfa_enrollment_repository;
 pub mod in_memory_oauth_client_repository;

@@ -144,6 +144,7 @@ mod tests {
             initiate_login_uri: None,
             login_appearance: None,
             external_login_only: false,
+            magic_link_enabled: false,
             allowed_languages: vec!["en".to_string()],
             default_language: "en".to_string(),
             mfa_required: false,
@@ -402,6 +403,42 @@ mod tests {
         let saved = stored.get(&client.id()).unwrap();
         assert!(saved.external_login_only());
         assert!(!saved.allows_password_login());
+    }
+
+    // The update is a full replace: the flag is saved when sent, and a caller that
+    // omits it (serde default false) turns the feature off.
+    #[tokio::test]
+    async fn saves_and_clears_magic_link_enabled() {
+        let tenant_id = Uuid::now_v7();
+        let client = make_client(tenant_id);
+        let (clients, use_case, _) = setup_with_providers(tenant_id, Some(&client), &[]);
+
+        let mut cmd = command(tenant_id, client.id());
+        cmd.magic_link_enabled = true;
+        let view = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap();
+        assert!(view.magic_link_enabled);
+        assert!(
+            clients
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .get(&client.id())
+                .unwrap()
+                .allows_magic_link_login()
+        );
+
+        let view = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id, client.id()),
+            )
+            .await
+            .unwrap();
+        assert!(!view.magic_link_enabled);
     }
 
     // Turning it back OFF needs no provider — it only ever adds a way in.

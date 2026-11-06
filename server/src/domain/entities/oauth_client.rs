@@ -234,6 +234,12 @@ pub struct OAuthClient {
     // ACTIVE external provider — otherwise the hosted login page would offer no way in.
     external_login_only: bool,
 
+    // Magic link login: the hosted page offers "Email me a sign-in link", and any
+    // active account with a verified email can sign in by clicking it. Off by default
+    // — an admin opts each client in. Ignored on an external-login-only client (see
+    // `allows_magic_link_login`).
+    magic_link_enabled: bool,
+
     // Which of the supported locales (domain::locale::SUPPORTED_LOCALES) this
     // client's hosted login/sign-up page offers to end users, and which one it
     // uses absent an explicit user choice. Always non-empty; default_language is
@@ -286,6 +292,7 @@ impl OAuthClient {
             initiate_login_uri: None,
             login_appearance: None,
             external_login_only: false,
+            magic_link_enabled: false,
             allowed_languages,
             default_language,
             mfa_policy,
@@ -342,6 +349,7 @@ impl OAuthClient {
             // build clients.
             login_appearance: None,
             external_login_only: false,
+            magic_link_enabled: false,
             allowed_languages,
             default_language,
             mfa_policy,
@@ -428,6 +436,12 @@ impl OAuthClient {
     // admin edits go through update_details, which stamps updated_at.
     pub fn set_external_login_only(&mut self, external_login_only: bool) {
         self.external_login_only = external_login_only;
+    }
+
+    // Set the magic-link policy. Same lifecycle as set_external_login_only: used on
+    // create, on rehydration, and by the update use case after update_details.
+    pub fn set_magic_link_enabled(&mut self, magic_link_enabled: bool) {
+        self.magic_link_enabled = magic_link_enabled;
     }
 
     // Rotate the client secret: replace the stored Argon2 hash with a freshly
@@ -522,6 +536,22 @@ impl OAuthClient {
     // an Argon2 verification or mints a reset token.
     pub fn allows_password_login(&self) -> bool {
         !self.external_login_only
+    }
+    pub fn magic_link_enabled(&self) -> bool {
+        self.magic_link_enabled
+    }
+    // Magic link sign-in is offered only when the admin enabled it AND the client is
+    // not external-login-only (which means "external providers and nothing else").
+    //
+    // It is also withheld when the client requires MFA but allows no factor other
+    // than email: the mailbox is already the primary factor of a magic-link sign-in,
+    // so an email code cannot be its second one, and such a sign-in could never be
+    // completed. Better not to offer it than to strand the user after the click.
+    pub fn allows_magic_link_login(&self) -> bool {
+        let second_factor_possible = !self.mfa_policy.required
+            || self.mfa_policy.totp_enabled
+            || self.mfa_policy.webauthn_enabled;
+        self.magic_link_enabled && !self.external_login_only && second_factor_possible
     }
     pub fn allowed_languages(&self) -> &[String] {
         &self.allowed_languages

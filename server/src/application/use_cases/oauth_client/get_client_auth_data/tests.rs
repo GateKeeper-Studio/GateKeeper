@@ -163,6 +163,70 @@ mod tests {
         assert!(!view.passkey_login_enabled);
     }
 
+    // "Email me a sign-in link" is offered only when the admin enabled it, the client
+    // is not external-only, and its MFA policy could be met after a magic link (an
+    // email code cannot be the second factor when the mailbox is the first).
+    #[tokio::test]
+    async fn magic_link_login_truth_table() {
+        let email_only_mfa = MfaPolicy {
+            required: true,
+            email_enabled: true,
+            totp_enabled: false,
+            webauthn_enabled: false,
+        };
+        let totp_mfa = MfaPolicy {
+            required: true,
+            email_enabled: true,
+            totp_enabled: true,
+            webauthn_enabled: false,
+        };
+        for (label, enabled, external_only, policy, expected) in [
+            ("off by default", false, false, MfaPolicy::default(), false),
+            ("enabled", true, false, MfaPolicy::default(), true),
+            (
+                "external-only client",
+                true,
+                true,
+                MfaPolicy::default(),
+                false,
+            ),
+            ("mfa only by email", true, false, email_only_mfa, false),
+            ("mfa by totp", true, false, totp_mfa, true),
+        ] {
+            let tenant_id = Uuid::now_v7();
+            let tenant = make_tenant(tenant_id, true, true, true);
+            let mut client = OAuthClient::new(
+                tenant_id,
+                client_id(),
+                None,
+                ClientType::Public,
+                "App".to_string(),
+                vec!["https://app.example.com/cb".to_string()],
+                vec![],
+                vec!["openid".to_string()],
+                vec!["authorization_code".to_string()],
+                true,
+                true,
+                vec!["en".to_string()],
+                "en".to_string(),
+                policy,
+            );
+            client.set_magic_link_enabled(enabled);
+            client.set_external_login_only(external_only);
+            let use_case = setup(Some(tenant), Some(&client));
+
+            let view = use_case
+                .execute(Query {
+                    client_id: client_id().to_string(),
+                    requested_locale: None,
+                })
+                .await
+                .unwrap();
+
+            assert_eq!(view.magic_link_login_enabled, expected, "{label}");
+        }
+    }
+
     // The flag surfaces so the hosted page can drop the password form, AND it forces
     // both self-service entry points off — there is no password to create or reset,
     // whatever the tenant allows.

@@ -34,6 +34,12 @@ export type ClientAuthData = {
 	 * Optional so an older IdP that doesn't send it simply hides the button.
 	 */
 	passkeyLoginEnabled?: boolean;
+	/**
+	 * Offer "Email me a sign-in link" (magic link login). Any active account with a
+	 * verified email can use it; the link only works in the browser that asked.
+	 * Optional so an older IdP that doesn't send it simply hides the button.
+	 */
+	magicLinkLoginEnabled?: boolean;
 	// Which languages this client's hosted pages offer, and which one text is
 	// resolved against when a locale isn't specified/available. `loginAppearance`
 	// and `customFieldDefinitions` below are already resolved server-side for

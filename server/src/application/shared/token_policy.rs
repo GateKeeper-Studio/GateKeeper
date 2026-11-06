@@ -28,3 +28,11 @@ pub const RESET_TOKEN_TTL_MINUTES: i64 = 30;
 
 /// External (social) login round trips.
 pub const EXTERNAL_LOGIN_FLOW_TTL_MINUTES: i64 = 10;
+
+/// Magic sign-in links. Long enough to switch to the mail client and back; the
+/// session waiting for the click lives exactly as long.
+pub const MAGIC_LINK_TTL_MINUTES: i64 = 15;
+
+/// Minimum gap between two magic links emailed to the same account. The per-IP rate
+/// limiter alone does not stop someone with many IPs from flooding a mailbox.
+pub const MAGIC_LINK_RESEND_COOLDOWN_SECONDS: i64 = 60;

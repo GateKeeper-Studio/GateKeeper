@@ -82,6 +82,7 @@ export const oauthClientFormSchema = z.object({
 	// is server-side state this form doesn't know, so the IdP is the authority and its
 	// 400 surfaces as a form error.
 	externalLoginOnly: z.boolean(),
+	magicLinkEnabled: z.boolean(),
 	mfaRequired: z.boolean(),
 	mfaEmailEnabled: z.boolean(),
 	mfaTotpEnabled: z.boolean(),

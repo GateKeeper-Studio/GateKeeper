@@ -90,6 +90,10 @@ pub struct Command {
     #[serde(default)]
     pub external_login_only: bool,
 
+    // Magic link login ("email me a sign-in link"). Off unless set.
+    #[serde(default)]
+    pub magic_link_enabled: bool,
+
     // Which supported locales this client's hosted login/sign-up page offers,
     // and which one it defaults to absent a user choice. Validated by
     // validate_client_languages before it reaches the entity.

@@ -15,6 +15,7 @@ use crate::domain::{
         external_identity_provider_repository::ExternalIdentityProviderRepository,
         external_login_flow_repository::ExternalLoginFlowRepository,
         group_repository::GroupRepository, login_event_repository::LoginEventRepository,
+        magic_link_token_repository::MagicLinkTokenRepository,
         mfa_challenge_repository::MfaChallengeRepository,
         mfa_enrollment_repository::MfaEnrollmentRepository,
         oauth_client_repository::OAuthClientRepository,
@@ -54,6 +55,7 @@ pub trait UnitOfWork: Send + Sync {
     fn mfa_enrollment_repository(&self) -> Arc<dyn MfaEnrollmentRepository>;
     fn mfa_challenge_repository(&self) -> Arc<dyn MfaChallengeRepository>;
     fn password_reset_token_repository(&self) -> Arc<dyn PasswordResetTokenRepository>;
+    fn magic_link_token_repository(&self) -> Arc<dyn MagicLinkTokenRepository>;
     fn password_change_token_repository(&self) -> Arc<dyn PasswordChangeTokenRepository>;
     fn email_provider_repository(&self) -> Arc<dyn EmailProviderRepository>;
     // External (social) identity providers + their sign-in artifacts: per-client

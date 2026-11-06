@@ -45,6 +45,9 @@ type Response = {
 	sessionAbsoluteExpiresAt: string;
 };
 
+/** The sign-in answer; magic link redemption returns the same shape. */
+export type LoginResponse = Response;
+
 export async function loginApi(request: Request): Promise<Result<Response>> {
 	try {
 		const data = await api.post<Response>('/v1/auth/login', request);

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE client_id = $1\n        ",
+  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only, magic_link_enabled,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE tenant_id = $1\n          ORDER BY created_at DESC\n          LIMIT $2 OFFSET $3\n        ",
   "describe": {
     "columns": [
       {
@@ -291,6 +291,17 @@
       },
       {
         "ordinal": 26,
+        "name": "magic_link_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "magic_link_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
         "name": "login_appearance?: sqlx::types::Json<LoginAppearanceRow>",
         "type_info": "Jsonb",
         "origin": {
@@ -303,7 +314,9 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
@@ -333,8 +346,9 @@
       false,
       true,
       false,
+      false,
       true
     ]
   },
-  "hash": "263ef295da78c0f037336587fd61a076fb12e98eb612aead64d149d23ba113ce"
+  "hash": "8f6cd82ce1864afba18a822bb0523f1f8f60a8974c0f137288dde8980450d1ba"
 }

@@ -16,6 +16,7 @@ pub mod email_template_repository;
 pub mod email_verification_token_repository;
 pub mod external_identity_provider_repository;
 pub mod external_login_flow_repository;
+pub mod magic_link_token_repository;
 pub mod mfa_challenge_repository;
 pub mod mfa_enrollment_repository;
 pub mod oauth_client_repository;

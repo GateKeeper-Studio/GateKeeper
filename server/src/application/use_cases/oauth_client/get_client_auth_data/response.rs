@@ -46,6 +46,9 @@ pub struct Response {
     // login): the client takes email sign-in and allows WebAuthn. Only accounts
     // with no password and a confirmed passkey can actually use it.
     pub passkey_login_enabled: bool,
+    // Whether the hosted page should offer "Email me a sign-in link" (magic link
+    // login). See `OAuthClient::allows_magic_link_login`.
+    pub magic_link_login_enabled: bool,
     pub oauth_providers: Vec<OAuthProviderView>,
     // The tenant's active custom sign-up fields, in display order — the login
     // SPA renders these as additional inputs on the sign-up form.
@@ -185,6 +188,7 @@ impl Response {
             external_login_only,
             passkey_login_enabled: !external_login_only
                 && client.allows_mfa_method(&MfaMethod::Webauthn),
+            magic_link_login_enabled: client.allows_magic_link_login(),
             oauth_providers: providers
                 .iter()
                 .map(|p| OAuthProviderView {

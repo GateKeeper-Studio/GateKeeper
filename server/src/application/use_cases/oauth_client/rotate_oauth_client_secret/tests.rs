@@ -73,6 +73,7 @@ mod tests {
             initiate_login_uri: None,
             login_appearance: None,
             external_login_only: false,
+            magic_link_enabled: false,
             allowed_languages: vec!["en".to_string()],
             default_language: "en".to_string(),
             mfa_required: false,

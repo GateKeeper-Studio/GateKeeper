@@ -23,6 +23,7 @@ use web_api::{
         entities::{
             auth_session::{AuthSession, PrimaryFactor},
             domain_event_type::DomainEventType,
+            magic_link_token::MagicLinkToken,
             mfa_challenge::{MfaChallenge, MfaChallengePurpose},
             mfa_method::MfaMethod,
             oauth_client::{ClientType, MfaPolicy, OAuthClient},
@@ -36,6 +37,7 @@ use web_api::{
         },
         repositories::{
             auth_session_repository::AuthSessionRepository,
+            magic_link_token_repository::MagicLinkTokenRepository,
             mfa_challenge_repository::MfaChallengeRepository,
             oauth_client_repository::OAuthClientRepository,
             organization_repository::OrganizationRepository,
@@ -52,6 +54,7 @@ use web_api::{
             executor::SharedTx,
             repositories::{
                 auth_session_repository::DbAuthSessionRepository,
+                magic_link_token_repository::DbMagicLinkTokenRepository,
                 mfa_challenge_repository::DbMfaChallengeRepository,
                 oauth_client_repository::DbOAuthClientRepository,
                 organization_repository::DbOrganizationRepository,
@@ -410,6 +413,86 @@ async fn auth_sessions_round_trip_their_primary_factor(pool: PgPool) {
     assert!(
         bogus.is_err(),
         "the CHECK constraint must refuse unknown factors"
+    );
+}
+
+// Magic link login: the waiting session (no user bound) and its link survive the trip
+// through the database, the client flag persists, and deleting the session — which
+// is how the retention purge expires it — takes its links with it.
+#[sqlx::test(migrations = "./migrations")]
+async fn magic_link_tokens_round_trip_and_die_with_their_session(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let mut client = seed_client(&pool, &tenant).await;
+    let user = seed_user(&pool, &tenant).await;
+
+    let clients = DbOAuthClientRepository::new(pool.clone());
+    client.set_magic_link_enabled(true);
+    clients.update(&client).await.unwrap();
+    let read_client = clients
+        .find_by_id(tenant.id(), client.id())
+        .await
+        .unwrap()
+        .expect("client");
+    assert!(read_client.magic_link_enabled());
+
+    let sessions = DbAuthSessionRepository::new(pool.clone());
+    let mut session = login_session(&tenant, &client, "hash-magic");
+    session.await_magic_link();
+    sessions.add(&session).await.unwrap();
+    let read = sessions
+        .find_by_token_hash(tenant.id(), "hash-magic")
+        .await
+        .unwrap()
+        .expect("magic-link session");
+    assert_eq!(read.primary_factor(), PrimaryFactor::MagicLink);
+    assert!(read.is_awaiting_magic_link());
+    assert!(!read.accepts_mfa_method(&MfaMethod::Email));
+
+    let tokens = DbMagicLinkTokenRepository::new(pool.clone());
+    assert_eq!(
+        tokens.latest_created_at_for_user(user.id()).await.unwrap(),
+        None
+    );
+    let mut token = MagicLinkToken::new(
+        tenant.id(),
+        user.id(),
+        session.id(),
+        "a".repeat(64),
+        Utc::now() + Duration::minutes(15),
+    );
+    tokens.add(&token).await.unwrap();
+    let stored = tokens.find_by_id(token.id()).await.unwrap().expect("token");
+    assert_eq!(stored.auth_session_id(), session.id());
+    assert_eq!(stored.token_hash(), "a".repeat(64));
+    assert!(!stored.is_consumed());
+    assert!(
+        tokens
+            .latest_created_at_for_user(user.id())
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    token.consume(Utc::now());
+    tokens.update(&token).await.unwrap();
+    assert!(
+        tokens
+            .find_by_id(token.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .is_consumed()
+    );
+
+    sqlx::query("DELETE FROM auth_sessions WHERE id = $1")
+        .bind(session.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        tokens.find_by_id(token.id()).await.unwrap().is_none(),
+        "the link is deleted with its session"
     );
 }
 

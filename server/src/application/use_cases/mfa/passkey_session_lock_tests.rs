@@ -2,6 +2,10 @@
 // WebAuthn assertion may open it. These tests pin that every login-time MFA use case
 // enforces the lock — a mailbox or a TOTP code alone must never become a primary
 // factor — and that the same use cases keep working on a password session.
+//
+// A magic-link session has the opposite lock: the mailbox is already its primary
+// factor, so an email code may not be its second one (it would prove the same mailbox
+// twice), while TOTP and passkeys may.
 
 use std::sync::Arc;
 
@@ -51,6 +55,7 @@ const EMAIL_CODE: &str = "123456";
 enum Opened {
     ByPassword,
     ByPasskeyOnly,
+    ByMagicLink,
 }
 
 struct Ctx {
@@ -116,6 +121,11 @@ fn setup(opened: Opened) -> Ctx {
             session.require_mfa();
         }
         Opened::ByPasskeyOnly => session.identify_for_passkey(user_id),
+        Opened::ByMagicLink => {
+            session.await_magic_link();
+            session.authenticate(user_id, Utc::now());
+            session.require_mfa();
+        }
     }
     let session_id = session.id();
     let sessions = Arc::new(InMemoryAuthSessionRepository::new());
@@ -242,6 +252,16 @@ async fn send_email_otp_refuses_a_passkey_session() {
     assert!(ctx.challenges.memory.data.lock().unwrap().is_empty());
 }
 
+#[tokio::test]
+async fn send_email_otp_refuses_a_magic_link_session() {
+    let ctx = setup(Opened::ByMagicLink);
+
+    assert_refused(send_email_otp(&ctx).await);
+
+    assert!(ctx.emails.recipients().is_empty());
+    assert!(ctx.challenges.memory.data.lock().unwrap().is_empty());
+}
+
 // ── verify_email_otp ─────────────────────────────────────────────────────────
 
 async fn verify_email_otp(ctx: &Ctx) -> Result<verify_email_otp::response::Response, DomainError> {
@@ -267,6 +287,16 @@ async fn verify_email_otp_clears_a_password_session() {
 #[tokio::test]
 async fn verify_email_otp_refuses_a_passkey_session_even_with_the_right_code() {
     let ctx = setup(Opened::ByPasskeyOnly);
+    seed_email_challenge(&ctx);
+
+    assert_refused(verify_email_otp(&ctx).await);
+
+    assert!(session(&ctx).is_mfa_pending());
+}
+
+#[tokio::test]
+async fn verify_email_otp_refuses_a_magic_link_session_even_with_the_right_code() {
+    let ctx = setup(Opened::ByMagicLink);
     seed_email_challenge(&ctx);
 
     assert_refused(verify_email_otp(&ctx).await);
@@ -304,6 +334,15 @@ async fn verify_totp_refuses_a_passkey_session_even_with_the_right_code() {
 #[tokio::test]
 async fn verify_totp_still_clears_a_password_session() {
     let ctx = setup(Opened::ByPassword);
+
+    verify_totp(&ctx).await.unwrap();
+
+    assert!(!session(&ctx).is_mfa_pending());
+}
+
+#[tokio::test]
+async fn verify_totp_clears_a_magic_link_session() {
+    let ctx = setup(Opened::ByMagicLink);
 
     verify_totp(&ctx).await.unwrap();
 

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE tenant_id = $1 AND client_id = $2\n        ",
+  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only, magic_link_enabled,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE client_id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -291,6 +291,17 @@
       },
       {
         "ordinal": 26,
+        "name": "magic_link_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "magic_link_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
         "name": "login_appearance?: sqlx::types::Json<LoginAppearanceRow>",
         "type_info": "Jsonb",
         "origin": {
@@ -303,7 +314,6 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Uuid"
       ]
     },
@@ -334,8 +344,9 @@
       false,
       true,
       false,
+      false,
       true
     ]
   },
-  "hash": "618e2f0d4f87328c9437a1092b87ca77432da98ec9740f186c2b0d09d15b691a"
+  "hash": "7a7c6364442412f34840771cc0ada0cf55166b90c13211f83507a9915c53c3f5"
 }

@@ -22,6 +22,8 @@ pub enum EmailTemplateType {
     PasswordReset,
     /// Sign-in second-factor email carrying the 6-digit MFA code.
     MfaCode,
+    /// Magic link login: a one-time link that signs the user in.
+    MagicLink,
 }
 
 impl EmailTemplateType {
@@ -31,6 +33,7 @@ impl EmailTemplateType {
         EmailTemplateType::EmailVerification,
         EmailTemplateType::PasswordReset,
         EmailTemplateType::MfaCode,
+        EmailTemplateType::MagicLink,
     ];
 
     /// Stored value in the `template_type` column.
@@ -39,6 +42,7 @@ impl EmailTemplateType {
             EmailTemplateType::EmailVerification => "email_verification",
             EmailTemplateType::PasswordReset => "password_reset",
             EmailTemplateType::MfaCode => "mfa_code",
+            EmailTemplateType::MagicLink => "magic_link",
         }
     }
 
@@ -48,6 +52,7 @@ impl EmailTemplateType {
             "email_verification" => Some(EmailTemplateType::EmailVerification),
             "password_reset" => Some(EmailTemplateType::PasswordReset),
             "mfa_code" => Some(EmailTemplateType::MfaCode),
+            "magic_link" => Some(EmailTemplateType::MagicLink),
             _ => None,
         }
     }
@@ -64,6 +69,7 @@ impl EmailTemplateType {
             EmailTemplateType::EmailVerification => "Email confirmation",
             EmailTemplateType::PasswordReset => "Password reset",
             EmailTemplateType::MfaCode => "MFA sign-in code",
+            EmailTemplateType::MagicLink => "Magic sign-in link",
         }
     }
 
@@ -75,6 +81,9 @@ impl EmailTemplateType {
             }
             EmailTemplateType::PasswordReset => "Sent when a user requests a password-reset link.",
             EmailTemplateType::MfaCode => "Sent during sign-in as the email second-factor code.",
+            EmailTemplateType::MagicLink => {
+                "Sent when a user asks to sign in with a one-time link instead of a password."
+            }
         }
     }
 
@@ -88,6 +97,7 @@ impl EmailTemplateType {
             }
             EmailTemplateType::PasswordReset => &["link", "app_name", "expiry", "support_email"],
             EmailTemplateType::MfaCode => &["code", "app_name", "expiry", "support_email"],
+            EmailTemplateType::MagicLink => &["link", "app_name", "expiry", "support_email"],
         }
     }
 
@@ -97,6 +107,7 @@ impl EmailTemplateType {
             EmailTemplateType::EmailVerification => "Confirm your email - {{app_name}}",
             EmailTemplateType::PasswordReset => "Reset your password - {{app_name}}",
             EmailTemplateType::MfaCode => "Your {{app_name}} sign-in code",
+            EmailTemplateType::MagicLink => "Sign in to {{app_name}}",
         }
     }
 
@@ -107,6 +118,7 @@ impl EmailTemplateType {
             EmailTemplateType::EmailVerification => DEFAULT_EMAIL_VERIFICATION_MJML,
             EmailTemplateType::PasswordReset => DEFAULT_PASSWORD_RESET_MJML,
             EmailTemplateType::MfaCode => DEFAULT_MFA_CODE_MJML,
+            EmailTemplateType::MagicLink => DEFAULT_MAGIC_LINK_MJML,
         }
     }
 
@@ -242,6 +254,25 @@ const DEFAULT_MFA_CODE_MJML: &str = r##"<mjml>
         <mj-text font-size="14px" color="#374151" line-height="22px">Enter the code below to finish signing in. It expires in {{expiry}}.</mj-text>
         <mj-text align="center" font-size="32px" font-weight="bold" letter-spacing="6px" color="#111827" padding="16px 0">{{code}}</mj-text>
         <mj-text font-size="12px" color="#6b7280" line-height="20px">If you did not try to sign in, change your password immediately. Need help? Contact {{support_email}}.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>
+"##;
+
+const DEFAULT_MAGIC_LINK_MJML: &str = r##"<mjml>
+  <mj-body background-color="#f4f4f7">
+    <mj-section padding="24px 0 0 0">
+      <mj-column>
+        <mj-text align="center" font-size="20px" font-weight="bold" color="#111827">{{app_name}}</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-section background-color="#ffffff" border-radius="8px" padding="32px">
+      <mj-column>
+        <mj-text font-size="18px" font-weight="bold" color="#111827">Sign in to {{app_name}}</mj-text>
+        <mj-text font-size="14px" color="#374151" line-height="22px">Click the button below to sign in. Open it in the same browser where you asked for the link. It works once and expires in {{expiry}}.</mj-text>
+        <mj-button background-color="#111827" color="#ffffff" border-radius="6px" href="{{link}}" padding="16px 0">Sign in</mj-button>
+        <mj-text font-size="12px" color="#6b7280" line-height="20px">If you did not try to sign in, you can safely ignore this email: the link does nothing in any other browser. Need help? Contact {{support_email}}.</mj-text>
       </mj-column>
     </mj-section>
   </mj-body>
