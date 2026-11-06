@@ -183,6 +183,12 @@ exempt list because their caller comes from the token.
   stored; the raw value is returned once. **OAuth client secrets** use HMAC-SHA-256
   keyed with the tenant pepper (`application/shared/client_secret.rs`); legacy Argon2
   hashes still verify until the client rotates.
+- **Passwordless login:** `login` with no password opens a session with
+  `primary_factor = passkey` (`AuthSession::identify_for_passkey`) that only a WebAuthn
+  assertion can clear. Any new login-time MFA verifier must gate on
+  `session.accepts_mfa_method(..)`. Code reachable from a passkey session must not
+  invalidate challenges per user (that session was opened from an email alone) — use
+  `invalidate_active_by_session`.
 - **Refresh tokens rotate** with **reuse detection** — presenting an already-rotated
   token revokes the whole token family and emits `token.reuse_detected`. A refresh (and
   the social-login callback) is also **risk-scored** by the same engine as an interactive

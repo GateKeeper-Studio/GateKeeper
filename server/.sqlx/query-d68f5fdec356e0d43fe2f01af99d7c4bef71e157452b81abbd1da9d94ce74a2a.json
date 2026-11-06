@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at,\n            mfa_required, mfa_verified_at, mfa_method,\n            pending_client_id, pending_redirect_uri, pending_scopes, pending_state,\n            pending_code_challenge, pending_code_challenge_method, pending_nonce,\n            expires_at, absolute_expires_at, created_at\n          FROM auth_sessions\n          WHERE tenant_id = $1 AND session_token_hash = $2\n        ",
+  "query": "\n          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at, primary_factor,\n            mfa_required, mfa_verified_at, mfa_method,\n            pending_client_id, pending_redirect_uri, pending_scopes, pending_state,\n            pending_code_challenge, pending_code_challenge_method, pending_nonce,\n            expires_at, absolute_expires_at, created_at\n          FROM auth_sessions\n          WHERE tenant_id = $1 AND session_token_hash = $2\n        ",
   "describe": {
     "columns": [
       {
@@ -60,6 +60,17 @@
       },
       {
         "ordinal": 5,
+        "name": "primary_factor",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "primary_factor"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
         "name": "mfa_required",
         "type_info": "Bool",
         "origin": {
@@ -70,7 +81,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "mfa_verified_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -81,7 +92,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "mfa_method",
         "type_info": "Varchar",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "pending_client_id",
         "type_info": "Uuid",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "pending_redirect_uri",
         "type_info": "Text",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "pending_scopes",
         "type_info": "TextArray",
         "origin": {
@@ -125,7 +136,7 @@
         }
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "pending_state",
         "type_info": "Varchar",
         "origin": {
@@ -136,7 +147,7 @@
         }
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "pending_code_challenge",
         "type_info": "Varchar",
         "origin": {
@@ -147,7 +158,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "pending_code_challenge_method",
         "type_info": "Varchar",
         "origin": {
@@ -158,7 +169,7 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "pending_nonce",
         "type_info": "Varchar",
         "origin": {
@@ -169,7 +180,7 @@
         }
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "expires_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -180,7 +191,7 @@
         }
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "absolute_expires_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -191,7 +202,7 @@
         }
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -215,6 +226,7 @@
       true,
       true,
       false,
+      false,
       true,
       true,
       false,
@@ -229,5 +241,5 @@
       false
     ]
   },
-  "hash": "50a435204c06adad7af437f6a8b1a977ea350fe8b8fd80aea679c3ccb2cab026"
+  "hash": "d68f5fdec356e0d43fe2f01af99d7c4bef71e157452b81abbd1da9d94ce74a2a"
 }

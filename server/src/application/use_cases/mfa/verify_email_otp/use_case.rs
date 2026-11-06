@@ -47,6 +47,9 @@ impl UseCase {
         if session.is_expired(now)
             || !session.is_authenticated()
             || !session.is_mfa_pending()
+            // A passkey (passwordless) session can only be opened by WebAuthn: email OTP
+            // alone must never act as a primary factor.
+            || !session.accepts_mfa_method(&MfaMethod::Email)
             || session.pending_client_id() != client.id()
         {
             return Err(invalid());

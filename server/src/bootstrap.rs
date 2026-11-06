@@ -674,6 +674,7 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             verify_mfa_webauthn: Arc::new(verify_webauthn::use_case::UseCase::new(
                 Arc::clone(&uow_factory),
                 Arc::clone(&webauthn),
+                Arc::clone(&risk_engine),
             )),
             list_my_mfa_methods: Arc::new(list_my_mfa_methods::use_case::UseCase::new(
                 Arc::clone(&mfa_enrollment_repository),

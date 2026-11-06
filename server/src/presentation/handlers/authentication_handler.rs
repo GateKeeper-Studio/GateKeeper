@@ -65,17 +65,25 @@ pub async fn login(
 
     match state.authentication.login.execute(payload).await {
         Ok(response) => {
-            let actor = Uuid::parse_str(&response.user_id).ok();
-            let event = AuditEvent::new(
-                None,
-                ActorType::User,
-                actor,
-                USER_LOGIN_SUCCESS,
-                Outcome::Success,
-            )
-            .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone())
-            .with_metadata(serde_json::json!({ "client_id": client_id }));
-            let _ = state.audit_logger.record(event).await;
+            // A passwordless login has proven nothing yet: it answered with a WebAuthn
+            // challenge, and verify_webauthn audits the outcome once the passkey is
+            // checked. Only a verified password is a login success here.
+            if response.credentials_verified {
+                let actor = response
+                    .user_id
+                    .as_deref()
+                    .and_then(|id| Uuid::parse_str(id).ok());
+                let event = AuditEvent::new(
+                    None,
+                    ActorType::User,
+                    actor,
+                    USER_LOGIN_SUCCESS,
+                    Outcome::Success,
+                )
+                .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone())
+                .with_metadata(serde_json::json!({ "client_id": client_id }));
+                let _ = state.audit_logger.record(event).await;
+            }
             Ok((StatusCode::OK, Json(response)))
         }
         Err(err) => {

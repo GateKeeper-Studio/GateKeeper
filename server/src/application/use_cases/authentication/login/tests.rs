@@ -179,7 +179,7 @@ mod tests {
     fn make_command(email: &str) -> Command {
         Command {
             email: email.to_string(),
-            password: TEST_PASSWORD.to_string(),
+            password: Some(TEST_PASSWORD.to_string()),
             client_id: client_id().to_string(),
             redirect_uri: "https://app.example.com/callback".to_string(),
             response_type: "code".to_string(),
@@ -267,7 +267,7 @@ mod tests {
             .unwrap();
 
         assert!(!response.session_code.is_empty());
-        assert_eq!(response.user_id, ctx.user_id.to_string());
+        assert_eq!(response.user_id, Some(ctx.user_id.to_string()));
         assert!(response.mfa_type.is_none());
 
         // Exactly one session, bound to the user, with only the hash stored and the
@@ -308,7 +308,7 @@ mod tests {
             .unwrap();
 
         assert!(!response.session_code.is_empty());
-        assert_eq!(response.user_id, ctx.user_id.to_string());
+        assert_eq!(response.user_id, Some(ctx.user_id.to_string()));
     }
 
     #[tokio::test]
@@ -317,7 +317,7 @@ mod tests {
         let ctx = setup(tenant_id, true);
 
         let mut command = make_command(&ctx.email);
-        command.password = "not-the-password".to_string();
+        command.password = Some("not-the-password".to_string());
 
         let err = ctx.use_case.execute(command).await.unwrap_err();
         assert!(matches!(err, DomainError::AuthenticationError(_)));
@@ -569,5 +569,415 @@ mod tests {
                 .available_mfa_methods
                 .contains(&MfaMethod::Email.as_str().to_string())
         );
+    }
+
+    // ── Passwordless login: a passkey as the primary factor ──────────────────────
+    mod passkey {
+        use super::*;
+
+        use crate::{
+            domain::entities::{mfa_challenge::MfaChallengePurpose, user::User},
+            testing::{
+                fake_risk_engine::FakeRiskEngine,
+                in_memory_repositories::in_memory_mfa_challenge_repository::InMemoryMfaChallengeRepository,
+                recording_email_sender::RecordingEmailSender,
+            },
+        };
+
+        struct PasskeyCtx {
+            use_case: UseCase,
+            sessions: Arc<InMemoryAuthSessionRepository>,
+            challenges: Arc<InMemoryMfaChallengeRepository>,
+            enrollments: Arc<InMemoryMfaEnrollmentRepository>,
+            risk: Arc<FakeRiskEngine>,
+            emails: Arc<RecordingEmailSender>,
+            tenant_id: Uuid,
+            email: String,
+            user_id: Uuid,
+        }
+
+        const PASSKEY_EMAIL: &str = "passkey.user@example.com";
+
+        fn passwordless_user(tenant_id: Uuid) -> User {
+            let mut user = User::new(tenant_id, PASSKEY_EMAIL.to_string(), None, None);
+            user.verify_email();
+            user
+        }
+
+        fn build(client: OAuthClient, user: User, risk: FakeRiskEngine) -> PasskeyCtx {
+            let tenant_id = client.tenant_id();
+            let clients = Arc::new(InMemoryOAuthClientRepository::new());
+            clients
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .insert(client.id(), client);
+
+            let tenants = Arc::new(InMemoryTenantRepository::new());
+            let tenant = Tenant::reconstruct(
+                tenant_id,
+                "Test Tenant".to_string(),
+                None,
+                TEST_PASSWORD_SECRET.to_string(),
+                true,
+                true,
+                true,
+                Uuid::now_v7(),
+                Utc::now(),
+                None,
+            );
+            tenants
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .insert(tenant_id, tenant);
+
+            let users = Arc::new(InMemoryUserRepository::new());
+            let email = user.email().to_string();
+            let user_id = user.id();
+            users.memory.data.lock().unwrap().insert(user_id, user);
+
+            let sessions = Arc::new(InMemoryAuthSessionRepository::new());
+            let challenges = Arc::new(InMemoryMfaChallengeRepository::new());
+            let enrollments = Arc::new(InMemoryMfaEnrollmentRepository::new());
+            let factory = InMemoryUnitOfWorkFactory::new(users, tenants)
+                .with_oauth_client_repository(clients)
+                .with_auth_session_repository(sessions.clone())
+                .with_mfa_challenge_repository(challenges.clone())
+                .with_mfa_enrollment_repository(enrollments.clone());
+
+            let risk = Arc::new(risk);
+            let (templated_email, emails) = recording_templated_email_sender();
+            PasskeyCtx {
+                use_case: UseCase::new(
+                    Arc::new(factory),
+                    templated_email,
+                    Arc::new(FakeWebauthnService::new()),
+                    risk.clone(),
+                    crate::testing::password_hasher::test_password_hasher(),
+                ),
+                sessions,
+                challenges,
+                enrollments,
+                risk,
+                emails,
+                tenant_id,
+                email,
+                user_id,
+            }
+        }
+
+        // A passwordless account with one confirmed passkey, on a default client.
+        fn setup() -> PasskeyCtx {
+            let tenant_id = Uuid::now_v7();
+            let ctx = build(
+                make_client(tenant_id),
+                passwordless_user(tenant_id),
+                FakeRiskEngine::allow(),
+            );
+            seed_passkey(&ctx);
+            ctx
+        }
+
+        fn seed_passkey(ctx: &PasskeyCtx) {
+            let enrollment = MfaEnrollment::new_webauthn(
+                ctx.tenant_id,
+                ctx.user_id,
+                json!({ "fake_passkey": true, "cred_id": FAKE_CREDENTIAL_ID, "counter": 0 }),
+                FAKE_CREDENTIAL_ID.to_string(),
+                Some("Laptop".to_string()),
+            );
+            ctx.enrollments
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .insert(enrollment.id(), enrollment);
+        }
+
+        fn passkey_command(email: &str) -> Command {
+            Command {
+                password: None,
+                ..make_command(email)
+            }
+        }
+
+        // Every ineligible case must look exactly like a wrong password: the generic
+        // error, no session, and one failed attempt recorded for the risk engine.
+        async fn assert_generic_failure(ctx: &PasskeyCtx, command: Command) {
+            let err = ctx.use_case.execute(command).await.unwrap_err();
+            assert!(
+                matches!(&err, DomainError::AuthenticationError(m) if m == "email or password is incorrect"),
+                "expected the generic failure, got {err:?}"
+            );
+            assert!(ctx.sessions.memory.data.lock().unwrap().is_empty());
+            assert!(ctx.challenges.memory.data.lock().unwrap().is_empty());
+            let recorded = ctx.risk.recorded();
+            assert_eq!(recorded.len(), 1);
+            assert!(!recorded[0].credentials_valid);
+            assert_eq!(
+                recorded[0].failure_reason.as_deref(),
+                Some("passkey_unavailable")
+            );
+        }
+
+        #[tokio::test]
+        async fn opens_a_webauthn_locked_session_for_a_passwordless_user() {
+            let ctx = setup();
+
+            let response = ctx
+                .use_case
+                .execute(passkey_command(&ctx.email))
+                .await
+                .unwrap();
+
+            assert_eq!(response.mfa_type.as_deref(), Some("webauthn"));
+            assert!(response.web_authn_options.is_some());
+            assert_eq!(response.available_mfa_methods, vec!["webauthn".to_string()]);
+            assert!(!response.mfa_enrollment_required);
+            assert!(response.change_password_code.is_none());
+            assert!(!response.credentials_verified);
+            // The account id is not handed out before any proof.
+            assert!(response.user_id.is_none());
+            let json = serde_json::to_value(&response).unwrap();
+            assert!(json.get("userId").is_none());
+            assert!(json.get("credentialsVerified").is_none());
+
+            let sessions = ctx.sessions.memory.data.lock().unwrap();
+            assert_eq!(sessions.len(), 1);
+            let session = sessions.values().next().unwrap();
+            assert_eq!(
+                session.session_token_hash(),
+                sha256_hex(&response.session_code)
+            );
+            assert_eq!(session.user_id(), Some(ctx.user_id));
+            assert!(session.is_passkey_primary());
+            assert!(session.is_mfa_pending());
+            assert!(session.authenticated_at().is_none());
+            assert!(session.accepts_mfa_method(&MfaMethod::Webauthn));
+            assert!(!session.accepts_mfa_method(&MfaMethod::Email));
+            assert!(!session.accepts_mfa_method(&MfaMethod::Totp));
+
+            let challenges = ctx.challenges.memory.data.lock().unwrap();
+            assert_eq!(challenges.len(), 1);
+            let challenge = challenges.values().next().unwrap();
+            assert_eq!(Some(challenge.id().to_string()), response.mfa_id);
+            assert_eq!(challenge.auth_session_id(), Some(session.id()));
+            assert_eq!(challenge.user_id(), ctx.user_id);
+            assert_eq!(*challenge.purpose(), MfaChallengePurpose::Login);
+            assert_eq!(*challenge.method(), MfaMethod::Webauthn);
+
+            // Nothing was proven yet: the attempt is scored at verify time.
+            assert!(ctx.risk.recorded().is_empty());
+        }
+
+        #[tokio::test]
+        async fn an_empty_password_is_treated_as_passkey_login() {
+            let ctx = setup();
+            let mut command = passkey_command(&ctx.email);
+            command.password = Some(String::new());
+
+            let response = ctx.use_case.execute(command).await.unwrap();
+
+            assert_eq!(response.mfa_type.as_deref(), Some("webauthn"));
+            assert!(!response.credentials_verified);
+        }
+
+        #[tokio::test]
+        async fn fails_generically_for_an_account_with_a_password() {
+            // Even with a passkey enrolled: an account with a password signs in with it.
+            let tenant_id = Uuid::now_v7();
+            let mut user = generate_user(tenant_id);
+            user.verify_email();
+            let ctx = build(make_client(tenant_id), user, FakeRiskEngine::allow());
+            seed_passkey(&ctx);
+
+            assert_generic_failure(&ctx, passkey_command(&ctx.email)).await;
+        }
+
+        #[tokio::test]
+        async fn fails_generically_for_an_unknown_email() {
+            let ctx = setup();
+            assert_generic_failure(&ctx, passkey_command("nobody@example.com")).await;
+            assert!(ctx.risk.recorded()[0].user_id.is_none());
+        }
+
+        #[tokio::test]
+        async fn fails_generically_without_a_confirmed_passkey() {
+            let tenant_id = Uuid::now_v7();
+            let ctx = build(
+                make_client(tenant_id),
+                passwordless_user(tenant_id),
+                FakeRiskEngine::allow(),
+            );
+
+            assert_generic_failure(&ctx, passkey_command(&ctx.email)).await;
+            assert_eq!(ctx.risk.recorded()[0].user_id, Some(ctx.user_id));
+        }
+
+        #[tokio::test]
+        async fn fails_generically_when_the_client_disallows_webauthn() {
+            let tenant_id = Uuid::now_v7();
+            let client = make_client_with_mfa_policy(
+                tenant_id,
+                MfaPolicy {
+                    webauthn_enabled: false,
+                    ..MfaPolicy::default()
+                },
+            );
+            let ctx = build(
+                client,
+                passwordless_user(tenant_id),
+                FakeRiskEngine::allow(),
+            );
+            seed_passkey(&ctx);
+
+            assert_generic_failure(&ctx, passkey_command(&ctx.email)).await;
+        }
+
+        #[tokio::test]
+        async fn fails_generically_for_an_unverified_email() {
+            // NOT EmailNotConfirmed: no proof was offered, so that would be an oracle.
+            let tenant_id = Uuid::now_v7();
+            let user = User::new(tenant_id, PASSKEY_EMAIL.to_string(), None, None);
+            let ctx = build(make_client(tenant_id), user, FakeRiskEngine::allow());
+            seed_passkey(&ctx);
+
+            assert_generic_failure(&ctx, passkey_command(&ctx.email)).await;
+        }
+
+        #[tokio::test]
+        async fn fails_generically_for_an_inactive_account() {
+            let tenant_id = Uuid::now_v7();
+            let user = User::reconstruct(
+                Uuid::now_v7(),
+                PASSKEY_EMAIL.to_string(),
+                tenant_id,
+                true,
+                None,
+                None,
+                false,
+                Utc::now(),
+                None,
+            );
+            let ctx = build(make_client(tenant_id), user, FakeRiskEngine::allow());
+            seed_passkey(&ctx);
+
+            assert_generic_failure(&ctx, passkey_command(&ctx.email)).await;
+        }
+
+        #[tokio::test]
+        async fn is_refused_for_an_external_login_only_client() {
+            let tenant_id = Uuid::now_v7();
+            let mut client = make_client(tenant_id);
+            client.set_external_login_only(true);
+            let ctx = build(
+                client,
+                passwordless_user(tenant_id),
+                FakeRiskEngine::allow(),
+            );
+            seed_passkey(&ctx);
+
+            let err = ctx
+                .use_case
+                .execute(passkey_command(&ctx.email))
+                .await
+                .unwrap_err();
+
+            assert!(matches!(err, DomainError::AccessDenied(_)));
+            assert!(ctx.sessions.memory.data.lock().unwrap().is_empty());
+        }
+
+        #[tokio::test]
+        async fn is_refused_under_a_pre_auth_ip_block() {
+            let tenant_id = Uuid::now_v7();
+            let ctx = build(
+                make_client(tenant_id),
+                passwordless_user(tenant_id),
+                FakeRiskEngine::blocking_pre_auth(),
+            );
+            seed_passkey(&ctx);
+
+            let err = ctx
+                .use_case
+                .execute(passkey_command(&ctx.email))
+                .await
+                .unwrap_err();
+
+            assert!(matches!(err, DomainError::AuthenticationError(_)));
+            assert!(ctx.sessions.memory.data.lock().unwrap().is_empty());
+            let recorded = ctx.risk.recorded();
+            assert_eq!(recorded.len(), 1);
+            assert!(recorded[0].pre_auth_blocked);
+        }
+
+        #[tokio::test]
+        async fn a_client_requiring_mfa_still_gets_only_the_passkey_challenge() {
+            // A user-verified passkey already is multi-factor: no OTP goes out and
+            // the session can only be cleared by WebAuthn.
+            let tenant_id = Uuid::now_v7();
+            let ctx = build(
+                make_client_with_mfa_policy(tenant_id, required_mfa_policy()),
+                passwordless_user(tenant_id),
+                FakeRiskEngine::with_decision(
+                    crate::domain::entities::login_event::RiskDecision::AllowWithMfa,
+                ),
+            );
+            seed_passkey(&ctx);
+
+            let response = ctx
+                .use_case
+                .execute(passkey_command(&ctx.email))
+                .await
+                .unwrap();
+
+            assert_eq!(response.mfa_type.as_deref(), Some("webauthn"));
+            assert_eq!(response.available_mfa_methods, vec!["webauthn".to_string()]);
+            assert!(ctx.emails.recipients().is_empty());
+            let sessions = ctx.sessions.memory.data.lock().unwrap();
+            assert!(sessions.values().next().unwrap().is_passkey_primary());
+        }
+
+        #[tokio::test]
+        async fn does_not_cancel_another_sessions_ceremony() {
+            // Opening a passkey session needs no proof, so it must not be able to
+            // burn the challenge of a sign-in already running elsewhere.
+            let ctx = setup();
+
+            ctx.use_case
+                .execute(passkey_command(&ctx.email))
+                .await
+                .unwrap();
+            ctx.use_case
+                .execute(passkey_command(&ctx.email))
+                .await
+                .unwrap();
+
+            let challenges = ctx.challenges.memory.data.lock().unwrap();
+            assert_eq!(challenges.len(), 2);
+            assert!(challenges.values().all(|c| !c.is_consumed()));
+        }
+
+        #[tokio::test]
+        async fn a_password_login_reports_verified_credentials() {
+            let tenant_id = Uuid::now_v7();
+            let mut user = generate_user(tenant_id);
+            user.verify_email();
+            let ctx = build(make_client(tenant_id), user, FakeRiskEngine::allow());
+
+            let response = ctx
+                .use_case
+                .execute(make_command(&ctx.email))
+                .await
+                .unwrap();
+
+            assert!(response.credentials_verified);
+            assert_eq!(response.user_id, Some(ctx.user_id.to_string()));
+            let sessions = ctx.sessions.memory.data.lock().unwrap();
+            assert!(!sessions.values().next().unwrap().is_passkey_primary());
+            assert!(ctx.risk.recorded()[0].credentials_valid);
+        }
     }
 }

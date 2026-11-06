@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::application::ports::password_hasher::PasswordHasher;
 use crate::application::shared::token_policy::{
@@ -11,7 +12,7 @@ use crate::{
     application::{
         ports::{
             risk_engine::{RiskEngine, RiskEvaluationInput},
-            unit_of_work::UnitOfWorkFactory,
+            unit_of_work::{UnitOfWork, UnitOfWorkFactory},
             webauthn::WebauthnService,
         },
         services::templated_email_sender::TemplatedEmailSender,
@@ -27,7 +28,9 @@ use crate::{
             mfa_challenge::{MfaChallenge, MfaChallengePurpose},
             mfa_enrollment::MfaEnrollment,
             mfa_method::MfaMethod,
+            oauth_client::OAuthClient,
             password_change_token::PasswordChangeToken,
+            user::User,
         },
         errors::DomainError,
     },
@@ -86,6 +89,34 @@ fn select_mfa_method(
         .into_iter()
         .find(|method| is_available(*method))
         .unwrap_or(MfaMethod::Email)
+}
+
+// Open the login session that freezes the validated authorization request. Only the
+// hash of the opaque token is stored; the raw token is the `sessionCode` handed back.
+//
+// Two deadlines: the idle one the user can push forward from the MFA screen
+// (POST /v1/auth/session/refresh), and the ceiling they cannot.
+fn open_session(
+    client: &OAuthClient,
+    command: &Command,
+    scopes: Vec<String>,
+) -> (AuthSession, String) {
+    let opened_at = Utc::now();
+    let raw_session_token = generate_opaque_token();
+    let session = AuthSession::new(
+        client.tenant_id(),
+        sha256_hex(&raw_session_token),
+        client.id(),
+        command.redirect_uri.clone(),
+        scopes,
+        command.state.clone(),
+        command.code_challenge.clone(),
+        command.code_challenge_method.clone(),
+        command.nonce.clone().filter(|n| !n.is_empty()),
+        opened_at + Duration::minutes(SESSION_IDLE_TTL_MINUTES),
+        opened_at + Duration::minutes(SESSION_ABSOLUTE_TTL_MINUTES),
+    );
+    (session, raw_session_token)
 }
 
 pub struct UseCase {
@@ -227,6 +258,16 @@ impl UseCase {
             None => None,
         };
 
+        // No password offered ⇒ passwordless login. Same use case, same request
+        // validation and pre-auth gate; the only difference is which factor is
+        // required: "no password factor configured, require WebAuthn".
+        let Some(password) = command.password.as_deref().filter(|p| !p.is_empty()) else {
+            let has_password = credentials.is_some();
+            return self
+                .begin_passkey_login(uow, &command, &client, scopes, user, has_password)
+                .await;
+        };
+
         // Argon2 runs behind the `PasswordHasher` port (bounded, off the async
         // workers). An unknown or inactive account still pays one verification
         // against a dummy hash, so response time does not reveal which emails are
@@ -236,12 +277,12 @@ impl UseCase {
                 self.password_hasher
                     .verify(
                         creds.password_hash(),
-                        &command.password,
+                        password,
                         tenant.password_hash_secret(),
                     )
                     .await
             }
-            None => self.password_hasher.verify_dummy(&command.password).await,
+            None => self.password_hasher.verify_dummy(password).await,
         };
 
         // POST-AUTHENTICATION risk evaluation. Records the login_event + signals on
@@ -290,26 +331,8 @@ impl UseCase {
         let user_id = user.id();
         let user_email = user.email().to_string();
 
-        // 5. Open the authenticated session: freeze the request and store only the
-        //    hash of the opaque token. The raw token is the `sessionCode` we hand back.
-        //
-        //    Two deadlines: the idle one the user can push forward from the MFA screen
-        //    (POST /v1/auth/session/refresh), and the ceiling they cannot.
-        let session_opened_at = Utc::now();
-        let raw_session_token = generate_opaque_token();
-        let mut session = AuthSession::new(
-            tenant_id,
-            sha256_hex(&raw_session_token),
-            client.id(),
-            command.redirect_uri.clone(),
-            scopes,
-            command.state.clone(),
-            command.code_challenge.clone(),
-            command.code_challenge_method.clone(),
-            command.nonce.clone().filter(|n| !n.is_empty()),
-            session_opened_at + Duration::minutes(SESSION_IDLE_TTL_MINUTES),
-            session_opened_at + Duration::minutes(SESSION_ABSOLUTE_TTL_MINUTES),
-        );
+        // 5. Open the authenticated session (see `open_session`).
+        let (mut session, raw_session_token) = open_session(&client, &command, scopes);
         session.authenticate(user_id, Utc::now());
         uow.auth_session_repository().add(&session).await?;
 
@@ -434,18 +457,17 @@ impl UseCase {
                             .iter()
                             .filter_map(|e| e.passkey_json().cloned())
                             .collect();
-                        let ceremony = self.webauthn.start_authentication(&passkeys)?;
-                        let challenge = MfaChallenge::new_webauthn(
-                            tenant_id,
-                            user_id,
-                            Some(session.id()),
-                            MfaChallengePurpose::Login,
-                            ceremony.state,
-                            Utc::now() + Duration::minutes(WEBAUTHN_CHALLENGE_TTL_MINUTES),
-                        );
-                        mfa_id = Some(challenge.id().to_string());
-                        web_authn_options = Some(ceremony.options);
-                        uow.mfa_challenge_repository().add(&challenge).await?;
+                        let (challenge_id, options) = self
+                            .issue_webauthn_challenge(
+                                uow.as_ref(),
+                                tenant_id,
+                                user_id,
+                                session.id(),
+                                &passkeys,
+                            )
+                            .await?;
+                        mfa_id = Some(challenge_id);
+                        web_authn_options = Some(options);
                         mfa_type = Some(selected.as_str().to_string());
                     }
                 }
@@ -500,7 +522,8 @@ impl UseCase {
 
         Ok(Response {
             session_code: raw_session_token,
-            user_id: user_id.to_string(),
+            user_id: Some(user_id.to_string()),
+            credentials_verified: true,
             mfa_type,
             mfa_id,
             web_authn_options,
@@ -512,5 +535,119 @@ impl UseCase {
             session_absolute_expires_at: session.absolute_expires_at(),
             message: "Authentication successful".to_string(),
         })
+    }
+
+    // Passwordless login: the account has no password, so the passkey IS the primary
+    // factor. Opens a session bound to the account but locked to WebAuthn
+    // (`AuthSession::identify_for_passkey`) and starts the ceremony. Nothing has been
+    // proven yet — verify_webauthn is where the user authenticates, is risk-scored
+    // and audited — so neither the MFA block (a user-verified passkey already is
+    // multi-factor) nor the forced password change applies.
+    //
+    // Every ineligible case — unknown email, an account WITH a password, no
+    // confirmed passkey, unverified email, a client that disallows WebAuthn — fails
+    // with the same generic error a wrong password gets, and is recorded as a failed
+    // attempt so it feeds the velocity / spraying rules like any other.
+    async fn begin_passkey_login(
+        &self,
+        uow: Box<dyn UnitOfWork>,
+        command: &Command,
+        client: &OAuthClient,
+        scopes: Vec<String>,
+        user: Option<User>,
+        has_password: bool,
+    ) -> Result<Response, DomainError> {
+        let tenant_id = client.tenant_id();
+        let attempted_user_id = user.as_ref().map(|u| u.id());
+
+        // Never `EmailNotConfirmed` here: no proof was offered, so telling an
+        // unverified account apart from a missing one would be an oracle.
+        let eligible = user.filter(|u| {
+            !has_password && u.is_email_verified() && client.allows_mfa_method(&MfaMethod::Webauthn)
+        });
+        let passkeys: Vec<Value> = match &eligible {
+            Some(u) => uow
+                .mfa_enrollment_repository()
+                .find_confirmed_by_user_id(u.id())
+                .await?
+                .iter()
+                .filter(|e| *e.method() == MfaMethod::Webauthn)
+                .filter_map(|e| e.passkey_json().cloned())
+                .collect(),
+            None => Vec::new(),
+        };
+
+        let Some(user) = eligible.filter(|_| !passkeys.is_empty()) else {
+            self.risk_engine
+                .evaluate(RiskEvaluationInput {
+                    tenant_id,
+                    user_id: attempted_user_id,
+                    client_id: Some(client.id()),
+                    username_normalized: Some(command.email.trim().to_lowercase()),
+                    ip_address: command.ip_address.clone(),
+                    user_agent: command.user_agent.clone(),
+                    credentials_valid: false,
+                    pre_auth_blocked: false,
+                    failure_reason: Some("passkey_unavailable".to_string()),
+                    timestamp: Utc::now(),
+                })
+                .await?;
+            return Err(DomainError::AuthenticationError(
+                "email or password is incorrect".to_string(),
+            ));
+        };
+
+        let (mut session, raw_session_token) = open_session(client, command, scopes);
+        session.identify_for_passkey(user.id());
+        uow.auth_session_repository().add(&session).await?;
+
+        let (challenge_id, options) = self
+            .issue_webauthn_challenge(uow.as_ref(), tenant_id, user.id(), session.id(), &passkeys)
+            .await?;
+
+        uow.commit().await?;
+
+        Ok(Response {
+            session_code: raw_session_token,
+            user_id: None,
+            credentials_verified: false,
+            mfa_type: Some(MfaMethod::Webauthn.as_str().to_string()),
+            mfa_id: Some(challenge_id),
+            web_authn_options: Some(options),
+            available_mfa_methods: vec![MfaMethod::Webauthn.as_str().to_string()],
+            mfa_enrollment_required: false,
+            enrollable_methods: Vec::new(),
+            change_password_code: None,
+            session_expires_at: session.expires_at(),
+            session_absolute_expires_at: session.absolute_expires_at(),
+            message: "Passkey required".to_string(),
+        })
+    }
+
+    // Start a WebAuthn assertion over `passkeys` and park its state in a Login
+    // challenge bound to the session. Returns (challenge id, browser options).
+    //
+    // Deliberately invalidates nothing: a fresh session has no earlier challenge, and
+    // burning the user's other live challenges would let anyone who knows an email
+    // (a passkey session needs no proof to open) cancel the real user's sign-in.
+    async fn issue_webauthn_challenge(
+        &self,
+        uow: &dyn UnitOfWork,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        session_id: Uuid,
+        passkeys: &[Value],
+    ) -> Result<(String, Value), DomainError> {
+        let ceremony = self.webauthn.start_authentication(passkeys)?;
+        let challenge = MfaChallenge::new_webauthn(
+            tenant_id,
+            user_id,
+            Some(session_id),
+            MfaChallengePurpose::Login,
+            ceremony.state,
+            Utc::now() + Duration::minutes(WEBAUTHN_CHALLENGE_TTL_MINUTES),
+        );
+        uow.mfa_challenge_repository().add(&challenge).await?;
+        Ok((challenge.id().to_string(), ceremony.options))
     }
 }

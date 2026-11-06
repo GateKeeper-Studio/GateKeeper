@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { toast } from 'svelte-sonner';
+	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -14,7 +15,7 @@
 	import SessionExpiryGuard from '$lib/components/auth/session-expiry-guard.svelte';
 
 	import { validate, buildOidcParams } from '$lib/utils/form';
-	import { formSchema } from './schema';
+	import { formSchema, passkeySchema } from './schema';
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { EMfaType, loginApi } from '$lib/services/auth/login';
 	import { authorizeApi } from '$lib/services/auth/authorize';
@@ -31,6 +32,8 @@
 	// The IdP guards against reaching this state, but a client configured before the
 	// flag existed can still land here.
 	const noSignInMethod = $derived(externalOnly && (client?.oauthProviders.length ?? 0) === 0);
+	// Passwordless login: an account with no password signs in with its passkey alone.
+	const passkeyEnabled = $derived(!externalOnly && (client?.passkeyLoginEnabled ?? false));
 
 	const clientId = page.params.clientId as string;
 	const searchParams = page.url.searchParams;
@@ -86,6 +89,88 @@
 		isLoading = false;
 	}
 
+	// The frozen authorization request every login attempt carries. No `password`
+	// means passwordless login.
+	function buildLoginRequest(loginEmail: string, loginPassword?: string) {
+		return {
+			email: loginEmail,
+			password: loginPassword,
+			clientId,
+			redirectUri,
+			responseType,
+			scope,
+			codeChallengeMethod,
+			codeChallenge,
+			state: oidcState,
+			nonce: nonce || undefined,
+			mfaMethods: mfaMethods.length ? mfaMethods : undefined,
+			mfaDefaultMethod: [EMfaType.MfaWebauthn, EMfaType.MfaApp, EMfaType.MfaEmail].includes(
+				mfaDefaultMethod as EMfaType
+			)
+				? (mfaDefaultMethod as EMfaType)
+				: undefined
+		};
+	}
+
+	// Hand the WebAuthn options to the passkey page (it reads them back by mfa id).
+	async function goToWebauthn(mfaId: string, webAuthnOptions: unknown) {
+		sessionStorage.setItem(`webauthn_options_${mfaId}`, JSON.stringify(webAuthnOptions));
+		await goto(
+			resolve(`/auth/[clientId]/mfa-webauthn?${urlParams.toString()}&mfa_id=${mfaId}`, {
+				clientId
+			})
+		);
+	}
+
+	// Passwordless login: the email alone. The IdP answers with a WebAuthn challenge
+	// when the account has no password and a passkey; the passkey page then signs
+	// the user in exactly as it does for a second factor.
+	async function onPasskeySignIn() {
+		if (clock.phase === 'expired') return;
+
+		const result = validate(passkeySchema, { email });
+		if (!result.success) {
+			errors = result.errors;
+			return;
+		}
+		errors = {};
+		isLoading = true;
+
+		const trimmedEmail = result.data.email.trim();
+		const [loginData, loginErr] = await loginApi(buildLoginRequest(trimmedEmail));
+
+		if (loginErr) {
+			console.error(loginErr);
+			// Every account that cannot sign in with a passkey alone (unknown, has a
+			// password, no passkey) gets the same 401 a wrong password does — say what
+			// to try instead of echoing "email or password is incorrect".
+			showError(
+				loginErr.status === 401
+					? m.signin_passkey_unavailable()
+					: loginErr.message || m.auth_generic_error()
+			);
+			return;
+		}
+
+		if (!loginData || loginData.mfaType !== EMfaType.MfaWebauthn || !loginData.mfaId) {
+			showError(m.auth_generic_error());
+			return;
+		}
+
+		isLoading = false;
+		storeSession(
+			clientId,
+			loginData.sessionCode,
+			loginData.sessionExpiresAt,
+			loginData.sessionAbsoluteExpiresAt
+		);
+
+		urlParams.set('email', trimmedEmail);
+		urlParams.set('passwordless', '1');
+		urlParams.set('available_mfa_methods', EMfaType.MfaWebauthn);
+		await goToWebauthn(loginData.mfaId, loginData.webAuthnOptions);
+	}
+
 	async function onSubmit(event: SubmitEvent) {
 		event.preventDefault();
 
@@ -104,24 +189,9 @@
 
 		const trimmedEmail = result.data.email.trim();
 
-		const [loginData, loginErr] = await loginApi({
-			email: trimmedEmail,
-			password: result.data.password.trim(),
-			clientId,
-			redirectUri,
-			responseType,
-			scope,
-			codeChallengeMethod,
-			codeChallenge,
-			state: oidcState,
-			nonce: nonce || undefined,
-			mfaMethods: mfaMethods.length ? mfaMethods : undefined,
-			mfaDefaultMethod: [EMfaType.MfaWebauthn, EMfaType.MfaApp, EMfaType.MfaEmail].includes(
-				mfaDefaultMethod as EMfaType
-			)
-				? (mfaDefaultMethod as EMfaType)
-				: undefined
-		});
+		const [loginData, loginErr] = await loginApi(
+			buildLoginRequest(trimmedEmail, result.data.password.trim())
+		);
 
 		if (loginErr && loginErr.data?.title === 'E-mail not confirmed') {
 			window.location.href = `/auth/${clientId}/confirm-email?${urlParams.toString()}&email=${encodeURIComponent(
@@ -196,15 +266,7 @@
 		}
 
 		if (loginData.mfaType === EMfaType.MfaWebauthn && loginData.mfaId) {
-			sessionStorage.setItem(
-				`webauthn_options_${loginData.mfaId}`,
-				JSON.stringify(loginData.webAuthnOptions)
-			);
-			await goto(
-				resolve(`/auth/[clientId]/mfa-webauthn?${urlParams.toString()}&mfa_id=${loginData.mfaId}`, {
-					clientId
-				})
-			);
+			await goToWebauthn(loginData.mfaId, loginData.webAuthnOptions);
 			return;
 		}
 
@@ -372,6 +434,19 @@
 				{/if}
 				{m.signin_submit()}
 			</Button>
+
+			{#if passkeyEnabled}
+				<Button
+					type="button"
+					variant="outline"
+					class="flex w-full items-center justify-center gap-2"
+					disabled={isLoading || clock.phase === 'expired'}
+					onclick={onPasskeySignIn}
+				>
+					<KeyRoundIcon class="size-4" />
+					{m.signin_with_passkey()}
+				</Button>
+			{/if}
 		</form>
 	{/if}
 

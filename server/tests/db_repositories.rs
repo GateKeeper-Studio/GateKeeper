@@ -21,7 +21,10 @@ use web_api::{
     application::ports::secret_cipher::SecretCipher,
     domain::{
         entities::{
+            auth_session::{AuthSession, PrimaryFactor},
             domain_event_type::DomainEventType,
+            mfa_challenge::{MfaChallenge, MfaChallengePurpose},
+            mfa_method::MfaMethod,
             oauth_client::{ClientType, MfaPolicy, OAuthClient},
             organization::Organization,
             outbox_event::OutboxEvent,
@@ -32,6 +35,8 @@ use web_api::{
             webhook_subscription::WebhookSubscription,
         },
         repositories::{
+            auth_session_repository::AuthSessionRepository,
+            mfa_challenge_repository::MfaChallengeRepository,
             oauth_client_repository::OAuthClientRepository,
             organization_repository::OrganizationRepository,
             outbox_event_repository::OutboxEventRepository,
@@ -46,6 +51,8 @@ use web_api::{
         database::{
             executor::SharedTx,
             repositories::{
+                auth_session_repository::DbAuthSessionRepository,
+                mfa_challenge_repository::DbMfaChallengeRepository,
                 oauth_client_repository::DbOAuthClientRepository,
                 organization_repository::DbOrganizationRepository,
                 outbox_event_repository::DbOutboxEventRepository,
@@ -312,6 +319,145 @@ async fn refresh_token_rotation_and_family_revocation(pool: PgPool) {
         assert!(token.revoked_at().is_some(), "{hash} must be revoked");
         assert!(!token.is_active(now));
     }
+}
+
+fn login_session(tenant: &Tenant, client: &OAuthClient, token_hash: &str) -> AuthSession {
+    let now = Utc::now();
+    AuthSession::new(
+        tenant.id(),
+        token_hash.to_string(),
+        client.id(),
+        "https://app.example.com/callback".to_string(),
+        vec!["openid".to_string()],
+        "state".to_string(),
+        "challenge".to_string(),
+        "S256".to_string(),
+        None,
+        now + Duration::minutes(10),
+        now + Duration::minutes(30),
+    )
+}
+
+// A passkey (passwordless) session must read back as one: the lock that makes only
+// WebAuthn able to open it lives in `primary_factor`, so losing it on the way through
+// the database would quietly turn the session into a password session.
+#[sqlx::test(migrations = "./migrations")]
+async fn auth_sessions_round_trip_their_primary_factor(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let client = seed_client(&pool, &tenant).await;
+    let user = seed_user(&pool, &tenant).await;
+    let repo = DbAuthSessionRepository::new(pool.clone());
+
+    let mut password_session = login_session(&tenant, &client, "hash-password");
+    password_session.authenticate(user.id(), Utc::now());
+    repo.add(&password_session).await.unwrap();
+
+    let mut passkey_session = login_session(&tenant, &client, "hash-passkey");
+    passkey_session.identify_for_passkey(user.id());
+    repo.add(&passkey_session).await.unwrap();
+
+    let read = repo
+        .find_by_token_hash(tenant.id(), "hash-passkey")
+        .await
+        .unwrap()
+        .expect("passkey session");
+    assert_eq!(read.primary_factor(), PrimaryFactor::Passkey);
+    assert!(read.is_mfa_pending());
+    assert!(read.authenticated_at().is_none());
+    assert!(!read.accepts_mfa_method(&MfaMethod::Totp));
+
+    let mut read = read;
+    read.verify_mfa(&MfaMethod::Webauthn, Utc::now());
+    repo.update(&read).await.unwrap();
+    let verified = repo
+        .find_by_id(tenant.id(), read.id())
+        .await
+        .unwrap()
+        .expect("passkey session");
+    assert_eq!(verified.primary_factor(), PrimaryFactor::Passkey);
+    assert!(!verified.is_mfa_pending());
+    assert!(verified.authenticated_at().is_some());
+
+    let password = repo
+        .find_by_token_hash(tenant.id(), "hash-password")
+        .await
+        .unwrap()
+        .expect("password session");
+    assert_eq!(password.primary_factor(), PrimaryFactor::Password);
+
+    // Rows written without the column (an older binary mid-rollout) are password
+    // sessions, and the CHECK refuses anything else.
+    let legacy: String = sqlx::query_scalar(
+        "INSERT INTO auth_sessions (id, tenant_id, session_token_hash, pending_client_id,
+            pending_redirect_uri, pending_scopes, pending_state, pending_code_challenge,
+            pending_code_challenge_method, expires_at, absolute_expires_at, created_at)
+         VALUES ($1, $2, 'hash-legacy', $3, 'https://app.example.com/callback', '{openid}',
+            's', 'c', 'S256', now() + interval '10 minutes', now() + interval '30 minutes', now())
+         RETURNING primary_factor",
+    )
+    .bind(Uuid::now_v7())
+    .bind(tenant.id())
+    .bind(client.id())
+    .fetch_one(&pool)
+    .await
+    .expect("legacy insert");
+    assert_eq!(legacy, "password");
+    let bogus = sqlx::query("UPDATE auth_sessions SET primary_factor = 'magic' WHERE id = $1")
+        .bind(read.id())
+        .execute(&pool)
+        .await;
+    assert!(
+        bogus.is_err(),
+        "the CHECK constraint must refuse unknown factors"
+    );
+}
+
+// Restarting a ceremony replaces only that session's challenge, never one running in
+// another session of the same user.
+#[sqlx::test(migrations = "./migrations")]
+async fn mfa_challenges_are_invalidated_per_session(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let client = seed_client(&pool, &tenant).await;
+    let user = seed_user(&pool, &tenant).await;
+    let sessions = DbAuthSessionRepository::new(pool.clone());
+    let challenges = DbMfaChallengeRepository::new(pool.clone());
+
+    let mut ids = Vec::new();
+    for hash in ["hash-a", "hash-b"] {
+        let mut session = login_session(&tenant, &client, hash);
+        session.identify_for_passkey(user.id());
+        sessions.add(&session).await.unwrap();
+        let challenge = MfaChallenge::new_webauthn(
+            tenant.id(),
+            user.id(),
+            Some(session.id()),
+            MfaChallengePurpose::Login,
+            serde_json::json!({ "state": hash }),
+            Utc::now() + Duration::minutes(5),
+        );
+        challenges.add(&challenge).await.unwrap();
+        ids.push((session.id(), challenge.id()));
+    }
+
+    challenges
+        .invalidate_active_by_session(ids[0].0, &MfaChallengePurpose::Login, &MfaMethod::Webauthn)
+        .await
+        .unwrap();
+
+    let first = challenges
+        .find_by_id(tenant.id(), ids[0].1)
+        .await
+        .unwrap()
+        .unwrap();
+    let second = challenges
+        .find_by_id(tenant.id(), ids[1].1)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(first.is_consumed());
+    assert!(!second.is_consumed());
 }
 
 async fn begin(pool: &PgPool) -> SharedTx {

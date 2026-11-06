@@ -3,6 +3,41 @@ use uuid::Uuid;
 
 use crate::domain::entities::mfa_method::MfaMethod;
 
+// The factor that opened the session — what the user offered at POST /v1/auth/login.
+//
+// * `Password`: the password was verified before the session existed. An MFA gate,
+//   when the client or the risk engine raises one, may be cleared by any second
+//   factor the client allows.
+// * `Passkey`: passwordless login. The account has no password, so the session was
+//   opened from the email alone and binds a user who has proven NOTHING yet. Only a
+//   WebAuthn assertion may clear it — a mailbox or a TOTP code on its own must never
+//   become a primary factor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrimaryFactor {
+    Password,
+    Passkey,
+}
+
+impl PrimaryFactor {
+    // Persisted as auth_sessions.primary_factor.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PrimaryFactor::Password => "password",
+            PrimaryFactor::Passkey => "passkey",
+        }
+    }
+
+    // Fails closed: anything that is not exactly "password" reads back as the more
+    // restrictive `Passkey`, which only a WebAuthn assertion can unlock.
+    pub fn from_db(value: &str) -> Self {
+        if value == "password" {
+            PrimaryFactor::Password
+        } else {
+            PrimaryFactor::Passkey
+        }
+    }
+}
+
 // Between GET /authorize (where you validate the request) and the user actually
 // submitting credentials and consent, you need somewhere to park the validated
 // authorization request so the user can't tamper with it via hidden form fields. This
@@ -18,8 +53,13 @@ pub struct AuthSession {
     // session_token_hash.
     session_token_hash: String,
 
-    user_id: Option<Uuid>, // None until the user authenticates
+    // Bound once the user is known: after the password check, or — for a passkey
+    // session — as soon as the email resolves to an eligible account (see
+    // `identify_for_passkey`). `authenticated_at` is the moment the primary factor was
+    // actually proven, so it stays None on a passkey session until WebAuthn succeeds.
+    user_id: Option<Uuid>,
     authenticated_at: Option<DateTime<Utc>>,
+    primary_factor: PrimaryFactor,
 
     // MFA gate: when the client requires a second factor, the password check
     // alone leaves the session "pending" — it cannot be spent for an
@@ -68,6 +108,7 @@ impl AuthSession {
             session_token_hash,
             user_id: None,
             authenticated_at: None,
+            primary_factor: PrimaryFactor::Password,
             mfa_required: false,
             mfa_verified_at: None,
             mfa_method: None,
@@ -91,6 +132,7 @@ impl AuthSession {
         session_token_hash: String,
         user_id: Option<Uuid>,
         authenticated_at: Option<DateTime<Utc>>,
+        primary_factor: PrimaryFactor,
         mfa_required: bool,
         mfa_verified_at: Option<DateTime<Utc>>,
         mfa_method: Option<String>,
@@ -111,6 +153,7 @@ impl AuthSession {
             session_token_hash,
             user_id,
             authenticated_at,
+            primary_factor,
             mfa_required,
             mfa_verified_at,
             mfa_method,
@@ -131,14 +174,27 @@ impl AuthSession {
         now >= self.expires_at
     }
 
+    // A user is bound to the session. On a password session that user has proven the
+    // password; on a passkey session they may not have proven anything yet — what
+    // makes a session spendable is `!is_mfa_pending()`, never this alone.
     pub fn is_authenticated(&self) -> bool {
         self.user_id.is_some()
     }
 
-    // Bind the now-authenticated user to the session.
+    // Bind the user whose password was just verified.
     pub fn authenticate(&mut self, user_id: Uuid, now: DateTime<Utc>) {
         self.user_id = Some(user_id);
         self.authenticated_at = Some(now);
+    }
+
+    // Passwordless login: bind the account the email resolved to WITHOUT any proof,
+    // and lock the session so that only a WebAuthn assertion can open it.
+    // `authenticated_at` is set by `verify_mfa` once the passkey succeeds.
+    pub fn identify_for_passkey(&mut self, user_id: Uuid) {
+        self.user_id = Some(user_id);
+        self.authenticated_at = None;
+        self.primary_factor = PrimaryFactor::Passkey;
+        self.mfa_required = true;
     }
 
     // Flag that this session may not be spent until a second factor succeeds.
@@ -146,14 +202,42 @@ impl AuthSession {
         self.mfa_required = true;
     }
 
-    // Record a successful MFA challenge, unblocking authorization.
+    // Whether `method` may clear this session's gate. Every MFA verifier must check
+    // this before accepting a code or an assertion.
+    pub fn accepts_mfa_method(&self, method: &MfaMethod) -> bool {
+        match self.primary_factor {
+            PrimaryFactor::Password => true,
+            PrimaryFactor::Passkey => *method == MfaMethod::Webauthn,
+        }
+    }
+
+    // Record a successful MFA challenge, unblocking authorization. On a passkey
+    // session this is also the moment the user authenticated.
     pub fn verify_mfa(&mut self, method: &MfaMethod, now: DateTime<Utc>) {
         self.mfa_verified_at = Some(now);
         self.mfa_method = Some(method.as_str().to_string());
+        if self.authenticated_at.is_none() && self.accepts_mfa_method(method) {
+            self.authenticated_at = Some(now);
+        }
     }
 
+    // Defense in depth: the passkey lock is enforced here too, not only by the
+    // verifiers' `accepts_mfa_method` gates. A passkey session stays pending unless
+    // it was verified by WebAuthn — even if some verifier forgot the gate.
     pub fn is_mfa_pending(&self) -> bool {
-        self.mfa_required && self.mfa_verified_at.is_none()
+        let required = self.mfa_required || self.is_passkey_primary();
+        let satisfied = self.mfa_verified_at.is_some()
+            && match self.primary_factor {
+                PrimaryFactor::Password => true,
+                PrimaryFactor::Passkey => {
+                    self.mfa_method.as_deref() == Some(MfaMethod::Webauthn.as_str())
+                }
+            };
+        required && !satisfied
+    }
+
+    pub fn is_passkey_primary(&self) -> bool {
+        self.primary_factor == PrimaryFactor::Passkey
     }
 
     // Burn the session so its token can't be replayed. Called right after the
@@ -199,6 +283,9 @@ impl AuthSession {
     pub fn authenticated_at(&self) -> Option<DateTime<Utc>> {
         self.authenticated_at
     }
+    pub fn primary_factor(&self) -> PrimaryFactor {
+        self.primary_factor
+    }
     pub fn mfa_required(&self) -> bool {
         self.mfa_required
     }
@@ -237,5 +324,86 @@ impl AuthSession {
     }
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session() -> AuthSession {
+        let now = Utc::now();
+        AuthSession::new(
+            Uuid::now_v7(),
+            "hash".to_string(),
+            Uuid::now_v7(),
+            "https://app.example/cb".to_string(),
+            vec!["openid".to_string()],
+            "state".to_string(),
+            "challenge".to_string(),
+            "S256".to_string(),
+            None,
+            now + Duration::minutes(10),
+            now + Duration::minutes(30),
+        )
+    }
+
+    #[test]
+    fn a_password_session_accepts_every_second_factor() {
+        let mut s = session();
+        s.authenticate(Uuid::now_v7(), Utc::now());
+        assert_eq!(s.primary_factor(), PrimaryFactor::Password);
+        assert!(!s.is_mfa_pending());
+        for method in [MfaMethod::Email, MfaMethod::Totp, MfaMethod::Webauthn] {
+            assert!(s.accepts_mfa_method(&method));
+        }
+        s.require_mfa();
+        assert!(s.is_mfa_pending());
+        s.verify_mfa(&MfaMethod::Email, Utc::now());
+        assert!(!s.is_mfa_pending());
+    }
+
+    #[test]
+    fn a_passkey_session_is_locked_to_webauthn_and_unproven() {
+        let mut s = session();
+        let user_id = Uuid::now_v7();
+        s.identify_for_passkey(user_id);
+
+        assert!(s.is_passkey_primary());
+        assert!(s.is_authenticated(), "the user is bound");
+        assert_eq!(s.user_id(), Some(user_id));
+        assert!(s.authenticated_at().is_none(), "but nothing was proven yet");
+        assert!(s.is_mfa_pending());
+        assert!(s.accepts_mfa_method(&MfaMethod::Webauthn));
+        assert!(!s.accepts_mfa_method(&MfaMethod::Email));
+        assert!(!s.accepts_mfa_method(&MfaMethod::Totp));
+    }
+
+    #[test]
+    fn only_webauthn_can_clear_a_passkey_session() {
+        let mut s = session();
+        s.identify_for_passkey(Uuid::now_v7());
+
+        // A verifier that forgot its gate still cannot open the session.
+        s.verify_mfa(&MfaMethod::Totp, Utc::now());
+        assert!(s.is_mfa_pending());
+        s.verify_mfa(&MfaMethod::Email, Utc::now());
+        assert!(s.is_mfa_pending());
+        assert!(s.authenticated_at().is_none());
+
+        let now = Utc::now();
+        s.verify_mfa(&MfaMethod::Webauthn, now);
+        assert!(!s.is_mfa_pending());
+        assert!(s.authenticated_at().is_some());
+    }
+
+    #[test]
+    fn primary_factor_round_trips_and_fails_closed() {
+        assert_eq!(PrimaryFactor::from_db("password"), PrimaryFactor::Password);
+        assert_eq!(PrimaryFactor::from_db("passkey"), PrimaryFactor::Passkey);
+        assert_eq!(PrimaryFactor::from_db("garbage"), PrimaryFactor::Passkey);
+        for f in [PrimaryFactor::Password, PrimaryFactor::Passkey] {
+            assert_eq!(PrimaryFactor::from_db(f.as_str()), f);
+        }
     }
 }

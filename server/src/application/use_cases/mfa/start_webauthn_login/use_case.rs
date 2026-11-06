@@ -55,6 +55,7 @@ impl UseCase {
         if session.is_expired(now)
             || !session.is_authenticated()
             || !session.is_mfa_pending()
+            || !session.accepts_mfa_method(&MfaMethod::Webauthn)
             || session.pending_client_id() != client.id()
         {
             return Err(invalid());
@@ -74,8 +75,15 @@ impl UseCase {
             return Err(invalid());
         }
 
+        // Replace only THIS session's live ceremony. A passkey session is opened from
+        // an email alone, so a per-user invalidation would let anyone who knows the
+        // email cancel the real user's sign-in running in another session.
         uow.mfa_challenge_repository()
-            .invalidate_active_by_user(user_id, &MfaChallengePurpose::Login, &MfaMethod::Webauthn)
+            .invalidate_active_by_session(
+                session.id(),
+                &MfaChallengePurpose::Login,
+                &MfaMethod::Webauthn,
+            )
             .await?;
 
         let ceremony = self.webauthn.start_authentication(&passkeys)?;

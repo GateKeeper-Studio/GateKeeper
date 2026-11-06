@@ -13,11 +13,22 @@ use serde_json::Value;
 // When the user has no usable factor but the client demands one,
 // `mfaEnrollmentRequired` routes the SPA to the forced-enrollment screen
 // offering `enrollableMethods`.
+//
+// Passwordless login (no password sent) answers with `mfaType = "webauthn"` and
+// the assertion options; the session stays locked until the passkey verifies, so
+// `userId` is omitted — the account's id is not handed out before any proof.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Response {
     pub session_code: String,
-    pub user_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+
+    // True when a factor was actually proven by this call (the password). False for a
+    // passwordless login, whose proof happens at POST /v1/auth/verify-mfa/webauthn.
+    // Not serialized: the handler reads it to decide whether this was a login success.
+    #[serde(skip)]
+    pub credentials_verified: bool,
 
     // The pre-selected factor ("email" | "totp" | "webauthn"), or None when no
     // second factor is needed.

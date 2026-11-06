@@ -41,6 +41,8 @@
 	const codeChallenge = searchParams.get('code_challenge') || '';
 	let currentMfaId = $state(searchParams.get('mfa_id') || '');
 	const nonce = searchParams.get('nonce') || '';
+	// Passwordless login: the passkey is the only factor, not a second one.
+	const passwordless = searchParams.get('passwordless') === '1';
 
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
@@ -74,7 +76,9 @@
 			? sessionStorage.getItem(`webauthn_options_${currentMfaId}`)
 			: null;
 
-		if (!storedOptions) {
+		// Only while we still hold the challenge id they belong to: after a failed
+		// verify the id is cleared, and stale URL options would just fail again.
+		if (!storedOptions && currentMfaId) {
 			const urlOptions = searchParams.get('webauthn_options');
 			if (urlOptions) {
 				storedOptions = urlOptions;
@@ -125,11 +129,15 @@
 			clientId,
 			sessionCode,
 			mfaId: currentMfaId,
-			assertionData: assertionResponse,
+			assertionData: assertionResponse
 		});
 
 		if (verifyErr) {
 			console.error('WebAuthn verification error:', verifyErr);
+			// The challenge behind these options may be spent (it dies after a few failed
+			// attempts) — drop them so the next try asks the server for a fresh one.
+			sessionStorage.removeItem(`webauthn_options_${currentMfaId}`);
+			currentMfaId = '';
 			// A dead session is unrecoverable here; hand it to the guard rather than showing
 			// an error the user can only stare at.
 			if (verifyErr.message === 'invalid or expired session') {
@@ -219,7 +227,9 @@
 		{:else}
 			{#if !error}
 				<p class="text-center text-sm text-muted-foreground">
-					{m.auth_mfa_webauthn_prompt_hint()}
+					{passwordless
+						? m.auth_mfa_webauthn_passwordless_hint()
+						: m.auth_mfa_webauthn_prompt_hint()}
 				</p>
 			{/if}
 

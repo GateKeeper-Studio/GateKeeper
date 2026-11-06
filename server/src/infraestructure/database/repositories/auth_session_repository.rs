@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::{
     domain::{
-        entities::auth_session::AuthSession, errors::DomainError,
+        entities::auth_session::{AuthSession, PrimaryFactor},
+        errors::DomainError,
         repositories::auth_session_repository::AuthSessionRepository,
     },
     infraestructure::database::executor::{DbExecutor, SharedTx, run},
@@ -41,7 +42,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             self.executor,
             sqlx::query!(
                 r#"
-          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at,
+          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at, primary_factor,
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
@@ -63,6 +64,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 r.session_token_hash,
                 r.user_id,
                 r.authenticated_at,
+                PrimaryFactor::from_db(&r.primary_factor),
                 r.mfa_required,
                 r.mfa_verified_at,
                 r.mfa_method,
@@ -89,7 +91,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             self.executor,
             sqlx::query!(
                 r#"
-          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at,
+          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at, primary_factor,
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
@@ -111,6 +113,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 r.session_token_hash,
                 r.user_id,
                 r.authenticated_at,
+                PrimaryFactor::from_db(&r.primary_factor),
                 r.mfa_required,
                 r.mfa_verified_at,
                 r.mfa_method,
@@ -137,8 +140,8 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
-            expires_at, absolute_expires_at, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+            expires_at, absolute_expires_at, created_at, primary_factor)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         "#,
                 session.id(),
                 session.tenant_id(),
@@ -158,6 +161,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 session.expires_at(),
                 session.absolute_expires_at(),
                 session.created_at(),
+                session.primary_factor().as_str(),
             ),
             execute
         )
@@ -167,8 +171,8 @@ impl AuthSessionRepository for DbAuthSessionRepository {
     }
 
     async fn update(&self, session: &AuthSession) -> Result<(), DomainError> {
-        // Only the authentication outcome, the idle deadline, and the token itself
-        // mutate after creation. The frozen /authorize request fields and the absolute
+        // Only the authentication outcome (including which factor opened the session),
+        // the idle deadline, and the token itself mutate after creation. The frozen /authorize request fields and the absolute
         // ceiling are never rewritten — that is the whole point of freezing them.
         run!(
             self.executor,
@@ -176,7 +180,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 r#"
           UPDATE auth_sessions
           SET session_token_hash = $2, user_id = $3, authenticated_at = $4, expires_at = $5,
-            mfa_required = $6, mfa_verified_at = $7, mfa_method = $8
+            mfa_required = $6, mfa_verified_at = $7, mfa_method = $8, primary_factor = $9
           WHERE id = $1
         "#,
                 session.id(),
@@ -187,6 +191,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 session.mfa_required(),
                 session.mfa_verified_at(),
                 session.mfa_method(),
+                session.primary_factor().as_str(),
             ),
             execute
         )

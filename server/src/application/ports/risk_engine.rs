@@ -16,7 +16,8 @@ pub struct RiskEvaluationInput {
     pub username_normalized: Option<String>,
     pub ip_address: Option<String>,
     pub user_agent: Option<String>,
-    // The password was correct. Geo/device rules only run when this is true.
+    // The primary factor succeeded (the password was correct, or — for a passwordless
+    // login — the passkey assertion verified). Geo/device rules only run when true.
     pub credentials_valid: bool,
     // Set when the pre-auth check already found an active IP block: the engine records
     // the attempt with a BLOCKED_IP signal + BLOCK_TEMPORARILY decision.

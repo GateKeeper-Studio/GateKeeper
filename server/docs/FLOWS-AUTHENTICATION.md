@@ -51,6 +51,9 @@ two calls so they can't be tampered with.
    `response_type == code`, PKCE `S256` present, scopes non-empty after intersection.
 3. **Authenticate** from the user's own credentials (Argon2id + tenant pepper, on
    `spawn_blocking`). The user id is derived here; failures are generic.
+   `password` is optional: when it is absent or empty the request is a
+   **passwordless login** and continues as described in
+   [Passwordless login](#passwordless-login-a-passkey-as-the-primary-factor) below.
 4. Reject if the email isn't verified (`EmailNotConfirmed`) — the SPA routes to the
    confirm-email screen.
 5. Open an **`AuthSession`** that *freezes* the request (redirect_uri, scopes, state,
@@ -90,6 +93,86 @@ so the SPA can complete `POST /oauth/token` (see
 ### Supporting endpoint
 `GET /v1/auth/client/{client_id}/auth-data` returns the public auth-flow config the
 login SPA needs to render its screens (client name, allowed MFA methods, etc.).
+`passkeyLoginEnabled` tells the hosted page whether to offer "Sign in with a passkey"
+(the client takes email sign-in and allows WebAuthn).
+
+### Passwordless login (a passkey as the primary factor)
+
+An account with **no password** (no `user_credentials` row — today, accounts
+provisioned by social sign-in) that has a **confirmed passkey** can sign in with the
+passkey alone. This is not a separate flow: `login` treats it as "no password factor
+configured, require WebAuthn", and every later step is the existing one.
+
+```
+  Login SPA                                     Provider
+     │ 1. POST /v1/auth/login { email, (no password), …frozen request }
+     │                                            │  · same client/request/pre-auth checks
+     │                                            │  · eligible? → AuthSession with
+     │                                            │    primary_factor = passkey, locked
+     │   → { session_code, mfa_type: "webauthn",  │    to WebAuthn + Login challenge
+     │       mfa_id, web_authn_options }          │  · not eligible → generic 401
+     │◀──────────────────────────────────────────│
+     │ 2. navigator.credentials.get(...)          │
+     │ 3. POST /v1/auth/verify-mfa/webauthn       │  mfa::verify_webauthn
+     │   { session_code, mfa_id, assertion }      │  · account still eligible? pre-auth gate
+     │                                            │  · verify assertion (UV required)
+     │                                            │  · risk-score + audit the LOGIN here
+     │◀──────────────────────────────────────────│  · session authenticated + unlocked
+     │ 4. POST /v1/auth/authorize (unchanged)     │  authentication::authorize_session
+```
+
+- **Eligibility** — the account exists, is active, has a verified email, has **no
+  password** and at least one confirmed WebAuthn enrollment, and the client allows
+  WebAuthn (and password login: `external_login_only` clients refuse `login`
+  outright). An account **with** a password always signs in with it.
+- **Every ineligible case answers like a wrong password**: the same generic
+  `AuthenticationError`, and the attempt is recorded by the risk engine
+  (`failure_reason = passkey_unavailable`) so it feeds the velocity / spraying rules.
+  Never `EmailNotConfirmed` — no proof was offered, so that would be an oracle. No
+  Argon2 runs on this path for anyone.
+- **The lock** — the session is opened with `AuthSession::identify_for_passkey`:
+  the user is bound but `authenticated_at` stays empty, `primary_factor = passkey`
+  (column `auth_sessions.primary_factor`), and only WebAuthn may clear it.
+  `accepts_mfa_method` makes the email-OTP and TOTP verifiers refuse it (a mailbox or a
+  TOTP code alone must never become a primary factor), and `is_mfa_pending` enforces
+  the same rule again as defense in depth. `authorize_session` needs no change: it
+  refuses any session that is still pending.
+- **No MFA block, no forced password change** — webauthn-rs requires user verification
+  on every assertion (`UserVerificationPolicy::Required`), so the passkey is already
+  multi-factor; it satisfies `client.mfa_required` and a risk `ALLOW_WITH_MFA`.
+- **Where the login happens** — `verify_webauthn` re-checks that the account is still
+  active and still has no password (a reset mid-flow does not kill sessions), runs the
+  pre-auth IP gate, verifies the assertion, and only then records the `login_event`
+  (`credentials_valid` = the assertion verified) and the `user.login.success` /
+  `user.login.failure` audit event (`metadata.method = "passkey"`). A risk
+  `BLOCK_TEMPORARILY` burns the challenge and the session. `POST /v1/auth/login` does
+  **not** audit a success for a passkey challenge — nothing was proven yet — and omits
+  `userId` from its response.
+- **Ceremonies are per session** — opening a passkey session needs no proof, so neither
+  `login` nor `verify-mfa/webauthn/start` invalidates the user's other live WebAuthn
+  challenges (that would let anyone who knows an email cancel the real user's
+  sign-in); `start` replaces only its own session's challenge.
+- **Failed assertions count** — every WebAuthn verify failure (second factor or
+  primary) increments the challenge's attempt counter; it dies after
+  `MfaChallenge::MAX_ATTEMPTS`, and the hosted page then fetches a fresh one.
+- **Recovery** — a user who loses their passkey device uses **forgot password**: the
+  reset link proves the mailbox and sets a password (the account then signs in with
+  it, back on the password path). This needs `tenant.can_self_forgot_password`. To keep
+  that path meaningful, `DELETE /me/mfa/methods/{id}` refuses (409) to remove the
+  **last** passkey of an account with no password unless a social identity is linked.
+- **Known trade-off: enumeration.** Email-first passkey login cannot hide which emails
+  are eligible: they get WebAuthn options (whose `allowCredentials` lists the account's
+  credential ids, WebAuthn §14.6.2), every other email gets 401. Mitigated by the
+  strict credential rate limit and by recording ineligible attempts in the risk engine
+  (IP velocity / spraying ⇒ temporary IP block). Note `register` already reveals
+  whether an email exists.
+- **Rolling deploys** — upgrade every server replica before exposing the hosted
+  page's passkey button: an older replica's email/TOTP verifier does not know about
+  `primary_factor`.
+- **Open follow-up** — step-up for passwordless accounts: `confirm_current_password`
+  passes for an account with no password, and enrolling a passkey needs only the
+  `account`-scoped token. A stolen token could therefore plant a passkey; notify on
+  enrollment / require recent authentication before relying on this broadly.
 
 ### External-provider-only clients (`external_login_only`)
 
@@ -143,10 +226,14 @@ client requires MFA but the user has no usable enrolled factor,
 | WebAuthn | `POST /v1/auth/verify-mfa/webauthn/start`, `POST /v1/auth/verify-mfa/webauthn` |
 
 Each opens/consumes an **`MfaChallenge`** bound to the user + session. Email OTP
-codes and WebAuthn challenge state are stored hashed/opaque with short TTLs (email
-OTP **10 min**, WebAuthn challenge **5 min**). TOTP is verified against the enrolled
-secret (decrypted via `SecretCipher` at verify time). On success the session's
+codes are stored hashed; WebAuthn ceremony state is stored server-side and never sent
+to the browser. Both have short TTLs (email OTP **10 min**, WebAuthn challenge
+**5 min**) and a cap of `MAX_ATTEMPTS` wrong tries. TOTP is verified against the
+enrolled secret (decrypted via `SecretCipher` at verify time). On success the session's
 second factor is satisfied and `authorize_session` may proceed.
+
+Every verifier gates on `AuthSession::accepts_mfa_method`: a **passkey session**
+(passwordless login, §1) accepts **WebAuthn only** — email OTP and TOTP refuse it.
 
 ### Self-service enrollment & management (`/me/mfa/*`, behind `require_auth`)
 | Endpoint | Action |

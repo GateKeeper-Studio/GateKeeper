@@ -160,4 +160,166 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, DomainError::NotFound(_)));
     }
+
+    // ── Last-passkey guard (passwordless accounts) ───────────────────────────────
+    // For an account with no password the passkey is the primary factor; removing
+    // the last one must not leave the user with no way back in.
+    mod last_passkey_guard {
+        use super::*;
+
+        use crate::{
+            domain::entities::{
+                external_identity_provider::ExternalProviderKind, social_identity::SocialIdentity,
+                user::User,
+            },
+            testing::{
+                in_memory_repositories::in_memory_social_identity_repository::InMemorySocialIdentityRepository,
+                user_factory::generate_user,
+            },
+        };
+
+        struct GuardCtx {
+            ctx: Ctx,
+            socials: Arc<InMemorySocialIdentityRepository>,
+        }
+
+        // `user` decides whether the account has a password.
+        fn setup_with_user(user: User) -> GuardCtx {
+            let tenant_id = user.tenant_id();
+            let user_id = user.id();
+            let users = Arc::new(InMemoryUserRepository::new());
+            users.memory.data.lock().unwrap().insert(user_id, user);
+            let enrollments = Arc::new(InMemoryMfaEnrollmentRepository::new());
+            let socials = Arc::new(InMemorySocialIdentityRepository::new());
+            let factory = InMemoryUnitOfWorkFactory::new(
+                users.clone(),
+                Arc::new(InMemoryTenantRepository::new()),
+            )
+            .with_mfa_enrollment_repository(enrollments.clone())
+            .with_social_identity_repository(socials.clone());
+            GuardCtx {
+                ctx: Ctx {
+                    use_case: UseCase::new(Arc::new(factory)),
+                    enrollments,
+                    users,
+                    tenant_id,
+                    user_id,
+                },
+                socials,
+            }
+        }
+
+        fn passwordless() -> GuardCtx {
+            let tenant_id = Uuid::now_v7();
+            setup_with_user(User::new(
+                tenant_id,
+                "passkey.user@example.com".to_string(),
+                None,
+                None,
+            ))
+        }
+
+        fn still_there(ctx: &Ctx, id: Uuid) -> bool {
+            ctx.enrollments
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .contains_key(&id)
+        }
+
+        #[tokio::test]
+        async fn refuses_the_last_passkey_of_a_passwordless_account() {
+            let g = passwordless();
+            let id = seed_webauthn(&g.ctx, g.ctx.user_id, "cred-1");
+
+            let err = g
+                .ctx
+                .use_case
+                .execute(command(&g.ctx, id))
+                .await
+                .unwrap_err();
+
+            assert!(matches!(err, DomainError::Conflict(_)));
+            assert!(still_there(&g.ctx, id));
+        }
+
+        #[tokio::test]
+        async fn allows_it_while_another_passkey_remains() {
+            let g = passwordless();
+            let first = seed_webauthn(&g.ctx, g.ctx.user_id, "cred-1");
+            let second = seed_webauthn(&g.ctx, g.ctx.user_id, "cred-2");
+
+            g.ctx
+                .use_case
+                .execute(command(&g.ctx, first))
+                .await
+                .unwrap();
+            assert!(!still_there(&g.ctx, first));
+
+            // ...but not the one that is now the last.
+            let err = g
+                .ctx
+                .use_case
+                .execute(command(&g.ctx, second))
+                .await
+                .unwrap_err();
+            assert!(matches!(err, DomainError::Conflict(_)));
+        }
+
+        #[tokio::test]
+        async fn allows_it_when_a_social_identity_is_linked() {
+            let g = passwordless();
+            let id = seed_webauthn(&g.ctx, g.ctx.user_id, "cred-1");
+            let identity = SocialIdentity::new(
+                g.ctx.user_id,
+                g.ctx.tenant_id,
+                ExternalProviderKind::Google,
+                "google-subject".to_string(),
+                None,
+            );
+            g.socials
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .insert(identity.id(), identity);
+
+            g.ctx.use_case.execute(command(&g.ctx, id)).await.unwrap();
+            assert!(!still_there(&g.ctx, id));
+        }
+
+        #[tokio::test]
+        async fn allows_it_for_an_account_with_a_password() {
+            let g = setup_with_user(generate_user(Uuid::now_v7()));
+            let id = seed_webauthn(&g.ctx, g.ctx.user_id, "cred-1");
+
+            g.ctx.use_case.execute(command(&g.ctx, id)).await.unwrap();
+            assert!(!still_there(&g.ctx, id));
+        }
+
+        #[tokio::test]
+        async fn never_blocks_removing_totp() {
+            let g = passwordless();
+            seed_webauthn(&g.ctx, g.ctx.user_id, "cred-1");
+            let mut totp =
+                MfaEnrollment::new_totp(g.ctx.tenant_id, g.ctx.user_id, "enc".to_string());
+            totp.confirm(chrono::Utc::now());
+            let totp_id = totp.id();
+            g.ctx
+                .enrollments
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .insert(totp_id, totp);
+
+            g.ctx
+                .use_case
+                .execute(command(&g.ctx, totp_id))
+                .await
+                .unwrap();
+            assert!(!still_there(&g.ctx, totp_id));
+        }
+    }
 }

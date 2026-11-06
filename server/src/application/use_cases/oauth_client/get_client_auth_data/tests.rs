@@ -121,6 +121,46 @@ mod tests {
         );
         assert!(view.oauth_providers.is_empty());
         assert!(!view.external_login_only);
+        // Email sign-in + WebAuthn allowed (the default policy) ⇒ passkey button.
+        assert!(view.passkey_login_enabled);
+    }
+
+    // No WebAuthn on this client ⇒ no "Sign in with a passkey" button: the IdP would
+    // refuse every passwordless attempt anyway.
+    #[tokio::test]
+    async fn passkey_login_is_off_when_the_client_disallows_webauthn() {
+        let tenant_id = Uuid::now_v7();
+        let tenant = make_tenant(tenant_id, true, true, true);
+        let client = OAuthClient::new(
+            tenant_id,
+            client_id(),
+            None,
+            ClientType::Public,
+            "App".to_string(),
+            vec!["https://app.example.com/cb".to_string()],
+            vec![],
+            vec!["openid".to_string()],
+            vec!["authorization_code".to_string()],
+            true,
+            true,
+            vec!["en".to_string()],
+            "en".to_string(),
+            MfaPolicy {
+                webauthn_enabled: false,
+                ..MfaPolicy::default()
+            },
+        );
+        let use_case = setup(Some(tenant), Some(&client));
+
+        let view = use_case
+            .execute(Query {
+                client_id: client_id().to_string(),
+                requested_locale: None,
+            })
+            .await
+            .unwrap();
+
+        assert!(!view.passkey_login_enabled);
     }
 
     // The flag surfaces so the hosted page can drop the password form, AND it forces
@@ -146,6 +186,7 @@ mod tests {
         assert!(view.external_login_only);
         assert!(!view.can_self_sign_up);
         assert!(!view.can_self_forgot_pass);
+        assert!(!view.passkey_login_enabled);
     }
 
     #[tokio::test]
