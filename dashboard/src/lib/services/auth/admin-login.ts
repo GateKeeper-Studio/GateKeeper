@@ -1,14 +1,16 @@
 import { ApiError, type Result } from '../types';
-import type { AdminIdentity } from '$lib/server/session';
+import type { AdminIdentity } from '$lib/types/admin';
 
 type LoginResponse = { admin: AdminIdentity };
 
 /**
  * Platform-admin sign-in.
  *
- * Posts to this app's own `/session` endpoint, NOT to the IdP. The server
- * exchanges the credentials for the IdP token pair, keeps both in the server-side
- * session, and returns only the admin's display identity plus an httpOnly cookie.
+ * Posts to `/session` on this origin, which is the identity provider itself (it
+ * serves this app). The server verifies the password, opens a console session and
+ * returns only the admin's display identity plus an httpOnly cookie. No token ever
+ * reaches the browser: admin API calls go to `/api/*`, where the server turns the
+ * cookie into a short-lived bearer token.
  *
  * Previously this called `/admin/login` from the browser and the caller put both
  * tokens into localStorage, where any injected script could read them — and the
@@ -40,9 +42,8 @@ export async function adminLogin(email: string, password: string): Promise<Resul
 }
 
 /**
- * Sign-out. The server revokes the refresh token's whole rotation family at the
- * IdP (so a leaked copy is dead, not merely forgotten) and clears the cookie.
- * Best-effort by design: the local session goes regardless of the IdP's answer.
+ * Sign-out. The server deletes the session (so a leaked copy of the cookie is dead,
+ * not merely forgotten) and clears the cookie. Best-effort by design.
  */
 export async function adminLogout(): Promise<void> {
 	try {
@@ -50,4 +51,21 @@ export async function adminLogout(): Promise<void> {
 	} catch {
 		// A failed revocation must not block sign-out.
 	}
+}
+
+/**
+ * Who is signed in, or `null` when nobody is (or the session expired).
+ *
+ * The console's route guard (`routes/console/+layout.ts`) calls this on every
+ * navigation. It is a UX guard only: every piece of data the console shows comes
+ * from `/api/*`, which the server refuses without a live session anyway.
+ */
+export async function getAdminSession(
+	fetchFn: typeof fetch = fetch
+): Promise<AdminIdentity | null> {
+	const res = await fetchFn('/session', { credentials: 'same-origin' });
+	if (res.status === 401) return null;
+	if (!res.ok) throw new ApiError(res.status, {});
+	const data = (await res.json()) as { admin: AdminIdentity };
+	return data.admin;
 }

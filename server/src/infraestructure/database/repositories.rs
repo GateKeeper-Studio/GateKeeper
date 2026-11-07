@@ -1,5 +1,6 @@
 pub mod admin_refresh_token_repository;
 pub mod admin_user_repository;
+pub mod admin_web_session_repository;
 pub mod audit_event_repository;
 pub mod auth_session_repository;
 pub mod authorization_code_repository;

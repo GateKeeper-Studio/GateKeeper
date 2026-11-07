@@ -1,4 +1,5 @@
 pub mod actor;
+pub mod admin_credentials;
 pub mod backchannel_logout;
 pub mod client_secret;
 pub mod custom_field_validation;

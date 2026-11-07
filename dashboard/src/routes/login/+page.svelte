@@ -74,7 +74,7 @@
 		// from `+layout.server.ts`, never an absolute URL, so it cannot redirect
 		// off-site; re-check that here rather than trusting the query string.
 		const next = page.url.searchParams.get('next');
-		const target = next && next.startsWith('/') && !next.startsWith('//') ? next : resolve('/');
+		const target = next && next.startsWith('/') && !next.startsWith('//') ? next : resolve('/console');
 		await goto(target);
 	}
 </script>

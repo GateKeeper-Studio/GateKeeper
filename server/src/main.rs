@@ -18,7 +18,10 @@ use web_api::{
     infraestructure::{
         config::{self, AppConfig},
         crypto::{aes_gcm_secret_cipher::AesGcmSecretCipher, secret_reseal::reseal_legacy_secrets},
-        database::database_pool::create_database_pool,
+        database::{
+            database_pool::create_database_pool,
+            migrations::{Adoption, MIGRATOR, adopt_pre_squash_history},
+        },
         observability::metrics::install as install_metrics,
         retention::scheduler::spawn_retention_purge,
         webhooks::dispatcher::spawn_dispatcher,
@@ -132,7 +135,22 @@ async fn main() {
                 .expect("Failed to connect with DATABASE_MIGRATION_URL"),
             None => db_pool.clone(),
         };
-        sqlx::migrate!("./migrations")
+        // A database created before the migrations were squashed into one baseline
+        // gets its history rewritten first (infraestructure/database/migrations.rs).
+        match adopt_pre_squash_history(&migration_pool).await {
+            Ok(Adoption::Adopted {
+                replaced,
+                caught_up,
+            }) => tracing::warn!(
+                replaced,
+                caught_up,
+                "adopted the squashed migration baseline: the old migration history was \
+                 replaced by 20261110000000_initial_schema"
+            ),
+            Ok(Adoption::NotNeeded) => {}
+            Err(problem) => panic!("{problem}"),
+        }
+        MIGRATOR
             .run(&migration_pool)
             .await
             .expect("Failed to run database migrations");

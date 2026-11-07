@@ -34,6 +34,9 @@ use crate::{
                 update_profile as admin_update_profile,
             },
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
+            admin_web_session::{
+                end as console_end, resolve as console_resolve, start as console_start,
+            },
             authentication::{
                 authorize_session, change_password, confirm_current_password, confirm_email,
                 external_login, forgot_password, login, redeem_magic_link, refresh_session,
@@ -114,7 +117,9 @@ use crate::{
     },
     domain::repositories::{
         admin_refresh_token_repository::AdminRefreshTokenRepository,
-        admin_user_repository::AdminUserRepository, audit_event_repository::AuditEventRepository,
+        admin_user_repository::AdminUserRepository,
+        admin_web_session_repository::AdminWebSessionRepository,
+        audit_event_repository::AuditEventRepository,
         consent_grant_repository::ConsentGrantRepository,
         custom_field_definition_repository::CustomFieldDefinitionRepository,
         email_provider_repository::EmailProviderRepository,
@@ -153,6 +158,7 @@ use crate::{
             repositories::{
                 admin_refresh_token_repository::DbAdminRefreshTokenRepository,
                 admin_user_repository::DbAdminUserRepository,
+                admin_web_session_repository::DbAdminWebSessionRepository,
                 audit_event_repository::DbAuditEventRepository,
                 consent_grant_repository::DbConsentGrantRepository,
                 custom_field_definition_repository::DbCustomFieldDefinitionRepository,
@@ -187,9 +193,14 @@ use crate::{
         webhooks::reqwest_webhook_sender::ReqwestWebhookSender,
     },
     presentation::{
-        middleware::{auth::Authenticator, client_ip::TrustedProxies},
+        middleware::{
+            auth::Authenticator,
+            client_ip::TrustedProxies,
+            console_session::{ConsoleSettings, origin_of},
+        },
         routes,
         state::*,
+        ui::UiAssets,
     },
 };
 
@@ -264,6 +275,9 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
         Arc::new(DbAdminUserRepository::new(db_pool.clone()));
     let admin_refresh_token_repository: Arc<dyn AdminRefreshTokenRepository> =
         Arc::new(DbAdminRefreshTokenRepository::new(db_pool.clone()));
+    // Browser sessions of the admin console (`/session` and the `/api` bridge).
+    let admin_web_session_repository: Arc<dyn AdminWebSessionRepository> =
+        Arc::new(DbAdminWebSessionRepository::new(db_pool.clone()));
     let consent_grant_repository: Arc<dyn ConsentGrantRepository> =
         Arc::new(DbConsentGrantRepository::new(db_pool.clone()));
     // Read path of the session list; revocations go through the Unit of Work.
@@ -963,6 +977,20 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 Arc::clone(&admin_user_repository),
                 Arc::clone(&admin_refresh_token_repository),
             )),
+            console_sign_in: Arc::new(console_start::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_web_session_repository),
+                admin_password_pepper.clone(),
+                Arc::clone(&password_hasher),
+            )),
+            console_resolve: Arc::new(console_resolve::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_web_session_repository),
+                Arc::clone(&admin_token_service),
+            )),
+            console_sign_out: Arc::new(console_end::use_case::UseCase::new(Arc::clone(
+                &admin_web_session_repository,
+            ))),
         }),
         audit_logger: Arc::clone(&audit_logger),
         auth: Arc::new(Authenticator::new(
@@ -972,6 +1000,7 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             Arc::clone(&admin_token_service),
         )),
         health: Arc::new(DbHealthCheck::new(db_pool.clone())),
+        console: Arc::new(ConsoleSettings::from_public_url(&config.auth_ui_base_url)),
     };
 
     let trusted_proxies = TrustedProxies::parse(&config.trusted_proxies)
@@ -982,5 +1011,21 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
         );
     }
 
-    routes::router(state, Arc::new(trusted_proxies))
+    let ui_assets = config.ui_dir.as_deref().map(|dir| {
+        let assets = UiAssets::load(std::path::Path::new(dir)).unwrap_or_else(|e| panic!("{e}"));
+        tracing::info!("serving the dashboard from UI_DIR={dir}");
+        // The console's cookie session accepts requests only from AUTH_UI_BASE_URL's
+        // origin. When this server serves the UI, that is its own public URL.
+        if origin_of(&config.auth_ui_base_url) != origin_of(&config.oauth_issuer) {
+            tracing::warn!(
+                auth_ui_base_url = %config.auth_ui_base_url,
+                oauth_issuer = %config.oauth_issuer,
+                "UI_DIR is set but AUTH_UI_BASE_URL and OAUTH_ISSUER have different origins; \
+                 the console only works when opened at AUTH_UI_BASE_URL"
+            );
+        }
+        Arc::new(assets)
+    });
+
+    routes::router(state, Arc::new(trusted_proxies), ui_assets)
 }

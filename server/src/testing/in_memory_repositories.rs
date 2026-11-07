@@ -1,5 +1,6 @@
 pub mod in_memory_admin_refresh_token_repository;
 pub mod in_memory_admin_user_repository;
+pub mod in_memory_admin_web_session_repository;
 pub mod in_memory_audit_event_repository;
 pub mod in_memory_auth_session_repository;
 pub mod in_memory_authorization_code_repository;

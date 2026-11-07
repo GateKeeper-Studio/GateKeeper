@@ -1342,3 +1342,228 @@ async fn a_promoted_model_scores_real_logins_through_the_hybrid_engine(pool: PgP
         vec![RiskDecision::Allow, RiskDecision::AllowWithMfa]
     );
 }
+
+// ── Admin console sessions (docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md) ──────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_console_sessions_round_trip_and_clear_expired_rows(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::{admin_user::AdminUser, admin_web_session::AdminWebSession},
+            repositories::{
+                admin_user_repository::AdminUserRepository,
+                admin_web_session_repository::AdminWebSessionRepository,
+            },
+        },
+        infraestructure::database::repositories::{
+            admin_user_repository::DbAdminUserRepository,
+            admin_web_session_repository::DbAdminWebSessionRepository,
+        },
+    };
+
+    let organization = Organization::new(format!("org-{}", Uuid::now_v7()), None, true);
+    DbOrganizationRepository::new(pool.clone())
+        .add(&organization)
+        .await
+        .unwrap();
+    let admin = AdminUser::new(
+        organization.id(),
+        format!("admin-{}@example.com", Uuid::now_v7()),
+        "Ada".to_string(),
+        "hash".to_string(),
+        "argon2id".to_string(),
+    );
+    DbAdminUserRepository::new(pool.clone())
+        .create(&admin)
+        .await
+        .unwrap();
+
+    let sessions = DbAdminWebSessionRepository::new(pool.clone());
+    let now = Utc::now();
+
+    // An already-expired session, then a live one: adding the live one clears it.
+    let stale = AdminWebSession::reconstruct(
+        Uuid::now_v7(),
+        admin.id(),
+        "a".repeat(64),
+        now - Duration::hours(13),
+        now - Duration::hours(13),
+        now - Duration::hours(1),
+    );
+    sqlx::query(
+        "INSERT INTO admin_web_sessions (id, admin_id, token_hash, created_at, last_seen_at, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(stale.id())
+    .bind(stale.admin_id())
+    .bind(stale.token_hash())
+    .bind(stale.created_at())
+    .bind(stale.last_seen_at())
+    .bind(stale.expires_at())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let live = AdminWebSession::new(admin.id(), "b".repeat(64), now, Duration::hours(12));
+    sessions.add(&live).await.unwrap();
+    assert!(
+        sessions
+            .find_by_token_hash(&"a".repeat(64))
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let found = sessions
+        .find_by_token_hash(&"b".repeat(64))
+        .await
+        .unwrap()
+        .expect("live session");
+    assert_eq!(found.id(), live.id());
+    assert_eq!(found.admin_id(), admin.id());
+
+    // `touch` only ever moves the clock forward (replicas may touch out of order).
+    let later = now + Duration::minutes(5);
+    sessions.touch(live.id(), later).await.unwrap();
+    sessions.touch(live.id(), now).await.unwrap();
+    let touched = sessions
+        .find_by_token_hash(&"b".repeat(64))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        touched.last_seen_at().timestamp_micros(),
+        later.timestamp_micros()
+    );
+
+    // Deleting is idempotent; deleting the admin deletes its sessions.
+    sessions
+        .delete_by_token_hash(&"missing".repeat(8))
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM admin_users WHERE id = $1")
+        .bind(admin.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        sessions
+            .find_by_token_hash(&"b".repeat(64))
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+// ── Admin filter screens: custom plans (executor::run_custom_plan!) ─────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn filter_queries_return_the_right_rows_on_pool_and_in_a_unit_of_work(pool: PgPool) {
+    use web_api::{
+        domain::repositories::{
+            audit_event_repository::{AuditEventFilter, AuditEventRepository},
+            login_event_repository::{LoginEventFilter, LoginEventRepository},
+        },
+        infraestructure::database::repositories::{
+            audit_event_repository::DbAuditEventRepository,
+            login_event_repository::DbLoginEventRepository,
+        },
+    };
+
+    let tenant = seed_tenant(&pool, &cipher(), "pepper").await;
+    let other = seed_tenant(&pool, &cipher(), "pepper").await;
+    let alice = Uuid::now_v7();
+    for (tenant_id, user_id, ip) in [
+        (tenant.id(), alice, "10.0.0.1"),
+        (tenant.id(), alice, "10.0.0.2"),
+        (tenant.id(), Uuid::now_v7(), "10.0.0.1"),
+        (other.id(), alice, "10.0.0.1"),
+    ] {
+        sqlx::query(
+            "INSERT INTO login_events (id, tenant_id, user_id, ip_address, credentials_valid, success,
+                                       risk_level, decision, created_at)
+             VALUES ($1, $2, $3, $4, TRUE, TRUE, 'LOW', 'ALLOW', now())",
+        )
+        .bind(Uuid::now_v7())
+        .bind(tenant_id)
+        .bind(user_id)
+        .bind(ip)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO audit_events (id, tenant_id, actor_type, actor_id, action, outcome, created_at)
+             VALUES ($1, $2, 'user', $3, 'user.login', 'success', now())",
+        )
+        .bind(Uuid::now_v7())
+        .bind(tenant_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let by_user = LoginEventFilter {
+        user_id: Some(alice),
+        ..Default::default()
+    };
+    let by_ip = LoginEventFilter {
+        ip_address: Some("10.0.0.1".to_string()),
+        ..Default::default()
+    };
+    let by_actor = AuditEventFilter {
+        actor_id: Some(alice),
+        ..Default::default()
+    };
+
+    // On the pool: each call runs in its own short transaction.
+    let events = DbLoginEventRepository::new(pool.clone());
+    assert_eq!(
+        events
+            .list(tenant.id(), &by_user, 1, 50)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(events.count(tenant.id(), &by_ip).await.unwrap(), 2);
+    let audit = DbAuditEventRepository::new(pool.clone());
+    assert_eq!(
+        audit
+            .find_by_tenant(tenant.id(), &by_actor, 1, 50)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        audit
+            .quantity_by_tenant(tenant.id(), &by_actor)
+            .await
+            .unwrap(),
+        2
+    );
+
+    // The setting is SET LOCAL: it never outlives that transaction on a pooled connection.
+    for _ in 0..3 {
+        let mode: String = sqlx::query_scalar("SHOW plan_cache_mode")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(mode, "auto");
+    }
+
+    // Inside a Unit of Work's transaction.
+    let tx = begin(&pool).await;
+    let events = DbLoginEventRepository::with_tx(Arc::clone(&tx));
+    assert_eq!(events.count(tenant.id(), &by_user).await.unwrap(), 2);
+    let audit = DbAuditEventRepository::with_tx(Arc::clone(&tx));
+    assert_eq!(
+        audit
+            .quantity_by_tenant(other.id(), &by_actor)
+            .await
+            .unwrap(),
+        1
+    );
+    tx.lock().await.take().unwrap().rollback().await.unwrap();
+}

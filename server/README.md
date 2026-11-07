@@ -80,7 +80,7 @@ bootstrap.rs ─▶ everything                   (composition root)
 | `src/infraestructure/` | SQLx repositories, Unit of Work, crypto, email, GeoIP, webhooks, config. |
 | `src/presentation/` | Axum handlers, routers (one file per protection level), middleware, `ApiError`. |
 | `src/bootstrap.rs` | Builds infrastructure and use cases from `AppConfig`, returns the router. |
-| `migrations/` | SQL migrations (paired `.up.sql` / `.down.sql`). |
+| `migrations/` | SQL migrations: the squashed baseline `20261110000000_initial_schema.sql`, then later changes (paired `.up.sql` / `.down.sql`). |
 | `tests/` | PostgreSQL repository tests (`db-tests` feature). |
 
 Each request passes through the client-IP, request-id, metrics and security-header

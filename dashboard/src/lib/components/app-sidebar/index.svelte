@@ -57,37 +57,37 @@
 			items: [
 				{
 					title: m.nav_users(),
-					url: `/tenants/${selectedTenant.tenantId}/users`,
+					url: `/console/tenants/${selectedTenant.tenantId}/users`,
 					icon: UserIcon
 				},
 				{
 					title: m.nav_groups(),
-					url: `/tenants/${selectedTenant.tenantId}/groups`,
+					url: `/console/tenants/${selectedTenant.tenantId}/groups`,
 					icon: GroupIcon
 				},
 				{
 					title: m.nav_roles(),
-					url: `/tenants/${selectedTenant.tenantId}/roles`,
+					url: `/console/tenants/${selectedTenant.tenantId}/roles`,
 					icon: UserKeyIcon
 				},
 				{
 					title: m.nav_oauth_clients(),
-					url: `/tenants/${selectedTenant.tenantId}/oauth-clients`,
+					url: `/console/tenants/${selectedTenant.tenantId}/oauth-clients`,
 					icon: KeyRoundIcon
 				},
 				{
 					title: m.nav_custom_fields(),
-					url: `/tenants/${selectedTenant.tenantId}/custom-fields`,
+					url: `/console/tenants/${selectedTenant.tenantId}/custom-fields`,
 					icon: ListChecksIcon
 				},
 				{
 					title: m.nav_email(),
-					url: `/tenants/${selectedTenant.tenantId}/email`,
+					url: `/console/tenants/${selectedTenant.tenantId}/email`,
 					icon: MailsIcon
 				},
 				{
 					title: m.nav_webhooks(),
-					url: `/tenants/${selectedTenant.tenantId}/webhooks`,
+					url: `/console/tenants/${selectedTenant.tenantId}/webhooks`,
 					icon: WebhookIcon
 				}
 			]
@@ -100,27 +100,27 @@
 			items: [
 				{
 					title: m.nav_overview(),
-					url: `/tenants/${selectedTenant.tenantId}/security`,
+					url: `/console/tenants/${selectedTenant.tenantId}/security`,
 					icon: ShieldAlertIcon
 				},
 				{
 					title: m.nav_login_events(),
-					url: `/tenants/${selectedTenant.tenantId}/security/login-events`,
+					url: `/console/tenants/${selectedTenant.tenantId}/security/login-events`,
 					icon: ActivityIcon
 				},
 				{
 					title: m.nav_suspicious_ips(),
-					url: `/tenants/${selectedTenant.tenantId}/security/suspicious-ips`,
+					url: `/console/tenants/${selectedTenant.tenantId}/security/suspicious-ips`,
 					icon: GlobeIcon
 				},
 				{
 					title: m.nav_attacked_users(),
-					url: `/tenants/${selectedTenant.tenantId}/security/attacked-users`,
+					url: `/console/tenants/${selectedTenant.tenantId}/security/attacked-users`,
 					icon: BanIcon
 				},
 				{
 					title: m.nav_risk_policy(),
-					url: `/tenants/${selectedTenant.tenantId}/security/risk-policy`,
+					url: `/console/tenants/${selectedTenant.tenantId}/security/risk-policy`,
 					icon: SlidersHorizontalIcon
 				}
 			]
@@ -133,17 +133,17 @@
 			items: [
 				{
 					title: m.nav_audit_log(),
-					url: `/tenants/${selectedTenant.tenantId}/audit`,
+					url: `/console/tenants/${selectedTenant.tenantId}/audit`,
 					icon: ShieldIcon
 				},
 				{
 					title: m.nav_compliance(),
-					url: `/tenants/${selectedTenant.tenantId}/compliance`,
+					url: `/console/tenants/${selectedTenant.tenantId}/compliance`,
 					icon: ShieldIcon
 				},
 				{
 					title: m.nav_legal_pages(),
-					url: `/tenants/${selectedTenant.tenantId}/legal`,
+					url: `/console/tenants/${selectedTenant.tenantId}/legal`,
 					icon: ScrollTextIcon
 				}
 			]

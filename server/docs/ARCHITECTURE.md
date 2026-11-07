@@ -92,7 +92,7 @@ no Postgres.
 ```
 server/
 ├── Cargo.toml                  # crate manifest; default-run = "web-api"
-├── migrations/                 # SQLx migrations, paired *.up.sql / *.down.sql
+├── migrations/                 # SQLx migrations: squashed baseline, then paired *.up.sql / *.down.sql
 ├── docs/                       # this documentation
 └── src/
     ├── main.rs                 # binary entry: tracing, config, pool, migrate, serve

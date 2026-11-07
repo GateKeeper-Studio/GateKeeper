@@ -1,8 +1,7 @@
-import { env } from '$env/dynamic/public';
 import { ApiError } from '../types';
 
 /**
- * Direct client for the identity provider's PUBLIC endpoints.
+ * Client for the identity provider's PUBLIC endpoints.
  *
  * Used only by the hosted end-user auth flow under `/auth/[clientId]` —
  * sign-in, sign-up, MFA verification, password reset, email confirmation. Those
@@ -10,17 +9,16 @@ import { ApiError } from '../types';
  * single-use session codes), so there is no bearer token to attach and nothing
  * long-lived to steal.
  *
- * They stay on a direct browser→IdP call on purpose. Proxying them through this
- * app's server would make every interactive login arrive at the IdP wearing the
- * dashboard's IP address, blinding the adaptive risk engine (new country,
- * impossible travel, velocity) and collapsing the per-IP credential rate limit
- * onto a single key.
+ * The identity provider serves this app, so these are same-origin relative calls:
+ * the browser talks to the IdP directly, and the risk engine and the per-IP rate
+ * limits see the user's real address.
  *
  * The ADMIN surface is the opposite case — a long-lived credential worth
  * protecting — and goes through `base/admin-api.ts` and the server-side session
  * instead. Nothing in this file touches a token any more.
  */
-const BASE_URL = env.PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
+// Same origin: the identity provider serves this app.
+const BASE_URL = '';
 
 type FetchFn = typeof fetch;
 

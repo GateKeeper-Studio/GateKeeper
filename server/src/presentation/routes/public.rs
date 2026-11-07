@@ -10,9 +10,10 @@ use axum::{
 
 use crate::presentation::{
     handlers::{
-        admin_auth_handler, authentication_handler, legal_document_handler,
-        oauth_authorize_handler, oauth_discovery_handler, oauth_logout_handler,
-        oauth_provider_auth_handler, oauth_token_handler, oauth_userinfo_handler,
+        admin_auth_handler, authentication_handler, console_session_handler,
+        legal_document_handler, oauth_authorize_handler, oauth_discovery_handler,
+        oauth_logout_handler, oauth_provider_auth_handler, oauth_token_handler,
+        oauth_userinfo_handler,
     },
     routes::AppState,
 };
@@ -26,6 +27,12 @@ pub(super) fn router() -> Router<AppState> {
         // the refresh token, so it sits outside the admin layer — but revoking your
         // own session is not a guessing target, so it stays on the global bucket.
         .route("/admin/logout", post(admin_auth_handler::logout))
+        // The admin console's session: who is signed in, and sign-out. Sign-in
+        // (POST) is in the credential router, under the strict bucket.
+        .route(
+            "/session",
+            get(console_session_handler::current).delete(console_session_handler::sign_out),
+        )
         .route(
             "/v1/auth/authorize",
             post(authentication_handler::authorize),

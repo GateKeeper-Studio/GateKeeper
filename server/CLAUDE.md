@@ -37,12 +37,23 @@ cargo run --bin repair_encrypted_secrets -- --reseal
 cargo run --bin train_risk_model -- train|list|promote <id>|rollback|report
 
 # Database migrations (requires a running Postgres + DATABASE_URL)
-sqlx migrate run               # migrations live in ./migrations (paired .up.sql / .down.sql)
+sqlx migrate run               # ./migrations: the baseline, then any later migrations
+sqlx migrate add -r <name>     # a new schema change: paired .up.sql / .down.sql
 ```
 
-`main()` runs `sqlx::migrate!()` on startup unless `RUN_MIGRATIONS=false` (then a
-`--migrate-only` job owns schema changes), and then re-seals legacy secrets at rest
+`main()` runs the embedded migrations (`infraestructure/database/migrations.rs::MIGRATOR`)
+on startup unless `RUN_MIGRATIONS=false` (then a `--migrate-only` job owns schema
+changes), and then re-seals legacy secrets at rest
 (`infraestructure/crypto/secret_reseal.rs`) before serving.
+
+**Migrations were squashed.** `migrations/20261110000000_initial_schema.sql` creates the
+whole schema in one step. It replaced the 71 migrations written from 2026-05-30 to
+2026-11-09 and was verified to reproduce their schema exactly (`pg_dump`). It is
+irreversible on purpose: no `.down.sql`, so `sqlx migrate revert` cannot drop the
+schema. A database created before the squash is adopted at startup: if its old
+history is complete, the old rows in `_sqlx_migrations` are replaced by the
+baseline's (`adopt_pre_squash_history`). An older one stops the boot. Add every new
+change as a new migration after the baseline; never edit the baseline.
 
 > **Tooling note:** `cargo clippy` is unreliable in this environment (toolchain
 > mismatch). Validate with `cargo check` / `cargo test` instead.
@@ -107,6 +118,12 @@ and gives every repo a clone of it. Repos run statements via the `run!` macro ov
 a `DbExecutor` that is either `Pool(PgPool)` (read path) or `Tx(SharedTx)` (UoW
 path). `commit()` consumes the UoW and takes the transaction out of the mutex.
 
+Catch-all filter queries (`($n IS NULL OR col = $n)`, the admin login-event and audit
+filters) use `run_custom_plan!` instead. It plans them with their actual values every
+time, because a cached generic plan cannot use the per-filter indexes and was measured
+at 200–560 ms, against 0.1–3 ms custom, on 1M rows. Use it for any new query of that
+shape. Indexes on multi-tenant tables lead with `tenant_id`.
+
 ### Ports (application-owned interfaces, implemented in infra)
 `application/ports/`: `unit_of_work`, `token_signer`, `token_verifier`,
 `signing_key_generator`, `secret_cipher`, `email_sender`, `webauthn`,
@@ -133,9 +150,21 @@ injects the infra implementation (e.g. `JwtSigningService`, `SmtpEmailSender`,
   first-party login flow (`/v1/auth/*`), registration, admin sign-in
   (`/admin/login|refresh|logout`), and health/ready.
 
+- **`/api/*`** — the admin router again, nested behind the console's cookie bridge
+  (`middleware/console_session.rs`): same-origin check, client `Authorization`
+  dropped, the session cookie resolved and turned into a freshly minted admin token,
+  then `require_admin` as usual. The console's `/session` (POST in the credential
+  router, GET/DELETE in the public one) opens and ends that session.
+- **UI** (only with `UI_DIR`) — `presentation/ui.rs` serves the built dashboard: the
+  SPA entry page on an explicit allow-list of paths (`/console/*`, `/auth/*`,
+  `/login`, `/terms*`, `/privacy*`, legacy `/dashboard*`, `/docs*`), `/_app/*`
+  assets outside the global rate limiter. Unknown paths get a JSON 404. See
+  [`docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md`](docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md).
+
 `security_headers` middleware applies `X-Content-Type-Options`, `X-Frame-Options:
 DENY`, `Referrer-Policy: no-referrer`, a restrictive CSP, and HSTS to every
-response.
+response. The dashboard's documents set their own CSP and `X-Frame-Options` (scripts
+limited to this origin plus the entry page's inline-bootstrap hashes), which it keeps.
 
 The app-wide `capture_client_context` middleware records each request's client IP and
 User-Agent into a `RequestContext`. The IP is the TCP peer (`ConnectInfo`) unless that
@@ -289,7 +318,8 @@ See [`.env.example`](.env.example) for the annotated template.
 | `OAUTH_ISSUER` | Public issuer URL pinned as `iss` (dev default `http://localhost:8080`) |
 | `REFRESH_REUSE_LEEWAY_SECONDS` | Grace window where a just-rotated refresh token presented again is reissued (concurrent-refresh race) instead of revoking the family as reuse (default `10`) |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated allow-list; empty = permissive (dev only) |
-| `AUTH_UI_BASE_URL` | Login SPA base URL (reset-password links, WebAuthn origin default) |
+| `AUTH_UI_BASE_URL` | Login SPA base URL (reset-password links, WebAuthn origin default). Its origin is also the only one the console's cookie session accepts; when this server serves the UI, set it to the server's own public URL |
+| `UI_DIR` | Directory of the built dashboard (`dashboard/build`). Set: this server serves the admin console and the hosted login UI. Unset: API only. A directory without `index.html` stops the boot. A rebuild is picked up without a restart (`npm run build:watch` in `dashboard/` during UI work) |
 | `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` / `WEBAUTHN_ADDITIONAL_ORIGINS` | WebAuthn relying-party config |
 | `SECRETS_ENCRYPTION_KEY` / `SECRETS_ENCRYPTION_PREVIOUS_KEYS` | 32-byte AES-256-GCM key (base64/hex) sealing every secret at rest (legacy name `EMAIL_ENCRYPTION_KEY`), plus retired keys still accepted for decryption. **Required outside development**; dev falls back to a fixed, publicly-known key |
 | `POLICY_TERMS_VERSION` / `POLICY_PRIVACY_VERSION` | Current required policy versions |

@@ -46,7 +46,7 @@ export const searchProviders: SearchProvider[] = [
 				id: u.user_id,
 				label: userLabel(u),
 				sublabel: u.email,
-				href: `/tenants/${tenantId}/users/${u.user_id}`
+				href: `/console/tenants/${tenantId}/users/${u.user_id}`
 			}));
 		}
 	},
@@ -63,7 +63,7 @@ export const searchProviders: SearchProvider[] = [
 				id: g.group_id,
 				label: g.name,
 				sublabel: g.description ?? undefined,
-				href: `/tenants/${tenantId}/groups/${g.group_id}`
+				href: `/console/tenants/${tenantId}/groups/${g.group_id}`
 			}));
 		}
 	},
@@ -80,7 +80,7 @@ export const searchProviders: SearchProvider[] = [
 				id: r.role_id,
 				label: r.name,
 				sublabel: r.description ?? undefined,
-				href: `/tenants/${tenantId}/roles/${r.role_id}`
+				href: `/console/tenants/${tenantId}/roles/${r.role_id}`
 			}));
 		}
 	},
@@ -98,7 +98,7 @@ export const searchProviders: SearchProvider[] = [
 				id: c.id,
 				label: c.name,
 				sublabel: c.client_type,
-				href: `/tenants/${tenantId}/oauth-clients/${c.id}`
+				href: `/console/tenants/${tenantId}/oauth-clients/${c.id}`
 			}));
 		}
 	},
@@ -116,7 +116,7 @@ export const searchProviders: SearchProvider[] = [
 				id: t.tenantId,
 				label: t.name,
 				sublabel: t.description ?? undefined,
-				href: `/tenants/${t.tenantId}`
+				href: `/console/tenants/${t.tenantId}`
 			}));
 		}
 	}

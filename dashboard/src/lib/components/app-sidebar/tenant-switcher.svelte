@@ -24,8 +24,8 @@
 		selectedTenant.setActive(tenantId);
 		const current = page.params.tenantId;
 		const path = current
-			? page.url.pathname.replace(`/tenants/${current}`, `/tenants/${tenantId}`)
-			: `/tenants/${tenantId}`;
+			? page.url.pathname.replace(`/console/tenants/${current}`, `/console/tenants/${tenantId}`)
+			: `/console/tenants/${tenantId}`;
 		goto(`${path}${page.url.search}`);
 	}
 </script>
@@ -109,7 +109,7 @@
 
 				<DropdownMenu.Item class="gap-2 p-2">
 					{#snippet child({ props })}
-						<a href="/tenants/new" {...props}>
+						<a href="/console/tenants/new" {...props}>
 							<div
 								class="flex size-6 items-center justify-center rounded-md border bg-transparent"
 							>

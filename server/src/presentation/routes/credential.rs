@@ -27,7 +27,7 @@ use axum::{Router, routing::post};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 
 use crate::presentation::{
-    handlers::{admin_auth_handler, authentication_handler, mfa_handler},
+    handlers::{admin_auth_handler, authentication_handler, console_session_handler, mfa_handler},
     middleware::client_ip::ClientIpKeyExtractor,
     routes::AppState,
 };
@@ -58,6 +58,9 @@ pub(super) fn router() -> Router<AppState> {
         // cannot sit behind the admin layer. It is also the highest-privilege
         // credential in the system.
         .route("/admin/login", post(admin_auth_handler::login))
+        // The admin console's sign-in (cookie session, when this server serves the
+        // dashboard). The same password check as /admin/login, so the same bucket.
+        .route("/session", post(console_session_handler::sign_in))
         // Refresh an admin session (rotate refresh token → new access token). It
         // authenticates via the refresh token itself, so it sits OUTSIDE the admin
         // layer — and a guessable opaque token is worth rate-limiting too.

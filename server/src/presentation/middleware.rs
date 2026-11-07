@@ -4,3 +4,5 @@
 pub mod auth;
 pub mod client_ip;
 pub mod metrics;
+// `console_session` is the admin console's cookie session and its `/api` bridge.
+pub mod console_session;

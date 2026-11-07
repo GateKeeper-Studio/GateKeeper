@@ -14,7 +14,7 @@ use crate::{
             LoginEventRepository, SecurityOverviewMetrics, SuspiciousIp,
         },
     },
-    infraestructure::database::executor::{DbExecutor, SharedTx, run},
+    infraestructure::database::executor::{DbExecutor, SharedTx, run, run_custom_plan},
 };
 
 pub struct DbLoginEventRepository {
@@ -439,7 +439,7 @@ impl LoginEventRepository for DbLoginEventRepository {
         page: u32,
         page_size: u32,
     ) -> Result<Vec<LoginEvent>, DomainError> {
-        let rows = run!(
+        let rows = run_custom_plan!(
             self.executor,
             sqlx::query_as!(
                 LoginEventRow,
@@ -486,7 +486,7 @@ impl LoginEventRepository for DbLoginEventRepository {
     }
 
     async fn count(&self, tenant_id: Uuid, filter: &LoginEventFilter) -> Result<u32, DomainError> {
-        let count = run!(
+        let count = run_custom_plan!(
             self.executor,
             sqlx::query_scalar!(
                 r#"

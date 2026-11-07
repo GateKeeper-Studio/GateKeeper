@@ -18,7 +18,7 @@
 	// "Overview" is /security, while "Login Events" is /security/login-events),
 	// so a naive prefix match would light up both. Pick the longest matching URL
 	// among all sub-items so the most specific one wins.
-	const homeUrl = $derived(`/tenants/${selectedTenant.tenantId}`);
+	const homeUrl = $derived(`/console/tenants/${selectedTenant.tenantId}`);
 	const isHomeActive = $derived(page.url.pathname === homeUrl);
 
 	let {
@@ -152,7 +152,7 @@
 			<p class="mt-0.5 text-xs text-sidebar-foreground/70">
 				{m.sidebar_no_tenant_desc()}
 			</p>
-			<Button href="/tenants/new" size="sm" class="mt-3 w-full">
+			<Button href="/console/tenants/new" size="sm" class="mt-3 w-full">
 				<PlusIcon class="size-4" />
 				{m.sidebar_create_tenant()}
 			</Button>
@@ -163,7 +163,7 @@
 			<Sidebar.MenuItem>
 				<Sidebar.MenuButton tooltipContent={m.sidebar_create_tenant()}>
 					{#snippet child({ props })}
-						<a href="/tenants/new" {...props}>
+						<a href="/console/tenants/new" {...props}>
 							<PlusIcon />
 							<span>{m.sidebar_create_tenant()}</span>
 						</a>

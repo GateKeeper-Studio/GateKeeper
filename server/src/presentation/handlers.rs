@@ -4,6 +4,7 @@ pub mod audit_handler;
 pub mod authentication_handler;
 pub mod compliance_handler;
 pub mod consent_handler;
+pub mod console_session_handler;
 pub mod email_provider_handler;
 pub mod email_template_handler;
 pub mod external_identity_provider_handler;

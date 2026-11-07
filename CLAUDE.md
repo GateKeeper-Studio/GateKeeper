@@ -148,7 +148,7 @@ Extractor order matters in Axum: `State` must come before `Path`/`Query`/`Json`.
 sqlx migrate run
 ```
 
-Migrations live in `migrations/`. Each migration has an `.up.sql` and a `.down.sql`.
+Migrations live in `server/migrations/`: one squashed baseline (`20261110000000_initial_schema.sql`, irreversible), then later migrations, each with an `.up.sql` and a `.down.sql`.
 
 ## Running tests
 

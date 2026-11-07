@@ -3,7 +3,9 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 
 use crate::application::ports::password_hasher::PasswordHasher;
-use crate::application::shared::token_policy::REFRESH_TOKEN_TTL_DAYS;
+use crate::application::shared::{
+    admin_credentials::verify_admin_credentials, token_policy::REFRESH_TOKEN_TTL_DAYS,
+};
 use crate::{
     application::{
         ports::admin_token_issuer::AdminTokenIssuer,
@@ -68,30 +70,14 @@ impl UseCase {
     }
 
     pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
-        let invalid = || DomainError::AuthenticationError("invalid credentials".to_string());
-
-        // An unknown or inactive admin still pays one Argon2 verification (against
-        // a dummy hash), so the response time does not reveal which admin emails
-        // exist. Every failure is the same generic error.
-        let admin = match self.admin_repository.find_by_email(&command.email).await? {
-            Some(admin) if admin.is_active() => admin,
-            _ => {
-                self.password_hasher.verify_dummy(&command.password).await;
-                return Err(invalid());
-            }
-        };
-
-        if !self
-            .password_hasher
-            .verify(
-                admin.password_hash(),
-                &command.password,
-                &self.password_pepper,
-            )
-            .await
-        {
-            return Err(invalid());
-        }
+        let admin = verify_admin_credentials(
+            self.admin_repository.as_ref(),
+            self.password_hasher.as_ref(),
+            &self.password_pepper,
+            &command.email,
+            &command.password,
+        )
+        .await?;
 
         let issued = self.token_issuer.issue(
             admin.id(),

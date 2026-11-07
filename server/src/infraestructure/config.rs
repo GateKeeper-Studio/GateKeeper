@@ -114,6 +114,12 @@ pub struct AppConfig {
     /// promotion or rollback takes to reach every replica.
     pub risk_model_cache_ttl_seconds: u64,
 
+    // ── Dashboard (docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md) ──────────────
+    /// Directory of the built dashboard (`dashboard/build`). When set, this server
+    /// serves the admin console and the hosted login UI itself, and AUTH_UI_BASE_URL
+    /// should be this server's own public URL. Unset: API only.
+    pub ui_dir: Option<String>,
+
     // ── Outbound webhooks ────────────────────────────────────────────────────
     /// Master switch for the background dispatcher. When false the outbox still
     /// fills (events are never lost), nothing is just delivered — useful for a
@@ -289,6 +295,7 @@ impl AppConfig {
             risk_scoring: RiskScoring::from_env(env_string("RISK_SCORING").as_deref()),
             risk_model_max_age_days: env_parsed("RISK_MODEL_MAX_AGE_DAYS", 90),
             risk_model_cache_ttl_seconds: env_parsed("RISK_MODEL_CACHE_TTL_SECONDS", 60),
+            ui_dir: env_string("UI_DIR"),
 
             webhooks_enabled: env_flag("WEBHOOKS_ENABLED", true),
             webhook_poll_interval_seconds: env_parsed("WEBHOOK_POLL_INTERVAL_SECONDS", 5),

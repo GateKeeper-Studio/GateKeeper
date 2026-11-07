@@ -6,6 +6,8 @@ pub mod user_profile;
 pub mod admin_user;
 // Refresh tokens for platform-admin dashboard sessions (global rotation chain).
 pub mod admin_refresh_token;
+// Browser sessions of the admin console when the server serves the dashboard.
+pub mod admin_web_session;
 
 pub mod custom_field_definition;
 pub mod group;

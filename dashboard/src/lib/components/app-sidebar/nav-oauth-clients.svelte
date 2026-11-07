@@ -13,7 +13,7 @@
 	const activeClasses =
 		'bg-sidebar-primary! text-sidebar-primary-foreground! hover:bg-sidebar-primary! hover:text-sidebar-primary-foreground!';
 	function clientHref(id: string) {
-		return `/tenants/${selectedTenant.tenantId}/oauth-clients/${id}`;
+		return `/console/tenants/${selectedTenant.tenantId}/oauth-clients/${id}`;
 	}
 	function isActive(id: string) {
 		const url = clientHref(id);

@@ -1,5 +1,6 @@
 pub mod admin_refresh_token_repository;
 pub mod admin_user_repository;
+pub mod admin_web_session_repository;
 pub mod custom_field_definition_repository;
 pub mod group_repository;
 pub mod legal_document_repository;

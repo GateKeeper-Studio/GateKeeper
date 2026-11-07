@@ -31,7 +31,7 @@ serde_json = "1.0.150"
 
 # ── Middleware layer ───────────────────────────────────────────────────────────
 tower = "0.5.3"
-tower-http = { version = "0.6.11", features = ["cors", "trace", "compression-gzip", "timeout"] }
+tower-http = { version = "0.6.11", features = ["cors", "trace", "compression-gzip", "timeout", "fs"] }
 
 # ── Database ──────────────────────────────────────────────────────────────────
 # Compile-time-checked queries (`sqlx::query!`); the `.sqlx/` cache lets builds run

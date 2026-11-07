@@ -17,6 +17,9 @@ use crate::{
                 update_profile as admin_update_profile,
             },
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
+            admin_web_session::{
+                end as console_end, resolve as console_resolve, start as console_start,
+            },
             authentication::{
                 authorize_session, change_password, confirm_current_password, confirm_email,
                 external_login, forgot_password, login, redeem_magic_link, refresh_session,
@@ -95,7 +98,7 @@ use crate::{
             },
         },
     },
-    presentation::middleware::auth::Authenticator,
+    presentation::middleware::{auth::Authenticator, console_session::ConsoleSettings},
 };
 
 // Tenant records (organization-scoped).
@@ -305,6 +308,10 @@ pub struct AdminUseCases {
     pub update_my_profile: Arc<admin_update_profile::use_case::UseCase>,
     pub change_my_password: Arc<admin_change_password::use_case::UseCase>,
     pub deactivate_my_account: Arc<admin_deactivate_account::use_case::UseCase>,
+    // The admin console's cookie session (`/session` and the `/api` bridge).
+    pub console_sign_in: Arc<console_start::use_case::UseCase>,
+    pub console_resolve: Arc<console_resolve::use_case::UseCase>,
+    pub console_sign_out: Arc<console_end::use_case::UseCase>,
 }
 
 #[derive(Clone)]
@@ -333,4 +340,6 @@ pub struct AppState {
     pub auth: Arc<Authenticator>,
     /// Readiness of hard dependencies, for `/ready`.
     pub health: Arc<dyn HealthCheck>,
+    /// The admin console's cookie session: allowed origin and cookie flavour.
+    pub console: Arc<ConsoleSettings>,
 }
