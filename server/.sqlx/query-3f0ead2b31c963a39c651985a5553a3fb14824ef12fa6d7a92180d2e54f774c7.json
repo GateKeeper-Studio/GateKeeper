@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at, primary_factor,\n            mfa_required, mfa_verified_at, mfa_method,\n            pending_client_id, pending_redirect_uri, pending_scopes, pending_state,\n            pending_code_challenge, pending_code_challenge_method, pending_nonce,\n            expires_at, absolute_expires_at, created_at\n          FROM auth_sessions\n          WHERE tenant_id = $1 AND id = $2\n        ",
+  "query": "\n          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at, primary_factor,\n            mfa_required, mfa_verified_at, mfa_method,\n            pending_client_id, pending_redirect_uri, pending_scopes, pending_state,\n            pending_code_challenge, pending_code_challenge_method, pending_nonce,\n            expires_at, absolute_expires_at, created_at, risk_login_event_id\n          FROM auth_sessions\n          WHERE tenant_id = $1 AND session_token_hash = $2\n        ",
   "describe": {
     "columns": [
       {
@@ -211,12 +211,23 @@
             "name": "created_at"
           }
         }
+      },
+      {
+        "ordinal": 19,
+        "name": "risk_login_event_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "auth_sessions",
+            "name": "risk_login_event_id"
+          }
+        }
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid"
+        "Text"
       ]
     },
     "nullable": [
@@ -238,8 +249,9 @@
       true,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "6a72608b4d7322bb7937528c7c37b810b744db2052088df0a47b4bf62b6e61e7"
+  "hash": "3f0ead2b31c963a39c651985a5553a3fb14824ef12fa6d7a92180d2e54f774c7"
 }

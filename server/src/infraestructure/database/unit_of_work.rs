@@ -20,7 +20,9 @@ use crate::{
             email_verification_token_repository::EmailVerificationTokenRepository,
             external_identity_provider_repository::ExternalIdentityProviderRepository,
             external_login_flow_repository::ExternalLoginFlowRepository,
-            group_repository::GroupRepository, login_event_repository::LoginEventRepository,
+            group_repository::GroupRepository,
+            login_event_label_repository::LoginEventLabelRepository,
+            login_event_repository::LoginEventRepository,
             magic_link_token_repository::MagicLinkTokenRepository,
             mfa_challenge_repository::MfaChallengeRepository,
             mfa_enrollment_repository::MfaEnrollmentRepository,
@@ -53,7 +55,9 @@ use crate::{
             email_verification_token_repository::DbEmailVerificationTokenRepository,
             external_identity_provider_repository::DbExternalIdentityProviderRepository,
             external_login_flow_repository::DbExternalLoginFlowRepository,
-            group_repository::DbGroupRepository, login_event_repository::DbLoginEventRepository,
+            group_repository::DbGroupRepository,
+            login_event_label_repository::DbLoginEventLabelRepository,
+            login_event_repository::DbLoginEventRepository,
             magic_link_token_repository::DbMagicLinkTokenRepository,
             mfa_challenge_repository::DbMfaChallengeRepository,
             mfa_enrollment_repository::DbMfaEnrollmentRepository,
@@ -108,6 +112,7 @@ pub struct DbUnitOfWork {
     login_event_repository: Arc<DbLoginEventRepository>,
     security_block_repository: Arc<DbSecurityBlockRepository>,
     tenant_risk_policy_repository: Arc<DbTenantRiskPolicyRepository>,
+    login_event_label_repository: Arc<DbLoginEventLabelRepository>,
 }
 
 impl DbUnitOfWork {
@@ -198,6 +203,9 @@ impl DbUnitOfWork {
                 transaction_context.clone(),
             )),
             login_event_repository: Arc::new(DbLoginEventRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            login_event_label_repository: Arc::new(DbLoginEventLabelRepository::with_tx(
                 transaction_context.clone(),
             )),
             security_block_repository: Arc::new(DbSecurityBlockRepository::with_tx(
@@ -331,6 +339,10 @@ impl UnitOfWork for DbUnitOfWork {
 
     fn tenant_risk_policy_repository(&self) -> Arc<dyn TenantRiskPolicyRepository> {
         self.tenant_risk_policy_repository.clone()
+    }
+
+    fn login_event_label_repository(&self) -> Arc<dyn LoginEventLabelRepository> {
+        self.login_event_label_repository.clone()
     }
 
     async fn commit(self: Box<Self>) -> Result<(), DomainError> {

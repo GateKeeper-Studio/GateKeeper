@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*) AS \"count!\" FROM (\n                     SELECT 1 FROM \"login_events\"\n                     WHERE tenant_id = $1 AND user_id = $2 AND success = true\n                     LIMIT $3\n                   ) capped",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "42c03b1a5d5315cc5f218ce5f1df89065a759066109c064b1892f96302da3fd7"
+}

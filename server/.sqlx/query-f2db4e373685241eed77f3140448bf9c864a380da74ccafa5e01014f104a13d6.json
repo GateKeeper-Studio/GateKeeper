@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,\n                 ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,\n                 city, latitude, longitude, asn, isp, credentials_valid, success,\n                 failure_reason, risk_score, risk_level, decision, created_at\n          FROM \"login_events\"\n          WHERE tenant_id = $1 AND user_id = $2 AND id <> $3\n          ORDER BY created_at DESC\n          LIMIT $4\n        ",
+  "query": "\n          SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,\n                 ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,\n                 city, latitude, longitude, asn, isp, credentials_valid, success,\n                 failure_reason, risk_score, risk_level, decision, risk_features,\n                 risk_model, created_at\n          FROM \"login_events\"\n          WHERE tenant_id = $1 AND id = $2\n        ",
   "describe": {
     "columns": [
       {
@@ -258,6 +258,28 @@
       },
       {
         "ordinal": 23,
+        "name": "risk_features",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "risk_features"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "risk_model",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "risk_model"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -271,9 +293,7 @@
     "parameters": {
       "Left": [
         "Uuid",
-        "Uuid",
-        "Uuid",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -300,8 +320,10 @@
       false,
       false,
       false,
+      true,
+      true,
       false
     ]
   },
-  "hash": "0ad57025de85873b204a5083b223312749ca90821e0abc6019b1e8af18a31597"
+  "hash": "f2db4e373685241eed77f3140448bf9c864a380da74ccafa5e01014f104a13d6"
 }

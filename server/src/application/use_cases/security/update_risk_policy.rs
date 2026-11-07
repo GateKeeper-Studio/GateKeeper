@@ -7,7 +7,10 @@ use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory, use_cases::security::views::RiskPolicyView,
     },
-    domain::{entities::tenant_risk_policy::TenantRiskPolicy, errors::DomainError},
+    domain::{
+        entities::tenant_risk_policy::{ScoringMode, TenantRiskPolicy},
+        errors::DomainError,
+    },
 };
 
 // Write use case: upsert the tenant's risk policy. Starts from the existing row (or
@@ -26,6 +29,9 @@ pub struct Command {
     pub require_mfa_on_high_risk: bool,
     pub block_on_critical_risk: bool,
     pub temporary_block_minutes: i32,
+    // "rules" | "shadow" | "hybrid": whether the statistical score applies to this
+    // tenant (docs/RISK-SCORING.md). None leaves it unchanged.
+    pub scoring_mode: Option<String>,
 }
 
 pub struct UseCase {
@@ -44,6 +50,15 @@ impl UseCase {
         actor: &Actor,
         command: Command,
     ) -> Result<RiskPolicyView, DomainError> {
+        let scoring_mode = match command.scoring_mode.as_deref() {
+            Some(value) => Some(ScoringMode::parse(value).ok_or_else(|| {
+                DomainError::InvalidRequest(
+                    "scoring_mode must be \"rules\", \"shadow\" or \"hybrid\"".to_string(),
+                )
+            })?),
+            None => None,
+        };
+
         let uow = self.unit_of_work_factory.begin().await?;
         // Authorized here, not only by the HTTP guard: see `application/shared/actor.rs`.
         actor
@@ -69,6 +84,9 @@ impl UseCase {
             command.block_on_critical_risk,
             command.temporary_block_minutes,
         );
+        if let Some(scoring_mode) = scoring_mode {
+            policy.set_scoring_mode(scoring_mode);
+        }
 
         uow.tenant_risk_policy_repository().upsert(&policy).await?;
         uow.commit().await?;

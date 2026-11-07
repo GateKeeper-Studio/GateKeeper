@@ -129,6 +129,22 @@
 					</label>
 				</fieldset>
 
+				<fieldset class="space-y-3 rounded-xl border p-4">
+					<legend class="px-1 text-sm font-semibold">{m.security_risk_policy_section_scoring()}</legend>
+					<label class="flex items-center justify-between gap-4 text-sm">
+						<span class="text-muted-foreground">{m.security_risk_policy_scoring_mode_label()}</span>
+						<select
+							class="border-input bg-background rounded-md border px-3 py-2 text-sm"
+							bind:value={form.scoring_mode}
+						>
+							<option value="rules">{m.security_risk_policy_scoring_mode_rules()}</option>
+							<option value="shadow">{m.security_risk_policy_scoring_mode_shadow()}</option>
+							<option value="hybrid">{m.security_risk_policy_scoring_mode_hybrid()}</option>
+						</select>
+					</label>
+					<p class="text-muted-foreground text-xs">{m.security_risk_policy_scoring_help()}</p>
+				</fieldset>
+
 				<button
 					class="bg-primary text-primary-foreground inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
 					disabled={saving}

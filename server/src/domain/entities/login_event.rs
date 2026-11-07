@@ -143,6 +143,10 @@ pub enum RiskSignalType {
     NewCountry,
     ImpossibleTravel,
     NewDevice,
+    // Not a rule: the statistical score (docs/RISK-SCORING.md) raised the login to
+    // step-up MFA. Its metadata carries the model version, probability and the
+    // per-feature contributions that produced it.
+    StatisticalRisk,
 }
 
 impl RiskSignalType {
@@ -156,6 +160,7 @@ impl RiskSignalType {
             RiskSignalType::NewCountry => "NEW_COUNTRY",
             RiskSignalType::ImpossibleTravel => "IMPOSSIBLE_TRAVEL",
             RiskSignalType::NewDevice => "NEW_DEVICE",
+            RiskSignalType::StatisticalRisk => "STATISTICAL_RISK",
         }
     }
 
@@ -169,6 +174,7 @@ impl RiskSignalType {
             "NEW_COUNTRY" => RiskSignalType::NewCountry,
             "IMPOSSIBLE_TRAVEL" => RiskSignalType::ImpossibleTravel,
             "NEW_DEVICE" => RiskSignalType::NewDevice,
+            "STATISTICAL_RISK" => RiskSignalType::StatisticalRisk,
             _ => return None,
         })
     }
@@ -184,6 +190,9 @@ impl RiskSignalType {
             RiskSignalType::NewCountry => 20,
             RiskSignalType::ImpossibleTravel => 50,
             RiskSignalType::NewDevice => 15,
+            // Variable: just enough to reach the tenant's HIGH threshold (see
+            // RiskSignal::with_points), never more.
+            RiskSignalType::StatisticalRisk => 0,
         }
     }
 
@@ -197,6 +206,7 @@ impl RiskSignalType {
             RiskSignalType::TenantAttackSpike => RiskSeverity::Medium,
             RiskSignalType::NewCountry => RiskSeverity::Low,
             RiskSignalType::NewDevice => RiskSeverity::Low,
+            RiskSignalType::StatisticalRisk => RiskSeverity::High,
         }
     }
 }
@@ -219,6 +229,20 @@ impl RiskSignal {
             signal_type,
             severity: signal_type.default_severity(),
             points: signal_type.default_points(),
+            metadata,
+        }
+    }
+
+    // A signal whose contribution is computed rather than fixed (STATISTICAL_RISK).
+    pub fn with_points(
+        signal_type: RiskSignalType,
+        points: i32,
+        metadata: serde_json::Value,
+    ) -> Self {
+        RiskSignal {
+            signal_type,
+            severity: signal_type.default_severity(),
+            points,
             metadata,
         }
     }
@@ -286,6 +310,13 @@ pub struct LoginEvent {
     risk_level: RiskLevel,
     decision: RiskDecision,
 
+    // Statistical scoring (docs/RISK-SCORING.md). `risk_features` is the feature
+    // vector the hybrid engine computed ({"v": schema, "values": {...}}): derived
+    // numbers only, and the training dataset. `risk_model` is the model's verdict and
+    // explanation. Both None under the rules engine.
+    risk_features: Option<serde_json::Value>,
+    risk_model: Option<serde_json::Value>,
+
     created_at: DateTime<Utc>,
 }
 
@@ -321,6 +352,8 @@ impl LoginEvent {
             risk_score: 0,
             risk_level: RiskLevel::Low,
             decision: RiskDecision::Allow,
+            risk_features: None,
+            risk_model: None,
             created_at: Utc::now(),
         }
     }
@@ -382,6 +415,17 @@ impl LoginEvent {
         self
     }
 
+    // Also used on rehydration, keeping `reconstruct`'s signature stable.
+    pub fn with_scoring(
+        mut self,
+        risk_features: Option<serde_json::Value>,
+        risk_model: Option<serde_json::Value>,
+    ) -> Self {
+        self.risk_features = risk_features;
+        self.risk_model = risk_model;
+        self
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn reconstruct(
         id: Uuid,
@@ -433,6 +477,8 @@ impl LoginEvent {
             risk_score,
             risk_level,
             decision,
+            risk_features: None,
+            risk_model: None,
             created_at,
         }
     }
@@ -505,6 +551,12 @@ impl LoginEvent {
     }
     pub fn decision(&self) -> RiskDecision {
         self.decision
+    }
+    pub fn risk_features(&self) -> Option<&serde_json::Value> {
+        self.risk_features.as_ref()
+    }
+    pub fn risk_model(&self) -> Option<&serde_json::Value> {
+        self.risk_model.as_ref()
     }
     pub fn created_at(&self) -> DateTime<Utc> {
         self.created_at

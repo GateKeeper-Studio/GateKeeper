@@ -25,8 +25,8 @@ use crate::{
             unit_of_work::UnitOfWorkFactory, webauthn::WebauthnService,
             webhook_sender::WebhookSender,
         },
-        services::default_risk_engine::DefaultRiskEngine,
         services::templated_email_sender::TemplatedEmailSender,
+        services::{default_risk_engine::DefaultRiskEngine, hybrid_risk_engine::HybridRiskEngine},
         use_cases::{
             admin_account::{
                 change_password as admin_change_password,
@@ -86,8 +86,9 @@ use crate::{
                 list_roles, list_user_roles, unassign_role_user, update_role_by_id,
             },
             security::{
-                block_ip, get_login_event, get_overview, get_risk_policy, list_attacked_users,
-                list_login_events, list_suspicious_ips, unblock_ip, update_risk_policy,
+                block_ip, get_login_event, get_overview, get_risk_policy, label_login_event,
+                list_attacked_users, list_login_events, list_suspicious_ips, unblock_ip,
+                update_risk_policy,
             },
             session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
             tenant::{
@@ -125,7 +126,8 @@ use crate::{
         oauth_client_repository::OAuthClientRepository,
         organization_repository::OrganizationRepository,
         policy_acceptance_repository::PolicyAcceptanceRepository,
-        refresh_token_repository::RefreshTokenRepository, role_repository::RoleRepository,
+        refresh_token_repository::RefreshTokenRepository,
+        risk_model_repository::RiskModelRepository, role_repository::RoleRepository,
         security_block_repository::SecurityBlockRepository,
         signing_key_repository::SigningKeyRepository,
         social_identity_repository::SocialIdentityRepository, tenant_repository::TenantRepository,
@@ -134,8 +136,11 @@ use crate::{
         webhook_subscription_repository::WebhookSubscriptionRepository,
     },
     infraestructure::{
-        cache::caching_signing_key_repository::CachingSigningKeyRepository,
-        config::AppConfig,
+        cache::{
+            caching_risk_model_repository::CachingRiskModelRepository,
+            caching_signing_key_repository::CachingSigningKeyRepository,
+        },
+        config::{AppConfig, RiskScoring},
         crypto::{
             admin_token_service::AdminTokenService, aes_gcm_secret_cipher::AesGcmSecretCipher,
             argon2_password_hasher::Argon2PasswordHasher, ecdsa_key_generator::EcdsaKeyGenerator,
@@ -156,13 +161,14 @@ use crate::{
                 external_identity_provider_repository::DbExternalIdentityProviderRepository,
                 group_repository::DbGroupRepository,
                 legal_document_repository::DbLegalDocumentRepository,
+                login_event_label_repository::DbLoginEventLabelRepository,
                 login_event_repository::DbLoginEventRepository,
                 mfa_enrollment_repository::DbMfaEnrollmentRepository,
                 oauth_client_repository::DbOAuthClientRepository,
                 organization_repository::DbOrganizationRepository,
                 policy_acceptance_repository::DbPolicyAcceptanceRepository,
                 refresh_token_repository::DbRefreshTokenRepository,
-                role_repository::DbRoleRepository,
+                risk_model_repository::DbRiskModelRepository, role_repository::DbRoleRepository,
                 security_block_repository::DbSecurityBlockRepository,
                 signing_key_repository::DbSigningKeyRepository,
                 social_identity_repository::DbSocialIdentityRepository,
@@ -376,12 +382,30 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             }
         };
 
-    let risk_engine: Arc<dyn RiskEngine> = Arc::new(DefaultRiskEngine::new(
+    let rules_engine = DefaultRiskEngine::new(
         Arc::clone(&login_event_repository),
         Arc::clone(&security_block_repository),
         Arc::clone(&tenant_risk_policy_repository),
         Arc::clone(&geoip),
-    ));
+    );
+    // RISK_SCORING picks the adapter behind the same port: the rules alone (default),
+    // or the rules plus the statistical score, which each tenant opts into
+    // (docs/RISK-SCORING.md).
+    let risk_engine: Arc<dyn RiskEngine> = match config.risk_scoring {
+        RiskScoring::Rules => Arc::new(rules_engine),
+        RiskScoring::Hybrid => {
+            tracing::info!("hybrid risk scoring enabled (rules + statistical model)");
+            let models: Arc<dyn RiskModelRepository> = Arc::new(CachingRiskModelRepository::new(
+                Arc::new(DbRiskModelRepository::new(db_pool.clone())),
+                Duration::from_secs(config.risk_model_cache_ttl_seconds),
+            ));
+            Arc::new(HybridRiskEngine::new(
+                rules_engine,
+                models,
+                config.risk_model_max_age_days,
+            ))
+        }
+    };
 
     let state = AppState {
         tenants: Arc::new(TenantUseCases {
@@ -886,9 +910,10 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             list_login_events: Arc::new(list_login_events::UseCase::new(Arc::clone(
                 &login_event_repository,
             ))),
-            get_login_event: Arc::new(get_login_event::UseCase::new(Arc::clone(
-                &login_event_repository,
-            ))),
+            get_login_event: Arc::new(get_login_event::UseCase::new(
+                Arc::clone(&login_event_repository),
+                Arc::new(DbLoginEventLabelRepository::new(db_pool.clone())),
+            )),
             list_suspicious_ips: Arc::new(list_suspicious_ips::UseCase::new(
                 Arc::clone(&login_event_repository),
                 Arc::clone(&security_block_repository),
@@ -902,6 +927,7 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             update_risk_policy: Arc::new(update_risk_policy::UseCase::new(Arc::clone(
                 &uow_factory,
             ))),
+            label_login_event: Arc::new(label_login_event::UseCase::new(Arc::clone(&uow_factory))),
             block_ip: Arc::new(block_ip::UseCase::new(Arc::clone(&uow_factory))),
             unblock_ip: Arc::new(unblock_ip::UseCase::new(Arc::clone(&uow_factory))),
         }),

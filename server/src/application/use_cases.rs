@@ -11,6 +11,7 @@ pub mod mfa;
 pub mod oauth;
 pub mod oauth_client;
 pub mod organization;
+pub mod risk_model;
 pub mod role;
 pub mod security;
 pub mod session;

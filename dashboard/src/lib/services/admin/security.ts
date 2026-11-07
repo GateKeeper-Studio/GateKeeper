@@ -35,9 +35,35 @@ export type RiskSignalView = {
 	explanation: string;
 };
 
+// The statistical model's verdict on one login (docs/RISK-SCORING.md). Present only
+// when the platform runs hybrid scoring and the tenant is in shadow or hybrid mode.
+export type RiskModelVerdict = {
+	version: string;
+	mode: 'shadow' | 'hybrid';
+	probability: number;
+	threshold: number;
+	logit: number;
+	intercept: number;
+	would_escalate: boolean;
+	applied: boolean;
+	// Largest absolute contribution first; log-odds, positive raises the risk.
+	contributions: { feature: string; value: number; contribution: number }[];
+};
+
+export type LoginEventLabelView = {
+	label: 'legitimate' | 'fraudulent';
+	source: 'admin' | 'mfa_passed' | 'mfa_failed';
+	labeled_by: string | null;
+	note: string | null;
+	updated_at: string;
+};
+
 export type LoginEventDetail = {
 	event: LoginEventView;
 	signals: RiskSignalView[];
+	risk_model: RiskModelVerdict | null;
+	features: { v: number; values: Record<string, number> } | null;
+	label: LoginEventLabelView | null;
 	related_by_ip: LoginEventView[];
 	related_by_user: LoginEventView[];
 };
@@ -97,6 +123,8 @@ export type RiskPolicyView = {
 	require_mfa_on_high_risk: boolean;
 	block_on_critical_risk: boolean;
 	temporary_block_minutes: number;
+	// Whether the statistical score applies to this tenant (docs/RISK-SCORING.md).
+	scoring_mode: 'rules' | 'shadow' | 'hybrid';
 };
 
 export type SecurityBlockView = {
@@ -280,6 +308,40 @@ export async function unblockIp(
 ): Promise<VoidResult> {
 	try {
 		await api.delete<void>(`${base(tenantId)}/blocks/ip/${blockId}`, fetchFn);
+		return [null];
+	} catch (error) {
+		return [error as ApiError];
+	}
+}
+
+// PUT /tenants/{tenantId}/security/login-events/{id}/label
+// An admin's verdict, the statistical model's training feedback.
+export async function labelLoginEvent(
+	tenantId: string,
+	id: string,
+	body: { label: 'legitimate' | 'fraudulent'; note?: string },
+	fetchFn: typeof fetch = fetch
+): Promise<Result<LoginEventLabelView>> {
+	try {
+		const data = await api.put<LoginEventLabelView>(
+			`${base(tenantId)}/login-events/${id}/label`,
+			body,
+			fetchFn
+		);
+		return [data, null];
+	} catch (error) {
+		return [null, error as ApiError];
+	}
+}
+
+// DELETE /tenants/{tenantId}/security/login-events/{id}/label
+export async function clearLoginEventLabel(
+	tenantId: string,
+	id: string,
+	fetchFn: typeof fetch = fetch
+): Promise<VoidResult> {
+	try {
+		await api.delete<void>(`${base(tenantId)}/login-events/${id}/label`, fetchFn);
 		return [null];
 	} catch (error) {
 		return [error as ApiError];

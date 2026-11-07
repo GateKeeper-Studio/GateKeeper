@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS(\n                     SELECT 1 FROM \"login_events\"\n                     WHERE tenant_id = $1 AND user_id = $2 AND success = true AND asn = $3\n                   )",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "83e9afd0f50e5f966d0f032dbb570559d5bb1937a2e59c2f66372e3906578489"
+}

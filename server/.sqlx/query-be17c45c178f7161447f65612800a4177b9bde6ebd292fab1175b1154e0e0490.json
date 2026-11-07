@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,\n                 ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,\n                 city, latitude, longitude, asn, isp, credentials_valid, success,\n                 failure_reason, risk_score, risk_level, decision, created_at\n          FROM \"login_events\"\n          WHERE tenant_id = $1 AND ip_address = $2 AND id <> $3\n          ORDER BY created_at DESC\n          LIMIT $4\n        ",
+  "query": "\n          SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,\n                 ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,\n                 city, latitude, longitude, asn, isp, credentials_valid, success,\n                 failure_reason, risk_score, risk_level, decision, risk_features,\n                 risk_model, created_at\n          FROM \"login_events\"\n          WHERE tenant_id = $1 AND ip_address = $2 AND id <> $3\n          ORDER BY created_at DESC\n          LIMIT $4\n        ",
   "describe": {
     "columns": [
       {
@@ -258,6 +258,28 @@
       },
       {
         "ordinal": 23,
+        "name": "risk_features",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "risk_features"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "risk_model",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "risk_model"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -300,8 +322,10 @@
       false,
       false,
       false,
+      true,
+      true,
       false
     ]
   },
-  "hash": "6a3e44c0cce5ed88e7a8795629504ba779bd0138501830c0226f9889d9ac90b2"
+  "hash": "be17c45c178f7161447f65612800a4177b9bde6ebd292fab1175b1154e0e0490"
 }

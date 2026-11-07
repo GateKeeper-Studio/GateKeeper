@@ -31,6 +31,9 @@ pub struct RiskEvaluationResult {
     pub level: RiskLevel,
     pub decision: RiskDecision,
     pub signals: Vec<RiskSignal>,
+    // The recorded login_event. A use case that forces step-up MFA keeps it on the
+    // session, so the MFA outcome can label the event (docs/RISK-SCORING.md).
+    pub login_event_id: Option<Uuid>,
 }
 
 // The Risk Engine seam. Injected into the login use case. Implementations persist the

@@ -18,6 +18,8 @@ pub struct RecordedEvaluation {
     pub credentials_valid: bool,
     pub pre_auth_blocked: bool,
     pub failure_reason: Option<String>,
+    // The id the fake handed back as the recorded login event.
+    pub login_event_id: Uuid,
 }
 
 // Configurable Risk Engine fake for login use-case tests: returns a fixed decision
@@ -69,17 +71,20 @@ impl RiskEngine for FakeRiskEngine {
         &self,
         input: RiskEvaluationInput,
     ) -> Result<RiskEvaluationResult, DomainError> {
+        let login_event_id = Uuid::now_v7();
         self.recorded.lock().unwrap().push(RecordedEvaluation {
             user_id: input.user_id,
             credentials_valid: input.credentials_valid,
             pre_auth_blocked: input.pre_auth_blocked,
             failure_reason: input.failure_reason.clone(),
+            login_event_id,
         });
         Ok(RiskEvaluationResult {
             score: 0,
             level: RiskLevel::Low,
             decision: self.decision,
             signals: Vec::new(),
+            login_event_id: Some(login_event_id),
         })
     }
 }

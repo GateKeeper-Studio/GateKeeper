@@ -33,6 +33,22 @@ pub struct LastSuccessfulLogin {
     pub created_at: DateTime<Utc>,
 }
 
+// An IP's recent history in the tenant: the internal IP-reputation feature.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IpHistory {
+    pub attempts: i64,
+    pub failed: i64,
+}
+
+// How common an ASN is among the tenant's recent successful logins. A corporate VPN
+// or office network shows up as a large share — the false-positive guard for users
+// whose traffic all exits through one network.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AsnShare {
+    pub from_asn: i64,
+    pub total: i64,
+}
+
 // Aggregate counters for the Security Overview page (spec §9.1.1).
 #[derive(Debug, Clone, Default)]
 pub struct SecurityOverviewMetrics {
@@ -127,6 +143,34 @@ pub trait LoginEventRepository: Send + Sync {
         user_id: Uuid,
         user_agent_hash: &str,
     ) -> Result<bool, DomainError>;
+
+    // --- Statistical-scoring features (docs/RISK-SCORING.md) ---
+    async fn has_seen_asn(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        asn: i32,
+    ) -> Result<bool, DomainError>;
+    async fn asn_share(
+        &self,
+        tenant_id: Uuid,
+        asn: i32,
+        since: DateTime<Utc>,
+    ) -> Result<AsnShare, DomainError>;
+    async fn ip_history(
+        &self,
+        tenant_id: Uuid,
+        ip: &str,
+        since: DateTime<Utc>,
+    ) -> Result<IpHistory, DomainError>;
+    // The user's successful logins, counted up to `cap` (enough to tell a new
+    // account from an established one without scanning a long history).
+    async fn count_successful_logins(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        cap: i64,
+    ) -> Result<i64, DomainError>;
 
     // --- Dashboard reads ---
     async fn list(

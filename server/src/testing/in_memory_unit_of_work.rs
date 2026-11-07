@@ -20,7 +20,9 @@ use crate::{
             email_verification_token_repository::EmailVerificationTokenRepository,
             external_identity_provider_repository::ExternalIdentityProviderRepository,
             external_login_flow_repository::ExternalLoginFlowRepository,
-            group_repository::GroupRepository, login_event_repository::LoginEventRepository,
+            group_repository::GroupRepository,
+            login_event_label_repository::LoginEventLabelRepository,
+            login_event_repository::LoginEventRepository,
             magic_link_token_repository::MagicLinkTokenRepository,
             mfa_challenge_repository::MfaChallengeRepository,
             mfa_enrollment_repository::MfaEnrollmentRepository,
@@ -52,6 +54,7 @@ use crate::{
         in_memory_external_identity_provider_repository::InMemoryExternalIdentityProviderRepository,
         in_memory_external_login_flow_repository::InMemoryExternalLoginFlowRepository,
         in_memory_group_repository::InMemoryGroupRepository,
+        in_memory_login_event_label_repository::InMemoryLoginEventLabelRepository,
         in_memory_login_event_repository::InMemoryLoginEventRepository,
         in_memory_magic_link_token_repository::InMemoryMagicLinkTokenRepository,
         in_memory_mfa_challenge_repository::InMemoryMfaChallengeRepository,
@@ -140,6 +143,7 @@ pub struct InMemoryUnitOfWork {
     webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
     webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
     tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
+    login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
 }
 
 impl InMemoryUnitOfWork {
@@ -175,6 +179,7 @@ impl InMemoryUnitOfWork {
         webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
         webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
         tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
+        login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
     ) -> Self {
         Self {
             user_repository,
@@ -207,6 +212,7 @@ impl InMemoryUnitOfWork {
             webhook_subscription_repository,
             webhook_delivery_repository,
             tenant_risk_policy_repository,
+            login_event_label_repository,
         }
     }
 }
@@ -336,6 +342,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         Arc::clone(&self.tenant_risk_policy_repository) as Arc<dyn TenantRiskPolicyRepository>
     }
 
+    fn login_event_label_repository(&self) -> Arc<dyn LoginEventLabelRepository> {
+        Arc::clone(&self.login_event_label_repository) as Arc<dyn LoginEventLabelRepository>
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), DomainError> {
         self.user_repository.memory.commit();
         self.tenant_repository.memory.commit();
@@ -404,6 +414,7 @@ pub struct InMemoryUnitOfWorkFactory {
     webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
     webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
     tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
+    login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
 }
 
 impl InMemoryUnitOfWorkFactory {
@@ -453,7 +464,16 @@ impl InMemoryUnitOfWorkFactory {
             login_event_repository: Arc::new(InMemoryLoginEventRepository::new()),
             security_block_repository: Arc::new(InMemorySecurityBlockRepository::new()),
             tenant_risk_policy_repository: Arc::new(InMemoryTenantRiskPolicyRepository::new()),
+            login_event_label_repository: Arc::new(InMemoryLoginEventLabelRepository::new()),
         }
+    }
+
+    pub fn with_login_event_label_repository(
+        mut self,
+        repo: Arc<InMemoryLoginEventLabelRepository>,
+    ) -> Self {
+        self.login_event_label_repository = repo;
+        self
     }
 
     pub fn with_login_event_repository(mut self, repo: Arc<InMemoryLoginEventRepository>) -> Self {
@@ -700,6 +720,7 @@ impl UnitOfWorkFactory for InMemoryUnitOfWorkFactory {
             Arc::clone(&self.webhook_subscription_repository),
             Arc::clone(&self.webhook_delivery_repository),
             Arc::clone(&self.tenant_risk_policy_repository),
+            Arc::clone(&self.login_event_label_repository),
         )))
     }
 }

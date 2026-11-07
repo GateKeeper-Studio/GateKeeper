@@ -69,8 +69,9 @@ use crate::{
                 list_roles, list_user_roles, unassign_role_user, update_role_by_id,
             },
             security::{
-                block_ip, get_login_event, get_overview, get_risk_policy, list_attacked_users,
-                list_login_events, list_suspicious_ips, unblock_ip, update_risk_policy,
+                block_ip, get_login_event, get_overview, get_risk_policy, label_login_event,
+                list_attacked_users, list_login_events, list_suspicious_ips, unblock_ip,
+                update_risk_policy,
             },
             session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
             tenant::{
@@ -290,6 +291,7 @@ pub struct SecurityUseCases {
     pub list_attacked_users: Arc<list_attacked_users::UseCase>,
     pub get_risk_policy: Arc<get_risk_policy::UseCase>,
     pub update_risk_policy: Arc<update_risk_policy::UseCase>,
+    pub label_login_event: Arc<label_login_event::UseCase>,
     pub block_ip: Arc<block_ip::UseCase>,
     pub unblock_ip: Arc<unblock_ip::UseCase>,
 }

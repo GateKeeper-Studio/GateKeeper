@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::application::shared::risk_feedback::{label_if_mfa_exhausted, label_mfa_passed};
 use crate::{
     application::{
         ports::{
@@ -218,6 +219,7 @@ impl UseCase {
             Err(err) => {
                 challenge.register_failed_attempt();
                 uow.mfa_challenge_repository().update(&challenge).await?;
+                label_if_mfa_exhausted(&*uow, &session, &challenge).await?;
                 if let Some(login) = &passkey_login {
                     uow.audit_event_repository()
                         .record(&login.audit(&command, Outcome::Failure, Some("invalid_passkey")))
@@ -277,6 +279,7 @@ impl UseCase {
 
         session.verify_mfa(&MfaMethod::Webauthn, now);
         uow.auth_session_repository().update(&session).await?;
+        label_mfa_passed(&*uow, &session).await?;
         uow.commit().await?;
 
         Ok(Response {

@@ -77,6 +77,7 @@ pub const CUSTOM_FIELDS_REORDERED: &str = "custom_field.reordered";
 pub const SECURITY_IP_BLOCKED: &str = "security.ip.blocked";
 pub const SECURITY_IP_UNBLOCKED: &str = "security.ip.unblocked";
 pub const SECURITY_RISK_POLICY_UPDATED: &str = "security.risk_policy.updated";
+pub const SECURITY_LOGIN_EVENT_LABELED: &str = "security.login_event.labeled";
 
 // ── Platform / maintenance ───────────────────────────────────────────────────
 pub const ADMIN_LOGIN_SUCCESS: &str = "admin.login.success";

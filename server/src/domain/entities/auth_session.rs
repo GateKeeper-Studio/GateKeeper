@@ -92,6 +92,11 @@ pub struct AuthSession {
     // not a timeout.
     absolute_expires_at: DateTime<Utc>,
     created_at: DateTime<Utc>,
+
+    // The login event whose risk decision forced this session's step-up MFA (None
+    // when MFA was not risk-forced). The MFA outcome labels that event: a pass is a
+    // weak "legitimate", exhausted attempts a weak "fraudulent" (docs/RISK-SCORING.md).
+    risk_login_event_id: Option<Uuid>,
 }
 
 impl AuthSession {
@@ -129,6 +134,7 @@ impl AuthSession {
             expires_at,
             absolute_expires_at,
             created_at: Utc::now(),
+            risk_login_event_id: None,
         }
     }
 
@@ -174,7 +180,18 @@ impl AuthSession {
             expires_at,
             absolute_expires_at,
             created_at,
+            // Rehydrated with set_risk_login_event_id, keeping this signature stable.
+            risk_login_event_id: None,
         }
+    }
+
+    // Records the login event that forced this session's step-up (see the field).
+    pub fn set_risk_login_event_id(&mut self, login_event_id: Option<Uuid>) {
+        self.risk_login_event_id = login_event_id;
+    }
+
+    pub fn risk_login_event_id(&self) -> Option<Uuid> {
+        self.risk_login_event_id
     }
 
     pub fn is_expired(&self, now: DateTime<Utc>) -> bool {

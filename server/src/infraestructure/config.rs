@@ -102,6 +102,18 @@ pub struct AppConfig {
     /// Retired keys, used only to decrypt values sealed before a rotation.
     pub secrets_previous_keys: Vec<[u8; 32]>,
 
+    // ── Risk scoring (docs/RISK-SCORING.md) ──────────────────────────────────
+    /// Which Risk Engine adapter is wired: `Rules` (the deterministic engine alone,
+    /// the default) or `Hybrid` (the rules plus the statistical score, which each
+    /// tenant then opts into with its risk policy's scoring mode).
+    pub risk_scoring: RiskScoring,
+    /// An active model trained longer ago than this stops scoring (rules only)
+    /// until it is retrained: a stale model must not keep deciding.
+    pub risk_model_max_age_days: i64,
+    /// How long the active model is cached per process; bounds how long a
+    /// promotion or rollback takes to reach every replica.
+    pub risk_model_cache_ttl_seconds: u64,
+
     // ── Outbound webhooks ────────────────────────────────────────────────────
     /// Master switch for the background dispatcher. When false the outbox still
     /// fills (events are never lost), nothing is just delivered — useful for a
@@ -274,6 +286,10 @@ impl AppConfig {
             retention_purge_enabled: env_flag("RETENTION_PURGE_ENABLED", true),
             retention_purge_interval_seconds: env_parsed("RETENTION_PURGE_INTERVAL_SECONDS", 3600),
 
+            risk_scoring: RiskScoring::from_env(env_string("RISK_SCORING").as_deref()),
+            risk_model_max_age_days: env_parsed("RISK_MODEL_MAX_AGE_DAYS", 90),
+            risk_model_cache_ttl_seconds: env_parsed("RISK_MODEL_CACHE_TTL_SECONDS", 60),
+
             webhooks_enabled: env_flag("WEBHOOKS_ENABLED", true),
             webhook_poll_interval_seconds: env_parsed("WEBHOOK_POLL_INTERVAL_SECONDS", 5),
             webhook_batch_size: env_parsed("WEBHOOK_BATCH_SIZE", 100),
@@ -356,6 +372,25 @@ fn resolve_webauthn(auth_ui_base_url: &str) -> WebauthnConfig {
 }
 
 // A non-empty, trimmed env var.
+/// The Risk Engine adapter to wire (`RISK_SCORING`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RiskScoring {
+    Rules,
+    Hybrid,
+}
+
+impl RiskScoring {
+    /// Unset means `rules`. Anything else but `rules`/`hybrid` stops the boot: a typo
+    /// must not silently pick an engine.
+    pub fn from_env(value: Option<&str>) -> Self {
+        match value.map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+            None | Some("") | Some("rules") => RiskScoring::Rules,
+            Some("hybrid") => RiskScoring::Hybrid,
+            Some(other) => panic!("RISK_SCORING must be \"rules\" or \"hybrid\", got {other:?}"),
+        }
+    }
+}
+
 fn env_string(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()

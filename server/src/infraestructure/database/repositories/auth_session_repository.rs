@@ -46,7 +46,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
-            expires_at, absolute_expires_at, created_at
+            expires_at, absolute_expires_at, created_at, risk_login_event_id
           FROM auth_sessions
           WHERE tenant_id = $1 AND id = $2
         "#,
@@ -58,7 +58,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
         .map_err(map_sqlx_error)?;
 
         Ok(row.map(|r| {
-            AuthSession::reconstruct(
+            let mut session = AuthSession::reconstruct(
                 r.id,
                 r.tenant_id,
                 r.session_token_hash,
@@ -78,7 +78,9 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 r.expires_at,
                 r.absolute_expires_at,
                 r.created_at,
-            )
+            );
+            session.set_risk_login_event_id(r.risk_login_event_id);
+            session
         }))
     }
 
@@ -95,7 +97,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
-            expires_at, absolute_expires_at, created_at
+            expires_at, absolute_expires_at, created_at, risk_login_event_id
           FROM auth_sessions
           WHERE tenant_id = $1 AND session_token_hash = $2
         "#,
@@ -107,7 +109,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
         .map_err(map_sqlx_error)?;
 
         Ok(row.map(|r| {
-            AuthSession::reconstruct(
+            let mut session = AuthSession::reconstruct(
                 r.id,
                 r.tenant_id,
                 r.session_token_hash,
@@ -127,7 +129,9 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 r.expires_at,
                 r.absolute_expires_at,
                 r.created_at,
-            )
+            );
+            session.set_risk_login_event_id(r.risk_login_event_id);
+            session
         }))
     }
 
@@ -140,8 +144,8 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             mfa_required, mfa_verified_at, mfa_method,
             pending_client_id, pending_redirect_uri, pending_scopes, pending_state,
             pending_code_challenge, pending_code_challenge_method, pending_nonce,
-            expires_at, absolute_expires_at, created_at, primary_factor)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+            expires_at, absolute_expires_at, created_at, primary_factor, risk_login_event_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         "#,
                 session.id(),
                 session.tenant_id(),
@@ -162,6 +166,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 session.absolute_expires_at(),
                 session.created_at(),
                 session.primary_factor().as_str(),
+                session.risk_login_event_id(),
             ),
             execute
         )
@@ -180,7 +185,8 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 r#"
           UPDATE auth_sessions
           SET session_token_hash = $2, user_id = $3, authenticated_at = $4, expires_at = $5,
-            mfa_required = $6, mfa_verified_at = $7, mfa_method = $8, primary_factor = $9
+            mfa_required = $6, mfa_verified_at = $7, mfa_method = $8, primary_factor = $9,
+            risk_login_event_id = $10
           WHERE id = $1
         "#,
                 session.id(),
@@ -192,6 +198,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
                 session.mfa_verified_at(),
                 session.mfa_method(),
                 session.primary_factor().as_str(),
+                session.risk_login_event_id(),
             ),
             execute
         )

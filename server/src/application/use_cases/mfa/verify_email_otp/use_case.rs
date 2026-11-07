@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use subtle::ConstantTimeEq;
 
+use crate::application::shared::risk_feedback::{label_if_mfa_exhausted, label_mfa_passed};
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -67,6 +68,7 @@ impl UseCase {
         if expected.as_bytes().ct_eq(submitted.as_bytes()).unwrap_u8() != 1 {
             challenge.register_failed_attempt();
             uow.mfa_challenge_repository().update(&challenge).await?;
+            label_if_mfa_exhausted(&*uow, &session, &challenge).await?;
             uow.commit().await?;
             return Err(invalid());
         }
@@ -75,6 +77,7 @@ impl UseCase {
         session.verify_mfa(&MfaMethod::Email, now);
         uow.mfa_challenge_repository().update(&challenge).await?;
         uow.auth_session_repository().update(&session).await?;
+        label_mfa_passed(&*uow, &session).await?;
         uow.commit().await?;
 
         Ok(Response {

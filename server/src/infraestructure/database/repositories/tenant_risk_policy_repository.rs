@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::{
     domain::{
-        entities::tenant_risk_policy::TenantRiskPolicy, errors::DomainError,
+        entities::tenant_risk_policy::{ScoringMode, TenantRiskPolicy},
+        errors::DomainError,
         repositories::tenant_risk_policy_repository::TenantRiskPolicyRepository,
     },
     infraestructure::database::executor::{DbExecutor, SharedTx, run},
@@ -41,7 +42,7 @@ impl TenantRiskPolicyRepository for DbTenantRiskPolicyRepository {
                           password_spraying_user_threshold, tenant_attack_threshold,
                           medium_risk_threshold, high_risk_threshold, critical_risk_threshold,
                           require_mfa_on_high_risk, block_on_critical_risk,
-                          temporary_block_minutes, created_at, updated_at
+                          temporary_block_minutes, scoring_mode, created_at, updated_at
                    FROM "tenant_risk_policies"
                    WHERE tenant_id = $1"#,
                 tenant_id
@@ -51,7 +52,7 @@ impl TenantRiskPolicyRepository for DbTenantRiskPolicyRepository {
         .map_err(map_sqlx_error)?;
 
         Ok(row.map(|r| {
-            TenantRiskPolicy::reconstruct(
+            let mut policy = TenantRiskPolicy::reconstruct(
                 r.id,
                 r.tenant_id,
                 r.enabled,
@@ -67,7 +68,12 @@ impl TenantRiskPolicyRepository for DbTenantRiskPolicyRepository {
                 r.temporary_block_minutes,
                 r.created_at,
                 r.updated_at,
-            )
+            );
+            // An unknown value (written by a newer binary) reads as the safe default.
+            policy.set_scoring_mode(
+                ScoringMode::parse(&r.scoring_mode).unwrap_or(ScoringMode::Rules),
+            );
+            policy
         }))
     }
 
@@ -81,8 +87,8 @@ impl TenantRiskPolicyRepository for DbTenantRiskPolicyRepository {
              password_spraying_user_threshold, tenant_attack_threshold,
              medium_risk_threshold, high_risk_threshold, critical_risk_threshold,
              require_mfa_on_high_risk, block_on_critical_risk, temporary_block_minutes,
-             created_at, updated_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+             created_at, updated_at, scoring_mode)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
           ON CONFLICT (tenant_id) DO UPDATE SET
             enabled = EXCLUDED.enabled,
             failed_ip_threshold = EXCLUDED.failed_ip_threshold,
@@ -95,6 +101,7 @@ impl TenantRiskPolicyRepository for DbTenantRiskPolicyRepository {
             require_mfa_on_high_risk = EXCLUDED.require_mfa_on_high_risk,
             block_on_critical_risk = EXCLUDED.block_on_critical_risk,
             temporary_block_minutes = EXCLUDED.temporary_block_minutes,
+            scoring_mode = EXCLUDED.scoring_mode,
             updated_at = now()
         "#,
                 policy.id(),
@@ -112,6 +119,7 @@ impl TenantRiskPolicyRepository for DbTenantRiskPolicyRepository {
                 policy.temporary_block_minutes(),
                 policy.created_at(),
                 policy.updated_at(),
+                policy.scoring_mode().as_str(),
             ),
             execute
         )

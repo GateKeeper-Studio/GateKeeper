@@ -256,6 +256,11 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
             get(security_handler::get_login_event),
         )
         .route(
+            "/tenants/{tenant_id}/security/login-events/{id}/label",
+            put(security_handler::label_login_event)
+                .delete(security_handler::clear_login_event_label),
+        )
+        .route(
             "/tenants/{tenant_id}/security/suspicious-ips",
             get(security_handler::list_suspicious_ips),
         )

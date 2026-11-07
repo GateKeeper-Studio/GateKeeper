@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT e.risk_model AS \"risk_model!\", l.label AS \"label?\",\n                          e.created_at AS occurred_at\n                   FROM login_events e\n                   LEFT JOIN login_event_labels l ON l.login_event_id = e.id\n                   WHERE e.created_at >= $1 AND e.risk_model IS NOT NULL\n                   ORDER BY e.created_at\n                   LIMIT $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "risk_model!",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "risk_model"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "label?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "login_event_labels",
+            "name": "label"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "occurred_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "7f6c02f6ac4ec902df7d3076dc5d376ce3619b1dd82b767266af61683164b834"
+}

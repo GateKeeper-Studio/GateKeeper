@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, tenant_id, enabled, failed_ip_threshold, failed_user_threshold,\n                          password_spraying_user_threshold, tenant_attack_threshold,\n                          medium_risk_threshold, high_risk_threshold, critical_risk_threshold,\n                          require_mfa_on_high_risk, block_on_critical_risk,\n                          temporary_block_minutes, created_at, updated_at\n                   FROM \"tenant_risk_policies\"\n                   WHERE tenant_id = $1",
+  "query": "SELECT id, tenant_id, enabled, failed_ip_threshold, failed_user_threshold,\n                          password_spraying_user_threshold, tenant_attack_threshold,\n                          medium_risk_threshold, high_risk_threshold, critical_risk_threshold,\n                          require_mfa_on_high_risk, block_on_critical_risk,\n                          temporary_block_minutes, scoring_mode, created_at, updated_at\n                   FROM \"tenant_risk_policies\"\n                   WHERE tenant_id = $1",
   "describe": {
     "columns": [
       {
@@ -148,6 +148,17 @@
       },
       {
         "ordinal": 13,
+        "name": "scoring_mode",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "tenant_risk_policies",
+            "name": "scoring_mode"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -158,7 +169,7 @@
         }
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -189,8 +200,9 @@
       false,
       false,
       false,
+      false,
       true
     ]
   },
-  "hash": "955ff0e1178e287d8ac2d1077333de5398a1d5a5059ec827c36ffbfe19201871"
+  "hash": "7e8f13ce41de7c1579a3e711b217a2eed821d9007001062dc5dec8e31a6ce1e3"
 }

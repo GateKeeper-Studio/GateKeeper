@@ -14,7 +14,8 @@ use crate::domain::{
         email_verification_token_repository::EmailVerificationTokenRepository,
         external_identity_provider_repository::ExternalIdentityProviderRepository,
         external_login_flow_repository::ExternalLoginFlowRepository,
-        group_repository::GroupRepository, login_event_repository::LoginEventRepository,
+        group_repository::GroupRepository, login_event_label_repository::LoginEventLabelRepository,
+        login_event_repository::LoginEventRepository,
         magic_link_token_repository::MagicLinkTokenRepository,
         mfa_challenge_repository::MfaChallengeRepository,
         mfa_enrollment_repository::MfaEnrollmentRepository,
@@ -77,6 +78,9 @@ pub trait UnitOfWork: Send + Sync {
     fn login_event_repository(&self) -> Arc<dyn LoginEventRepository>;
     fn security_block_repository(&self) -> Arc<dyn SecurityBlockRepository>;
     fn tenant_risk_policy_repository(&self) -> Arc<dyn TenantRiskPolicyRepository>;
+    // Labels on login events (the statistical model's training feedback): an admin's
+    // label commits with its audit event.
+    fn login_event_label_repository(&self) -> Arc<dyn LoginEventLabelRepository>;
 
     // Outbound events. `outbox_event_repository` is the important one: a use case
     // enqueues through it so the event commits in the SAME transaction as the change

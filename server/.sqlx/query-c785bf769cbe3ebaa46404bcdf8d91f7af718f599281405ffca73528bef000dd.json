@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,\n                 ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,\n                 city, latitude, longitude, asn, isp, credentials_valid, success,\n                 failure_reason, risk_score, risk_level, decision, created_at\n          FROM \"login_events\"\n          WHERE tenant_id = $1\n            AND ($2::uuid IS NULL OR user_id = $2)\n            AND ($3::text IS NULL OR ip_address = $3)\n            AND ($4::text IS NULL OR country_code = $4)\n            AND ($5::text IS NULL OR risk_level = $5)\n            AND ($6::text IS NULL OR decision = $6)\n            AND ($7::bool IS NULL OR success = $7)\n            AND ($8::timestamptz IS NULL OR created_at >= $8)\n            AND ($9::timestamptz IS NULL OR created_at <= $9)\n            AND ($10::text IS NULL OR EXISTS (\n                  SELECT 1 FROM \"login_risk_signals\" s\n                  WHERE s.login_event_id = login_events.id AND s.signal_type = $10))\n          ORDER BY created_at DESC\n          LIMIT $11 OFFSET $12\n        ",
+  "query": "\n          SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,\n                 ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,\n                 city, latitude, longitude, asn, isp, credentials_valid, success,\n                 failure_reason, risk_score, risk_level, decision, risk_features,\n                 risk_model, created_at\n          FROM \"login_events\"\n          WHERE tenant_id = $1\n            AND ($2::uuid IS NULL OR user_id = $2)\n            AND ($3::text IS NULL OR ip_address = $3)\n            AND ($4::text IS NULL OR country_code = $4)\n            AND ($5::text IS NULL OR risk_level = $5)\n            AND ($6::text IS NULL OR decision = $6)\n            AND ($7::bool IS NULL OR success = $7)\n            AND ($8::timestamptz IS NULL OR created_at >= $8)\n            AND ($9::timestamptz IS NULL OR created_at <= $9)\n            AND ($10::text IS NULL OR EXISTS (\n                  SELECT 1 FROM \"login_risk_signals\" s\n                  WHERE s.login_event_id = login_events.id AND s.signal_type = $10))\n          ORDER BY created_at DESC\n          LIMIT $11 OFFSET $12\n        ",
   "describe": {
     "columns": [
       {
@@ -258,6 +258,28 @@
       },
       {
         "ordinal": 23,
+        "name": "risk_features",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "risk_features"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "risk_model",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "risk_model"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -308,8 +330,10 @@
       false,
       false,
       false,
+      true,
+      true,
       false
     ]
   },
-  "hash": "c5167973a87dca1f6c89fc249affd8af6228476d6ecc05025251ecf666036b07"
+  "hash": "c785bf769cbe3ebaa46404bcdf8d91f7af718f599281405ffca73528bef000dd"
 }

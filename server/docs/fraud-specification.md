@@ -1461,6 +1461,12 @@ Long-term, the policy system can be implemented as:
 
 ## 18.5 Machine Learning
 
+> **Implemented** as an opt-in statistical score next to the rules — see
+> [`RISK-SCORING.md`](RISK-SCORING.md): a logistic-regression adapter behind the same
+> Risk Engine port, per-tenant `rules` / `shadow` / `hybrid` modes, admin labels plus
+> step-up-MFA outcomes as the dataset, a training CLI with quality gates and manual
+> promotion, and a drift report. It can only add step-up MFA, never block.
+
 Only consider ML after enough high-quality labeled data exists.
 
 Useful ML targets:

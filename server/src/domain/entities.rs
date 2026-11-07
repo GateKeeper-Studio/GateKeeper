@@ -33,6 +33,7 @@ pub mod oauth_client;
 pub mod password_change_token;
 pub mod password_reset_token;
 pub mod refresh_token;
+pub mod risk_model;
 pub mod signing_key;
 pub mod social_identity;
 
@@ -44,6 +45,7 @@ pub mod policy_acceptance;
 
 // Fraud / suspicious-login detection (Risk Engine)
 pub mod login_event;
+pub mod login_event_label;
 pub mod security_block;
 pub mod tenant_risk_policy;
 

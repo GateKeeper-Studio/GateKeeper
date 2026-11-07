@@ -33,6 +33,8 @@ cargo test --features db-tests
 cargo run -- --migrate-only
 # Upgrade every secret at rest to the current key/format (also runs at every startup)
 cargo run --bin repair_encrypted_secrets -- --reseal
+# Statistical risk model: train a candidate, list, promote/rollback, drift report
+cargo run --bin train_risk_model -- train|list|promote <id>|rollback|report
 
 # Database migrations (requires a running Postgres + DATABASE_URL)
 sqlx migrate run               # migrations live in ./migrations (paired .up.sql / .down.sql)
@@ -198,6 +200,11 @@ exempt list because their caller comes from the token.
   token revokes the whole token family and emits `token.reuse_detected`. A refresh (and
   the social-login callback) is also **risk-scored** by the same engine as an interactive
   login: geo-enriched, recorded as a login event, and refused on a critical decision.
+- **Statistical risk scoring stays subordinate to the rules.** `HybridRiskEngine` may only
+  ADD a `STATISTICAL_RISK` signal that lifts the score to the tenant's HIGH threshold (step-up
+  MFA) — never to CRITICAL, never negative, never for invalid credentials — and falls back to
+  rules on any doubt about the model. Feature vectors carry no identifiers. Model training and
+  promotion are the `train_risk_model` CLI (`docs/RISK-SCORING.md`).
 - **Ending sessions notifies the apps (OIDC Back-Channel Logout).** Any use case that
   revokes a user's refresh tokens (or deletes the user) must first call
   `announce_ended_sessions` (`application/shared/backchannel_logout.rs`) in the same unit
@@ -288,6 +295,8 @@ See [`.env.example`](.env.example) for the annotated template.
 | `POLICY_TERMS_VERSION` / `POLICY_PRIVACY_VERSION` | Current required policy versions |
 | `GEOIP_CITY_DB_PATH` | Path to a MaxMind `GeoLite2-City.mmdb`. Unset ⇒ GeoIP enrichment disabled (a no-op resolver is wired) and geo rules (new country, impossible travel) never fire — the login flow is otherwise unaffected. |
 | `GEOIP_ASN_DB_PATH` | Optional path to `GeoLite2-ASN.mmdb` for ASN/ISP enrichment. |
+| `RISK_SCORING` | Risk Engine adapter: `rules` (default, deterministic engine) or `hybrid` (rules + statistical score, which each tenant opts into with its risk policy's `scoring_mode`). Any other value stops the boot. See [`docs/RISK-SCORING.md`](docs/RISK-SCORING.md) |
+| `RISK_MODEL_MAX_AGE_DAYS` / `RISK_MODEL_CACHE_TTL_SECONDS` | An active risk model older than this stops scoring (default `90`) / how long it is cached per process (default `60`) |
 | `WEBHOOKS_ENABLED` | Run the outbound-webhook dispatcher (default `true`). Off does not lose events — the outbox keeps filling. |
 | `WEBHOOK_POLL_INTERVAL_SECONDS` | How often the dispatcher drains the outbox (default `5`) |
 | `WEBHOOK_BATCH_SIZE` | Rows claimed per phase per tick (default `100`) |

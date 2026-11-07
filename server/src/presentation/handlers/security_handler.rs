@@ -10,8 +10,9 @@ use uuid::Uuid;
 
 use crate::{
     application::use_cases::security::{
-        block_ip, get_login_event, get_overview, get_risk_policy, list_attacked_users,
-        list_login_events, list_suspicious_ips, unblock_ip, update_risk_policy,
+        block_ip, get_login_event, get_overview, get_risk_policy, label_login_event,
+        list_attacked_users, list_login_events, list_suspicious_ips, unblock_ip,
+        update_risk_policy,
     },
     domain::entities::audit_action::{
         SECURITY_IP_BLOCKED, SECURITY_IP_UNBLOCKED, SECURITY_RISK_POLICY_UPDATED,
@@ -104,6 +105,73 @@ pub async fn get_login_event(
         .await?
         .ok_or_else(|| ApiError::NotFound("login event not found".to_string()))?;
     Ok((StatusCode::OK, Json(response)))
+}
+
+#[derive(Deserialize)]
+pub struct LabelBody {
+    // "legitimate" | "fraudulent"
+    pub label: String,
+    pub note: Option<String>,
+}
+
+// PUT /tenants/:tenant_id/security/login-events/:id/label
+//
+// An admin's verdict on a login event, the statistical risk model's training
+// feedback (docs/RISK-SCORING.md). Audited in the same transaction.
+pub async fn label_login_event(
+    State(state): State<AppState>,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
+    ctx: RequestContext,
+    AppJson(body): AppJson<LabelBody>,
+) -> Result<impl IntoResponse, ApiError> {
+    let label = state
+        .security
+        .label_login_event
+        .execute(
+            &principal.actor(),
+            label_login_event::Command {
+                tenant_id,
+                login_event_id: id,
+                label: Some(body.label),
+                note: body.note,
+                ip_address: ctx.ip_address,
+                user_agent: ctx.user_agent,
+            },
+        )
+        .await?;
+    Ok((StatusCode::OK, Json(label)))
+}
+
+// DELETE /tenants/:tenant_id/security/login-events/:id/label
+pub async fn clear_login_event_label(
+    State(state): State<AppState>,
+    TenantScope {
+        tenant_id,
+        principal,
+    }: TenantScope,
+    Path((_, id)): Path<(Uuid, Uuid)>,
+    ctx: RequestContext,
+) -> Result<impl IntoResponse, ApiError> {
+    state
+        .security
+        .label_login_event
+        .execute(
+            &principal.actor(),
+            label_login_event::Command {
+                tenant_id,
+                login_event_id: id,
+                label: None,
+                note: None,
+                ip_address: ctx.ip_address,
+                user_agent: ctx.user_agent,
+            },
+        )
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -209,6 +277,9 @@ pub struct RiskPolicyBody {
     pub require_mfa_on_high_risk: bool,
     pub block_on_critical_risk: bool,
     pub temporary_block_minutes: i32,
+    // "rules" | "shadow" | "hybrid" (docs/RISK-SCORING.md). Omitted = unchanged.
+    #[serde(default)]
+    pub scoring_mode: Option<String>,
 }
 
 // PUT /tenants/:tenant_id/security/risk-policy
@@ -239,6 +310,7 @@ pub async fn update_risk_policy(
                 require_mfa_on_high_risk: body.require_mfa_on_high_risk,
                 block_on_critical_risk: body.block_on_critical_risk,
                 temporary_block_minutes: body.temporary_block_minutes,
+                scoring_mode: body.scoring_mode,
             },
         )
         .await?;

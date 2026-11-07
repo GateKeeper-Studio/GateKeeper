@@ -496,6 +496,9 @@ async fn auth_sessions_round_trip_their_primary_factor(pool: PgPool) {
 
     let mut read = read;
     read.verify_mfa(&MfaMethod::Webauthn, Utc::now());
+    // The login event a risk step-up came from survives the round trip.
+    let risk_event = Uuid::now_v7();
+    read.set_risk_login_event_id(Some(risk_event));
     repo.update(&read).await.unwrap();
     let verified = repo
         .find_by_id(tenant.id(), read.id())
@@ -503,6 +506,7 @@ async fn auth_sessions_round_trip_their_primary_factor(pool: PgPool) {
         .unwrap()
         .expect("passkey session");
     assert_eq!(verified.primary_factor(), PrimaryFactor::Passkey);
+    assert_eq!(verified.risk_login_event_id(), Some(risk_event));
     assert!(!verified.is_mfa_pending());
     assert!(verified.authenticated_at().is_some());
 
@@ -986,4 +990,355 @@ async fn a_signed_out_session_reaches_the_app_as_a_verifiable_logout_token(pool:
     assert_eq!(claims["sid"], session.family_id().to_string());
     assert!(claims["events"].get(BACKCHANNEL_LOGOUT_EVENT).is_some());
     assert!(claims.get("nonce").is_none());
+}
+
+// Statistical risk scoring (docs/RISK-SCORING.md): the scoring-only feature queries,
+// the stored feature vector, label precedence (admin beats weak, tenant-scoped), the
+// cross-tenant training dataset, one active model at a time, and the tenant mode.
+#[sqlx::test(migrations = "./migrations")]
+async fn risk_scoring_storage_round_trips(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::{
+                login_event::LoginEvent,
+                login_event_label::{LabelSource, LoginEventLabel, RiskLabel},
+                risk_model::{ModelParams, ModelStatus, RiskModel},
+                tenant_risk_policy::{ScoringMode, TenantRiskPolicy},
+            },
+            repositories::{
+                login_event_label_repository::LoginEventLabelRepository,
+                login_event_repository::LoginEventRepository,
+                risk_model_repository::RiskModelRepository,
+                tenant_risk_policy_repository::TenantRiskPolicyRepository,
+            },
+        },
+        infraestructure::database::repositories::{
+            login_event_label_repository::DbLoginEventLabelRepository,
+            login_event_repository::DbLoginEventRepository,
+            risk_model_repository::DbRiskModelRepository,
+            tenant_risk_policy_repository::DbTenantRiskPolicyRepository,
+        },
+    };
+
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let other_tenant = seed_tenant(&pool, &cipher, "pepper-2").await;
+    let user = seed_user(&pool, &tenant).await;
+    let events = DbLoginEventRepository::new(pool.clone());
+    let since = Utc::now() - Duration::days(7);
+
+    // History: two successes from ASN 64500 (one is the user's), one from 64999,
+    // and a failure from the same IP.
+    let features = serde_json::json!({ "v": 1, "values": { "new_device": 1.0 } });
+    let login = |user_id: Option<Uuid>, ok: bool, asn: i32| {
+        LoginEvent::new(tenant.id(), user_id, None, ok, ok)
+            .with_network(Some("198.51.100.7".to_string()), None, None, None)
+            .with_geo(None, None, None, None, None, Some(asn), None)
+            .with_scoring(Some(features.clone()), None)
+    };
+    let users_login = login(Some(user.id()), true, 64500);
+    events.add(&users_login, &[]).await.unwrap();
+    events.add(&login(None, true, 64500), &[]).await.unwrap();
+    events.add(&login(None, true, 64999), &[]).await.unwrap();
+    events.add(&login(None, false, 64500), &[]).await.unwrap();
+
+    assert!(
+        events
+            .has_seen_asn(tenant.id(), user.id(), 64500)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !events
+            .has_seen_asn(tenant.id(), user.id(), 64999)
+            .await
+            .unwrap()
+    );
+    let share = events.asn_share(tenant.id(), 64500, since).await.unwrap();
+    assert_eq!(
+        (share.from_asn, share.total),
+        (2, 3),
+        "successful logins only"
+    );
+    let ip = events
+        .ip_history(tenant.id(), "198.51.100.7", since)
+        .await
+        .unwrap();
+    assert_eq!((ip.attempts, ip.failed), (4, 1));
+    assert_eq!(
+        events
+            .count_successful_logins(tenant.id(), user.id(), 100)
+            .await
+            .unwrap(),
+        1
+    );
+    let stored = events
+        .find_by_id(tenant.id(), users_login.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.risk_features(), Some(&features));
+
+    // Labels: a weak label never overwrites an admin one; a label cannot attach to
+    // another tenant's event.
+    let labels = DbLoginEventLabelRepository::new(pool.clone());
+    let admin = LoginEventLabel::by_admin(
+        tenant.id(),
+        users_login.id(),
+        RiskLabel::Fraudulent,
+        None,
+        Some("confirmed".to_string()),
+    );
+    assert!(labels.upsert(&admin).await.unwrap());
+    let weak = LoginEventLabel::from_mfa(tenant.id(), users_login.id(), true);
+    assert!(
+        !labels.upsert(&weak).await.unwrap(),
+        "weak never beats admin"
+    );
+    let kept = labels
+        .find(tenant.id(), users_login.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (kept.label(), kept.source()),
+        (RiskLabel::Fraudulent, LabelSource::Admin)
+    );
+    let foreign = LoginEventLabel::by_admin(
+        other_tenant.id(),
+        users_login.id(),
+        RiskLabel::Legitimate,
+        None,
+        None,
+    );
+    assert!(!labels.upsert(&foreign).await.unwrap(), "tenant-scoped");
+
+    // The training dataset: features + verdict for labeled events of the schema.
+    let samples = labels.training_samples(since, 1).await.unwrap();
+    assert_eq!(samples.len(), 1);
+    assert_eq!(samples[0].features, features);
+    assert_eq!(samples[0].label, RiskLabel::Fraudulent);
+    assert!(labels.training_samples(since, 2).await.unwrap().is_empty());
+    assert!(labels.delete(tenant.id(), users_login.id()).await.unwrap());
+
+    // Models: promote swaps the single active model; rollback finds the previous.
+    let models = DbRiskModelRepository::new(pool.clone());
+    let params = ModelParams {
+        feature_names: vec!["new_device".to_string()],
+        means: vec![0.2],
+        stds: vec![0.4],
+        weights: vec![1.25],
+        intercept: -2.0,
+        threshold: 0.9,
+    };
+    let candidate = |version: &str| {
+        RiskModel::candidate(
+            version.to_string(),
+            1,
+            params.clone(),
+            serde_json::json!({ "gates_passed": true }),
+            serde_json::json!({ "legitimate": 300, "fraudulent": 60 }),
+            Utc::now() - Duration::days(30),
+            Utc::now(),
+        )
+    };
+    let (first, second) = (candidate("rm-a"), candidate("rm-b"));
+    models.add(&first).await.unwrap();
+    models.add(&second).await.unwrap();
+    models.promote(first.id()).await.unwrap();
+    models.promote(second.id()).await.unwrap();
+
+    let active = models.find_active().await.unwrap().unwrap();
+    assert_eq!(active.id(), second.id());
+    assert_eq!(active.params(), &params, "parameters round-trip exactly");
+    let retired = models.find_by_id(first.id()).await.unwrap().unwrap();
+    assert_eq!(retired.status(), ModelStatus::Retired);
+    assert_eq!(
+        models.previous_active().await.unwrap().unwrap().id(),
+        first.id()
+    );
+    let actives: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM risk_models WHERE status = 'active'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(actives, 1);
+
+    // The tenant's scoring mode persists.
+    let policies = DbTenantRiskPolicyRepository::new(pool.clone());
+    let mut policy = TenantRiskPolicy::defaults_for(tenant.id());
+    policy.set_scoring_mode(ScoringMode::Shadow);
+    policies.upsert(&policy).await.unwrap();
+    assert_eq!(
+        policies
+            .find_by_tenant(tenant.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .scoring_mode(),
+        ScoringMode::Shadow
+    );
+}
+
+// End to end on Postgres: labeled feature vectors -> train a candidate -> promote it
+// -> a login of a tenant in hybrid mode is scored, explained, and raised to step-up
+// MFA; the same login in shadow mode is explained but not acted on.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_promoted_model_scores_real_logins_through_the_hybrid_engine(pool: PgPool) {
+    use web_api::{
+        application::{
+            ports::{
+                geoip_resolver::{GeoIpResolver, GeoLocation},
+                risk_engine::{RiskEngine, RiskEvaluationInput},
+            },
+            services::{
+                default_risk_engine::DefaultRiskEngine,
+                hybrid_risk_engine::HybridRiskEngine,
+                risk_scoring::features::{FeatureFacts, FeatureVector, HistoryFacts},
+            },
+            use_cases::risk_model::{promote, train},
+        },
+        domain::{
+            entities::{
+                login_event::{LoginEvent, RiskDecision},
+                login_event_label::{LoginEventLabel, RiskLabel},
+                tenant_risk_policy::{ScoringMode, TenantRiskPolicy},
+            },
+            repositories::{
+                login_event_label_repository::LoginEventLabelRepository,
+                login_event_repository::LoginEventRepository,
+                tenant_risk_policy_repository::TenantRiskPolicyRepository,
+            },
+        },
+        infraestructure::database::repositories::{
+            login_event_label_repository::DbLoginEventLabelRepository,
+            login_event_repository::DbLoginEventRepository,
+            risk_model_repository::DbRiskModelRepository,
+            security_block_repository::DbSecurityBlockRepository,
+            tenant_risk_policy_repository::DbTenantRiskPolicyRepository,
+        },
+    };
+
+    struct NoGeo;
+    impl GeoIpResolver for NoGeo {
+        fn lookup(&self, _ip: &str) -> Option<GeoLocation> {
+            None
+        }
+    }
+
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let events = Arc::new(DbLoginEventRepository::new(pool.clone()));
+    let labels = Arc::new(DbLoginEventLabelRepository::new(pool.clone()));
+    let models = Arc::new(DbRiskModelRepository::new(pool.clone()));
+
+    // 600 labeled vectors: fraud comes with an unknown history from a bad IP.
+    for i in 0..600 {
+        let fraud = i % 5 == 0;
+        let facts = FeatureFacts {
+            failed_by_ip: if fraud { 3 + (i % 4) } else { 0 },
+            history: (!fraud).then(|| HistoryFacts {
+                prior_successful_logins: 10 + (i % 7),
+                hours_since_last_login: (i % 24) as f64,
+                ..HistoryFacts::default()
+            }),
+            ip_history: web_api::domain::repositories::login_event_repository::IpHistory {
+                attempts: 10,
+                failed: if fraud { 8 } else { (i % 2) as i64 },
+            },
+            geo_available: false,
+            ..FeatureFacts::default()
+        };
+        let event = LoginEvent::new(tenant.id(), None, None, true, true)
+            .with_scoring(Some(FeatureVector::from_facts(&facts).to_json()), None);
+        events.add(&event, &[]).await.unwrap();
+        let label = if fraud {
+            RiskLabel::Fraudulent
+        } else {
+            RiskLabel::Legitimate
+        };
+        labels
+            .upsert(&LoginEventLabel::by_admin(
+                tenant.id(),
+                event.id(),
+                label,
+                None,
+                None,
+            ))
+            .await
+            .unwrap();
+    }
+
+    let trained = train::UseCase::new(labels.clone(), models.clone())
+        .execute(train::Command {
+            since: Utc::now() - Duration::days(1),
+            target_fpr: 0.02,
+            l2: 0.01,
+        })
+        .await
+        .unwrap();
+    assert!(trained.model.passed_gates(), "{}", trained.model.metrics());
+    promote::UseCase::new(models.clone())
+        .promote(trained.model.id(), false)
+        .await
+        .unwrap();
+
+    // A fresh user (no history) failing from an IP with a bad recent record: the rules
+    // see nothing above their thresholds, the model does.
+    for _ in 0..8 {
+        let failure = LoginEvent::new(tenant.id(), None, None, false, false).with_network(
+            Some("203.0.113.66".to_string()),
+            None,
+            None,
+            None,
+        );
+        events.add(&failure, &[]).await.unwrap();
+    }
+    let engine = HybridRiskEngine::new(
+        DefaultRiskEngine::new(
+            events.clone(),
+            Arc::new(DbSecurityBlockRepository::new(pool.clone())),
+            Arc::new(DbTenantRiskPolicyRepository::new(pool.clone())),
+            Arc::new(NoGeo),
+        ),
+        models,
+        90,
+    );
+    let policies = DbTenantRiskPolicyRepository::new(pool.clone());
+    let input = || RiskEvaluationInput {
+        tenant_id: tenant.id(),
+        user_id: Some(Uuid::now_v7()),
+        client_id: None,
+        username_normalized: Some("new.user@example.com".to_string()),
+        ip_address: Some("203.0.113.66".to_string()),
+        user_agent: Some("agent".to_string()),
+        credentials_valid: true,
+        pre_auth_blocked: false,
+        failure_reason: None,
+        timestamp: Utc::now(),
+    };
+
+    let mut decisions = Vec::new();
+    for mode in [ScoringMode::Shadow, ScoringMode::Hybrid] {
+        let mut policy = TenantRiskPolicy::defaults_for(tenant.id());
+        policy.set_scoring_mode(mode);
+        policies.upsert(&policy).await.unwrap();
+
+        let result = engine.evaluate(input()).await.unwrap();
+        let stored = events
+            .find_by_id(tenant.id(), result.login_event_id.unwrap())
+            .await
+            .unwrap()
+            .unwrap();
+        let verdict = stored.risk_model().expect("scored").clone();
+        assert_eq!(verdict["version"], trained.model.version());
+        assert_eq!(verdict["would_escalate"], true, "{verdict}");
+        assert!(!verdict["contributions"].as_array().unwrap().is_empty());
+        decisions.push(result.decision);
+    }
+
+    assert_eq!(
+        decisions,
+        vec![RiskDecision::Allow, RiskDecision::AllowWithMfa]
+    );
 }

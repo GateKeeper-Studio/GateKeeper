@@ -546,12 +546,8 @@ mod tests {
                 webauthn_enabled: false,
             },
         );
-        let ctx = setup_with_client_and_risk(
-            tenant_id,
-            true,
-            client,
-            Arc::new(FakeRiskEngine::with_decision(RiskDecision::AllowWithMfa)),
-        );
+        let risk = Arc::new(FakeRiskEngine::with_decision(RiskDecision::AllowWithMfa));
+        let ctx = setup_with_client_and_risk(tenant_id, true, client, risk.clone());
 
         let response = ctx
             .use_case
@@ -569,6 +565,21 @@ mod tests {
                 .available_mfa_methods
                 .contains(&MfaMethod::Email.as_str().to_string())
         );
+
+        // The session remembers which login event forced the step-up, so the MFA
+        // outcome can label it for the statistical model.
+        let evaluated = risk.recorded().last().unwrap().login_event_id;
+        let session = ctx
+            .sessions
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .values()
+            .next()
+            .cloned()
+            .unwrap();
+        assert_eq!(session.risk_login_event_id(), Some(evaluated));
     }
 
     // ── Passwordless login: a passkey as the primary factor ──────────────────────

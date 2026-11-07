@@ -258,6 +258,11 @@ impl UseCase {
         // Only persist the session when MFA was actually engaged (a risk-forced step-up
         // with no usable factor leaves the session non-pending → allow).
         if session.is_mfa_pending() {
+            // A risk-forced step-up remembers the login event, so its outcome can
+            // label that event for the statistical model (docs/RISK-SCORING.md).
+            if force_mfa {
+                session.set_risk_login_event_id(risk.login_event_id);
+            }
             uow.auth_session_repository().update(&session).await?;
         }
 
