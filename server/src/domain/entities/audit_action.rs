@@ -24,6 +24,9 @@ pub const USER_MFA_REMOVED: &str = "user.mfa.removed";
 // The user explicitly extended a pre-authorization session from the login UI. Worth
 // recording: a burst of these is what session-fixation probing would look like.
 pub const USER_SESSION_REFRESHED: &str = "user.session.refreshed";
+// A signed-in session (a refresh-token family) was ended — by the user from /me or by
+// an admin. `metadata.all = true` for "sign out everywhere".
+pub const USER_SESSION_REVOKED: &str = "user.session.revoked";
 
 // ── Data-subject rights (LGPD/GDPR) ──────────────────────────────────────────
 pub const USER_PROFILE_UPDATED: &str = "user.profile.updated";

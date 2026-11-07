@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          WITH revoked AS (\n            UPDATE refresh_tokens\n            SET revoked_at = now()\n            WHERE tenant_id = $1 AND user_id = $2 AND family_id = $3 AND revoked_at IS NULL\n            RETURNING id\n          )\n          SELECT EXISTS (\n            SELECT 1 FROM refresh_tokens\n            WHERE tenant_id = $1 AND user_id = $2 AND family_id = $3\n          ) AS \"owned!\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "owned!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "928c7917edd86b201547dbf6f297efc443781c598705a3470df15823ed1fabdf"
+}

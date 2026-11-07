@@ -190,6 +190,43 @@ token replayed *later* is still caught. The tradeoff: a token replayed **inside*
 is honored, so keep the window small. (BFF clients should still coalesce concurrent
 refreshes so only one token is presented; leeway covers the residual races.)
 
+### Active sessions (list + sign out)
+
+A **session** is an active refresh-token family: one sign-in to one app, followed by its
+refreshes. It is a view over the rotation rows above (`application/use_cases/session/`),
+with no table of its own. A family is listed when its newest token is still live (not
+revoked, not rotated, not expired). For each session the list shows:
+
+| Field | Meaning |
+|---|---|
+| `id` | The family id. Pass it to the revoke endpoint. |
+| `client_id`, `client_name`, `scopes` | The app (public client id) and what it may do. |
+| `signed_in_at` | The family's first token: when the authorization code was exchanged. |
+| `last_active_at` | The newest token: the last refresh. Only as precise as the access-token lifetime. |
+| `expires_at` | When the live refresh token expires if not used again. |
+
+| Surface | Endpoints | Who |
+|---|---|---|
+| Self-service | `GET /me/sessions`, `DELETE /me/sessions/{id}`, `DELETE /me/sessions` (all) | the user (`account` scope) |
+| Admin | `GET /tenants/{t}/users/{u}/sessions`, `DELETE …/sessions/{id}`, `DELETE …/sessions` (all) | tenant admins; dashboard: user page → Security |
+
+- **Minimal by construction.** The refresh-token table stores no IP or user agent, and the
+  view adds none: no token ids or hashes leave the server, only the fields above.
+- **One use case for both surfaces.** `revoke_user_session` / `revoke_all_user_sessions`
+  authorize with `Actor::authorize_account`: the user themself or an admin of the tenant.
+  The revoke is scoped to the user (`revoke_family_of_user`), so a session id of another
+  user is simply not found. No step-up: ending a session only removes access.
+- **What revoking does.** Every token of the family is revoked, so the app's next refresh
+  fails with `invalid_grant` (and is reported as reuse). An **access token already issued
+  stays valid until it expires** — access tokens are stateless JWTs, at most
+  `ACCESS_TOKEN_TTL_SECONDS` (15 min).
+- **Audit.** `user.session.revoked`, in the same transaction as the revoke: actor type
+  `user` for your own session, `admin` otherwise; `resource = session/<family id>`, or
+  `metadata.all = true` for "sign out everywhere".
+- **Not provided:** device details, which would need new data at sign-in; a "this session"
+  marker on `/me` (access tokens carry no family id — a `sid` claim would); and the
+  platform-admin dashboard's own sessions (`admin_refresh_tokens`).
+
 ---
 
 ## 5. UserInfo

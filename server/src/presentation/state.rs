@@ -69,6 +69,7 @@ use crate::{
                 block_ip, get_login_event, get_overview, get_risk_policy, list_attacked_users,
                 list_login_events, list_suspicious_ips, unblock_ip, update_risk_policy,
             },
+            session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
             tenant::{
                 create_tenant, delete_tenant_by_id, get_tenant_by_id, list_tenants,
                 update_tenant_appearance, update_tenant_by_id,
@@ -179,6 +180,14 @@ pub struct OAuthClientUseCases {
     pub list_external_providers: Arc<list_external_providers::use_case::UseCase>,
     pub update_external_provider: Arc<update_external_provider::use_case::UseCase>,
     pub delete_external_provider: Arc<delete_external_provider::use_case::UseCase>,
+}
+
+// Signed-in sessions (active refresh-token families): list and end them, from /me
+// and from the admin API.
+pub struct SessionUseCases {
+    pub list_user_sessions: Arc<list_user_sessions::use_case::UseCase>,
+    pub revoke_user_session: Arc<revoke_user_session::use_case::UseCase>,
+    pub revoke_all_user_sessions: Arc<revoke_all_user_sessions::use_case::UseCase>,
 }
 
 // Consent grants.
@@ -302,6 +311,7 @@ pub struct AppState {
     pub oauth: Arc<OAuthUseCases>,
     pub oauth_clients: Arc<OAuthClientUseCases>,
     pub consents: Arc<ConsentUseCases>,
+    pub sessions: Arc<SessionUseCases>,
     pub authentication: Arc<AuthenticationUseCases>,
     pub mfa: Arc<MfaUseCases>,
     pub webhooks: Arc<WebhookUseCases>,

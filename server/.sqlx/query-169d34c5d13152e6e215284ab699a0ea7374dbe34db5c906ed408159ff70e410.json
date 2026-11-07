@@ -1,0 +1,85 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT family_id AS \"family_id!\", client_id AS \"client_id!\", scopes AS \"scopes!\",\n            signed_in_at AS \"signed_in_at!\", created_at AS \"last_used_at!\",\n            expires_at AS \"expires_at!\"\n          FROM (\n            SELECT family_id, client_id, scopes, created_at, expires_at, revoked_at, rotated_at,\n              MIN(created_at) OVER (PARTITION BY family_id) AS signed_in_at,\n              ROW_NUMBER() OVER (PARTITION BY family_id ORDER BY created_at DESC, id DESC) AS rn\n            FROM refresh_tokens\n            WHERE tenant_id = $1 AND user_id = $2\n          ) latest\n          WHERE rn = 1 AND revoked_at IS NULL AND rotated_at IS NULL AND expires_at > $3\n          ORDER BY created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "family_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "family_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "client_id!",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "scopes!",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "signed_in_at!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "last_used_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "expires_at!",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "refresh_tokens",
+            "name": "expires_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null,
+      false,
+      false
+    ]
+  },
+  "hash": "169d34c5d13152e6e215284ab699a0ea7374dbe34db5c906ed408159ff70e410"
+}

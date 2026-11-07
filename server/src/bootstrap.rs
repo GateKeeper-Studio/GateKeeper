@@ -86,6 +86,7 @@ use crate::{
                 block_ip, get_login_event, get_overview, get_risk_policy, list_attacked_users,
                 list_login_events, list_suspicious_ips, unblock_ip, update_risk_policy,
             },
+            session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
             tenant::{
                 create_tenant, delete_tenant_by_id, get_tenant_by_id, list_tenants,
                 update_tenant_appearance, update_tenant_by_id,
@@ -120,7 +121,8 @@ use crate::{
         mfa_enrollment_repository::MfaEnrollmentRepository,
         oauth_client_repository::OAuthClientRepository,
         organization_repository::OrganizationRepository,
-        policy_acceptance_repository::PolicyAcceptanceRepository, role_repository::RoleRepository,
+        policy_acceptance_repository::PolicyAcceptanceRepository,
+        refresh_token_repository::RefreshTokenRepository, role_repository::RoleRepository,
         security_block_repository::SecurityBlockRepository,
         signing_key_repository::SigningKeyRepository,
         social_identity_repository::SocialIdentityRepository, tenant_repository::TenantRepository,
@@ -156,6 +158,7 @@ use crate::{
                 oauth_client_repository::DbOAuthClientRepository,
                 organization_repository::DbOrganizationRepository,
                 policy_acceptance_repository::DbPolicyAcceptanceRepository,
+                refresh_token_repository::DbRefreshTokenRepository,
                 role_repository::DbRoleRepository,
                 security_block_repository::DbSecurityBlockRepository,
                 signing_key_repository::DbSigningKeyRepository,
@@ -254,6 +257,9 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
         Arc::new(DbAdminRefreshTokenRepository::new(db_pool.clone()));
     let consent_grant_repository: Arc<dyn ConsentGrantRepository> =
         Arc::new(DbConsentGrantRepository::new(db_pool.clone()));
+    // Read path of the session list; revocations go through the Unit of Work.
+    let refresh_token_repository: Arc<dyn RefreshTokenRepository> =
+        Arc::new(DbRefreshTokenRepository::new(db_pool.clone()));
     let email_provider_repository: Arc<dyn EmailProviderRepository> =
         Arc::new(DbEmailProviderRepository::new(db_pool.clone()));
     let webhook_subscription_repository: Arc<dyn WebhookSubscriptionRepository> =
@@ -602,6 +608,19 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             revoke_consent: Arc::new(revoke_consent::use_case::UseCase::new(Arc::clone(
                 &uow_factory,
             ))),
+        }),
+        sessions: Arc::new(SessionUseCases {
+            list_user_sessions: Arc::new(list_user_sessions::use_case::UseCase::new(
+                Arc::clone(&refresh_token_repository),
+                Arc::clone(&oauth_client_repository),
+                Arc::clone(&user_repository),
+            )),
+            revoke_user_session: Arc::new(revoke_user_session::use_case::UseCase::new(Arc::clone(
+                &uow_factory,
+            ))),
+            revoke_all_user_sessions: Arc::new(revoke_all_user_sessions::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+            )),
         }),
         authentication: Arc::new(AuthenticationUseCases {
             external_login_start: Arc::new(external_login::start::use_case::UseCase::new(

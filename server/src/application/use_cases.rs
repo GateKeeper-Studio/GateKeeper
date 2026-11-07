@@ -13,6 +13,7 @@ pub mod oauth_client;
 pub mod organization;
 pub mod role;
 pub mod security;
+pub mod session;
 pub mod tenant;
 pub mod tenant_custom_field;
 pub mod tenant_user;

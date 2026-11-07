@@ -324,6 +324,130 @@ async fn refresh_token_rotation_and_family_revocation(pool: PgPool) {
     }
 }
 
+// The session list is one SQL query over the rotation rows: one row per live family,
+// with its first and last created_at. Ending a session is scoped to its owner.
+#[sqlx::test(migrations = "./migrations")]
+async fn sessions_are_live_refresh_token_families_scoped_to_their_user(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let client = seed_client(&pool, &tenant).await;
+    let alice = seed_user(&pool, &tenant).await;
+    let bob = seed_user(&pool, &tenant).await;
+    let repo = DbRefreshTokenRepository::new(pool.clone());
+    let now = Utc::now();
+    let token = |hash: &str, user: &User, at: chrono::DateTime<Utc>| {
+        RefreshToken::reconstruct(
+            Uuid::now_v7(),
+            tenant.id(),
+            hash.to_string(),
+            client.id(),
+            user.id(),
+            vec!["openid".to_string()],
+            Uuid::now_v7(),
+            None,
+            None,
+            at + Duration::days(30),
+            at,
+        )
+    };
+
+    // A family signed in two hours ago, refreshed once an hour ago, plus a sibling
+    // reissued within the reuse leeway (both newest rows live).
+    let signed_in_at = now - Duration::hours(2);
+    let mut first = token("s-1", &alice, signed_in_at);
+    repo.add(&first).await.unwrap();
+    let refreshed_at = now - Duration::hours(1);
+    let second = first.rotate(
+        "s-2".to_string(),
+        refreshed_at + Duration::days(30),
+        refreshed_at,
+    );
+    repo.rotate(&first, &second).await.unwrap();
+    let sibling = first.reissue_within_family(
+        "s-3".to_string(),
+        refreshed_at + Duration::days(30),
+        refreshed_at - Duration::seconds(1),
+    );
+    repo.add(&sibling).await.unwrap();
+    let family_id = first.family_id();
+
+    // A second, more recent session of Alice on the same app.
+    let recent = token("r-1", &alice, now - Duration::minutes(5));
+    repo.add(&recent).await.unwrap();
+
+    // Not listed: revoked, expired, and Bob's.
+    let revoked = token("v-1", &alice, now - Duration::minutes(30));
+    repo.add(&revoked).await.unwrap();
+    repo.revoke_family(tenant.id(), revoked.family_id())
+        .await
+        .unwrap();
+    let expired = token("e-1", &alice, now - Duration::days(31));
+    repo.add(&expired).await.unwrap();
+    let bobs = token("b-1", &bob, now - Duration::minutes(1));
+    repo.add(&bobs).await.unwrap();
+
+    let sessions = repo
+        .find_active_families_by_user(tenant.id(), alice.id(), now)
+        .await
+        .unwrap();
+    let ids: Vec<_> = sessions.iter().map(|s| s.family_id).collect();
+    assert_eq!(
+        ids,
+        vec![recent.family_id(), family_id],
+        "newest activity first"
+    );
+    let rotated = &sessions[1];
+    let micros = |t: chrono::DateTime<Utc>| t.timestamp_micros();
+    assert_eq!(micros(rotated.signed_in_at), micros(signed_in_at));
+    assert_eq!(micros(rotated.last_used_at), micros(refreshed_at));
+    assert_eq!(rotated.client_id, client.id());
+    assert_eq!(rotated.scopes, vec!["openid".to_string()]);
+
+    // Bob cannot end Alice's session by its id: not his, nothing changes.
+    assert!(
+        !repo
+            .revoke_family_of_user(tenant.id(), bob.id(), family_id)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        repo.find_active_families_by_user(tenant.id(), alice.id(), now)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+
+    // Alice ends it: every row of the family is revoked; ending it again still
+    // reports that it is hers.
+    assert!(
+        repo.revoke_family_of_user(tenant.id(), alice.id(), family_id)
+            .await
+            .unwrap()
+    );
+    for hash in ["s-1", "s-2", "s-3"] {
+        let row = repo
+            .find_by_token_hash(tenant.id(), hash)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(row.revoked_at().is_some(), "{hash} must be revoked");
+    }
+    assert!(
+        repo.revoke_family_of_user(tenant.id(), alice.id(), family_id)
+            .await
+            .unwrap()
+    );
+    let left: Vec<_> = repo
+        .find_active_families_by_user(tenant.id(), alice.id(), now)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|s| s.family_id)
+        .collect();
+    assert_eq!(left, vec![recent.family_id()]);
+}
+
 fn login_session(tenant: &Tenant, client: &OAuthClient, token_hash: &str) -> AuthSession {
     let now = Utc::now();
     AuthSession::new(

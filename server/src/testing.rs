@@ -13,6 +13,7 @@ pub mod manual_task_spawner;
 pub mod oauth_fakes;
 pub mod password_hasher;
 pub mod recording_email_sender;
+pub mod session_fixture;
 pub mod stub_secret_cipher;
 pub mod templated_email_support;
 pub mod user_factory;

@@ -18,6 +18,7 @@ pub mod oauth_token_handler;
 pub mod oauth_userinfo_handler;
 pub mod role_handler;
 pub mod security_handler;
+pub mod session_handler;
 pub mod step_up;
 pub mod tenant_custom_field_handler;
 pub mod tenant_handler;
