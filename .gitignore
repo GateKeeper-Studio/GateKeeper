@@ -18,4 +18,4 @@
 # to a developer-specific absolute path (webauthn-rs links OpenSSL and Fedora ships
 # no -devel package), which cannot work on CI or in a container image. Keep it
 # local; see server/.cargo/config.toml.example.
-.cargo/config.toml
+**/.cargo/config.toml
