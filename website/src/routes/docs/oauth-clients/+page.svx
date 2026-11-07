@@ -1,0 +1,82 @@
+---
+title: OAuth clients
+description: Every setting on an application, and what it actually changes.
+section: Configuring a tenant
+---
+
+An OAuth client is one application. The detail page has four tabs — **Overview**, **Credentials**,
+**Providers**, **Appearance** — and this page is the field reference for all of them.
+
+## Overview
+
+| Field | Meaning |
+| --- | --- |
+| **Name** | Display name. Shown to users on the consent screen. |
+| **Client type** | `public` (no secret, PKCE only) or `confidential` (has a secret). |
+| **Redirect URIs** | Exact-match URLs GateKeeper may return the user to. |
+| **Post-logout redirect URIs** | Exact-match URLs allowed after sign-out. |
+| **Allowed scopes** | The *superset* this client may ever request. |
+| **Allowed grant types** | Which OAuth grants this client may use. |
+| **Require PKCE** | Keep this on. |
+| **Require consent** | Show a consent screen the first time a user authorizes this app. |
+| **Active** | Turning this off immediately stops all sign-ins for this app. |
+| **Terms / Privacy URI** | Linked from the login and consent screens. |
+
+### Scopes are a ceiling, not a grant
+
+`allowed_scopes` is the maximum a client may ask for. At authorization time the *requested* scopes
+are **intersected** with this list — never widened. A client that requests `admin` when `admin` is
+not in its allowed scopes does not get an error and does not get the scope; it simply gets the
+scopes it is entitled to.
+
+The four scopes GateKeeper knows about: `openid`, `profile`, `email`, and `offline_access` — the
+last of which is what gets you a refresh token.
+
+### Grant types
+
+Discovery advertises exactly two: `authorization_code` and `refresh_token`.
+
+> [!WARNING]
+> The form also offers a **`client_credentials`** checkbox, but the token endpoint does not
+> implement that grant and discovery does not advertise it. Ticking it has no effect today — there
+> is no machine-to-machine flow. Do not design against it.
+
+There is also, deliberately, **no password grant**. Authenticating a user by posting their password
+to a token endpoint would bypass MFA and the risk engine entirely, so no such endpoint exists.
+
+## Credentials
+
+Where you find the client id, and rotate the secret.
+
+Rotation takes effect **immediately** — the previous secret stops working the moment the new one is
+issued, so deploy the new secret in the same breath. The new secret is displayed once and never
+again; it is stored as an Argon2 hash, salted with the tenant's pepper.
+
+Public clients have no secret at all. That is the point of them.
+
+## MFA policy
+
+Multi-factor is configured **per client**, not per tenant. One tenant can require MFA for its admin
+console and not for its public marketing app, with the same users in both.
+
+| Setting | Effect |
+| --- | --- |
+| **MFA required** | Every user must complete a second factor to sign into *this* app. |
+| **Email enabled** | Allow a one-time code by email. |
+| **TOTP enabled** | Allow an authenticator app. |
+| **WebAuthn enabled** | Allow a passkey / security key. |
+
+Leaving **MFA required** off does not disable MFA — the risk engine can still demand it on a
+suspicious login. See [How risk scoring works](/docs/risk-engine). The full mechanics are in
+[Multi-factor authentication](/docs/mfa).
+
+## Providers and Appearance
+
+The other two tabs get their own pages: [Social login](/docs/social-login) for Google/GitHub, and
+[Login page branding](/docs/branding) for how the hosted login page looks.
+
+## Email provider
+
+A client can be pinned to a specific SMTP provider, or left on **Tenant default**. This is how a
+single tenant sends its "Acme Store" mail from one address and its "Acme Admin" mail from another.
+See [Email](/docs/email).

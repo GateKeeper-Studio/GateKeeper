@@ -1,0 +1,87 @@
+---
+title: Introduction
+description: What GateKeeper is, and the handful of concepts you need before configuring anything.
+section: Getting started
+---
+
+GateKeeper is a **multi-tenant OAuth 2.1 / OpenID Connect identity provider**. You run it, your
+applications delegate sign-in to it, and this dashboard is where you configure it.
+
+These docs are the administrator's guide: how to create a tenant, register an application, model
+who-can-do-what, send email, tune the risk engine, and answer a GDPR request — all from the
+dashboard. They assume no prior knowledge of the codebase.
+
+## The shape of the system
+
+Almost every mistake people make with GateKeeper comes from misreading this hierarchy, so it is
+worth thirty seconds:
+
+```mermaid
+flowchart TD
+    Org["Organization<br/>owns admins and tenants"]
+    T1["Tenant<br/>an OIDC issuer"]
+    T2["Tenant<br/>another issuer"]
+    U["Users"]
+    G["Groups"]
+    R["Roles"]
+    C["OAuth Clients<br/>your apps"]
+    E["Email, Legal, Risk policy"]
+
+    Org --> T1
+    Org --> T2
+    T1 --> U
+    T1 --> G
+    T1 --> R
+    T1 --> C
+    T1 --> E
+```
+
+The load-bearing idea is the **tenant**.
+
+A tenant is an *isolation boundary*, and specifically an **OIDC issuer**: it has its own ES256
+signing keypair, its own users, and its own applications. A token minted for one tenant is not
+valid in another — not "shouldn't be", *is not*, because the signature won't verify. Use separate
+tenants for genuinely separate populations of users (staging vs production, or two unrelated
+products). Do **not** use tenants as a way to group users inside one product — that is what groups
+and roles are for.
+
+## Two kinds of identity
+
+This trips people up, so it is called out early. There are two completely separate populations,
+and they do not mix:
+
+| | Platform admins | End users |
+| --- | --- | --- |
+| Who | You and your colleagues | The people who sign into *your* apps |
+| Sign in at | `/login` on the dashboard origin | The hosted login pages, per app |
+| Scoped to | An organization | A single tenant |
+| Token | HS256, admin-only | ES256, signed by the tenant's key |
+
+An admin is not a user, and a user is not an admin. Creating a user in a tenant gives them no
+access to this dashboard whatsoever.
+
+> [!NOTE]
+> There is no self-service admin signup. The first administrator is created from the command line
+> — see [Before you begin](/docs/before-you-begin).
+
+## What you can configure
+
+Each of these has a chapter:
+
+- **[OAuth clients](/docs/oauth-clients)** — your applications, their redirect URIs, scopes, and
+  per-app MFA policy.
+- **[Social login](/docs/social-login)** and **[branding](/docs/branding)** — sign in with Google
+  or GitHub, and how the hosted login page looks.
+- **[Users, groups & roles](/docs/users-groups-roles)** — who exists, and what lands in their token.
+- **[Email](/docs/email)** — the SMTP server that sends verification and password-reset mail, and
+  the templates for it.
+- **[Security](/docs/risk-engine)** — adaptive risk scoring that can demand MFA or block a login
+  outright.
+- **[Compliance](/docs/audit-log)** — the audit trail, data-subject exports and erasure, and your
+  terms/privacy pages.
+
+## Where to start
+
+If you have never used GateKeeper, read the next four pages in order. They take you from an empty
+install to a real application performing a real login. Everything after that is reference you can
+dip into.

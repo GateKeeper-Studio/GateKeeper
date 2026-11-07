@@ -1,0 +1,106 @@
+---
+title: AngularJS library
+description: The GateKeeper AngularJS 1.x package — a public SPA client exposed as a provider/service and route-resolve helper.
+section: Application libraries
+---
+
+`@gatekeeper/angularjs` is the AngularJS 1.x integration for GateKeeper. It wraps the
+framework-agnostic `@gatekeeper/spa-oauth` public client in an AngularJS module that provides a
+`gatekeeper` provider/service and a `requireAuthenticated` route-resolve helper.
+
+The package source lives at `packages/gatekeeper-angularjs`; a runnable example is at
+`frontends/angularjs`.
+
+## Requires a public OAuth client
+
+AngularJS SPAs run in the browser, so they must use a **public** OAuth client:
+
+- `client_type: "public"` — **no client secret**.
+- PKCE S256 is the only client protection.
+- Tokens live in `sessionStorage` and are exposed to XSS by design.
+- Add the app origin to the server's `CORS_ALLOWED_ORIGINS`.
+
+Prefer a confidential BFF whenever the framework has a server runtime.
+
+## Register and configure the module
+
+Add the `gatekeeper` module as a dependency, then configure the provider in a `.config()` block:
+
+```js
+import angular from 'angular';
+import { GATEKEEPER_MODULE } from '@gatekeeper/angularjs';
+
+angular
+	.module('app', [GATEKEEPER_MODULE])
+	.config([
+		'gatekeeperProvider',
+		function (gatekeeperProvider) {
+			gatekeeperProvider.configure({
+				idpBaseUrl: 'http://localhost:8080',
+				authUiBaseUrl: 'http://localhost:5173',
+				tenantId: '',
+				clientId: '',
+				redirectUri: window.location.origin + '/',
+				scope: 'openid profile email'
+			});
+		}
+	]);
+```
+
+Only the public `clientId` is configured — no secret. The service finishes a `?code=` redirect on
+construction and pushes state changes into a digest with `$rootScope.$applyAsync`, so bindings stay
+current.
+
+## Use the service
+
+```js
+angular.module('app').controller('AccountController', [
+	'gatekeeper',
+	function (gatekeeper) {
+		this.gk = gatekeeper;
+	}
+]);
+```
+
+```html
+<div ng-controller="AccountController as vm">
+	<button ng-if="!vm.gk.isAuthenticated()" ng-click="vm.gk.signIn()">Sign in</button>
+	<div ng-if="vm.gk.isAuthenticated()">
+		<p>Signed in as {{ vm.gk.user().email }}</p>
+		<button ng-click="vm.gk.signOut()">Sign out</button>
+	</div>
+</div>
+```
+
+The service exposes `snapshot`, `isAuthenticated()`, `user()`, `status()`, `error()`,
+`expiresAt()`, plus `signIn()`, `signOut()`, `refresh()`, `getAccessToken()`, and
+`fetchUserInfo()`. The SDK uses native promises — wrap view updates from `.then()` callbacks in
+`$scope.$applyAsync(...)`.
+
+## Guard routes with a resolve
+
+`requireAuthenticated` is a route-`resolve` array. Attach it to routes that must be signed in; it
+returns `true` when authenticated, otherwise kicks off `signIn()`:
+
+```js
+import { requireAuthenticated } from '@gatekeeper/angularjs';
+
+$routeProvider.when('/account', {
+	templateUrl: 'account.html',
+	resolve: { auth: requireAuthenticated }
+});
+```
+
+## Fetch userinfo
+
+```js
+gatekeeper.fetchUserInfo().then(function (claims) {
+	// GET /oauth/userinfo?tenant_id=... (Bearer)
+});
+```
+
+## Example app
+
+`frontends/angularjs` is a Vite + AngularJS 1.8 SPA (dev port 5178). Register a public client with
+`frontends/angularjs/scripts/register-public-client.sh`, paste the output into `.env`, add
+`http://localhost:5178` to `CORS_ALLOWED_ORIGINS`, then `npm install && npm run dev`.

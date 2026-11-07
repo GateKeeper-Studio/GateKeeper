@@ -1,0 +1,61 @@
+---
+title: Social login
+description: Letting users sign in with Google or GitHub.
+section: Configuring a tenant
+---
+
+External identity providers are configured **per OAuth client**, on its **Providers** tab. Two
+kinds are supported today: **Google** and **GitHub**.
+
+## How it fits together
+
+GateKeeper stays the identity provider your application talks to. Google or GitHub is upstream of
+that — GateKeeper delegates the *authentication* step, then issues its own tokens as usual.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant App as Your app
+    participant GK as GateKeeper
+    participant G as Google
+
+    U->>App: "Sign in with Google"
+    App->>GK: /oauth/authorize
+    GK->>G: redirect to Google
+    U->>G: authenticate
+    G-->>GK: callback with Google's code
+    GK->>GK: link or create the user
+    GK-->>App: GateKeeper's own tokens
+```
+
+Your application does not integrate with Google. It integrates with GateKeeper, and GateKeeper
+integrates with Google. Adding a provider later changes nothing in your app.
+
+## Setting one up
+
+You will need an OAuth app registered with the upstream provider first (Google Cloud Console, or
+GitHub Developer Settings). From it you get a client id and a client secret, which you paste into
+the Providers tab.
+
+The redirect URI you register **with Google or GitHub** is GateKeeper's callback, not your app's:
+
+```text
+https://gatekeeper.example.com/v1/auth/oauth-provider/google/callback
+```
+
+> [!TIP]
+> A common first mistake is registering *your application's* callback with Google. The user is
+> coming back to GateKeeper, not to you — your app's redirect URI is a separate thing, configured
+> on the client's Overview tab.
+
+## Account linking
+
+When someone signs in with Google and the email matches an existing user in the tenant, the social
+identity is linked to that user. They now have two ways into one account, rather than two accounts.
+
+> [!IMPORTANT]
+> This means the security of the account is only as good as the upstream provider's. If a user's
+> Google account is compromised, so is their GateKeeper account. This is the accepted trade-off of
+> social login — it is worth being deliberate about which apps you enable it for.
+
+Provider client secrets are encrypted at rest, not stored in plaintext.

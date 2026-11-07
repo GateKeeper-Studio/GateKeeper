@@ -1,0 +1,106 @@
+---
+title: Next.js library
+description: The GateKeeper Next.js BFF package — App Router route handlers, middleware refresh, and RSC-safe session reads.
+section: Application libraries
+---
+
+`@gatekeeper/nextjs` is the Next.js (App Router) integration for GateKeeper. It is a
+**backend-for-frontend (BFF)**, not a SPA: the Authorization Code + PKCE exchange runs on the
+server, and tokens live only inside an **AES-256-GCM encrypted, `httpOnly` cookie**. The browser
+never sees an access or refresh token.
+
+It binds Next.js route/middleware idioms to the framework-agnostic `@gatekeeper/bff-core`. The
+package source lives at `packages/gatekeeper-nextjs`; a runnable example is at `frontends/nextjs`.
+
+## Confidential client — client secret required
+
+Unlike the SPA packages, a BFF keeps a real **client secret** on the server. Register a
+**confidential** client and keep the secret in server-only env (never `NEXT_PUBLIC_*`). Because
+calls are server→server, **no CORS entry is needed**.
+
+## Configure the client
+
+```ts
+// lib/gatekeeper.ts — server-only
+import { createNextGateKeeper } from '@gatekeeper/nextjs';
+
+export const gatekeeper = createNextGateKeeper({
+	idpBaseUrl: process.env.IDP_BASE_URL!,
+	authUiBaseUrl: process.env.AUTH_UI_BASE_URL!,
+	tenantId: process.env.OAUTH_TENANT_ID!,
+	clientId: process.env.OAUTH_CLIENT_ID!,
+	clientSecret: process.env.OAUTH_CLIENT_SECRET,
+	redirectUri: process.env.OAUTH_REDIRECT_URI!, // …/auth/callback
+	scope: process.env.OAUTH_SCOPE ?? 'openid profile email',
+	sessionSecret: process.env.SESSION_SECRET!, // openssl rand -hex 32
+	secureCookies: process.env.NODE_ENV === 'production'
+});
+```
+
+`SESSION_SECRET` protects the encrypted session cookie; rotating it invalidates existing sessions.
+
+## Wire the route handlers
+
+Each auth endpoint is one App Router route handler:
+
+```ts
+// app/auth/sign-in/route.ts
+export const GET = gatekeeper.signInHandler;
+
+// app/auth/callback/route.ts
+export const GET = gatekeeper.callbackHandler;
+
+// app/auth/sign-out/route.ts
+export const POST = gatekeeper.signOutHandler;
+```
+
+## Silent refresh in middleware
+
+```ts
+// middleware.ts
+import { gatekeeper } from './lib/gatekeeper';
+
+export const middleware = gatekeeper.middleware;
+export const config = { matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'] };
+```
+
+`middleware()` reads the session cookie, refreshes the access token when it is near expiry
+(rotation coalesced so concurrent requests don't reuse a refresh token), and writes the rotated
+cookie onto the response.
+
+## Read the session in server components
+
+```tsx
+// app/page.tsx (server component)
+import { gatekeeper } from '@/lib/gatekeeper';
+
+export default async function Home() {
+	const session = await gatekeeper.getSession();
+	const user = await gatekeeper.getUser();
+	return <p>{session ? `Signed in as ${user?.email}` : 'Signed out'}</p>;
+}
+```
+
+`getSession()`/`getUser()` are RSC-safe **read-only** — they never mutate cookies (refresh happens
+in middleware). Guard a page by redirecting when there is no session:
+
+```tsx
+import { redirect } from 'next/navigation';
+const session = await gatekeeper.getSession();
+if (!session) redirect('/auth/sign-in');
+```
+
+## The flow
+
+1. **Sign in** — `GET /auth/sign-in` mints PKCE + `state` + `nonce`, parks them in short-lived
+   `httpOnly` cookies, and redirects to the hosted login.
+2. **Callback** — `GET /auth/callback` validates `state`, exchanges the code (PKCE + secret),
+   verifies the id_token `nonce`, and seals the `gk_session` cookie.
+3. **Silent refresh** — middleware rotates the token before expiry.
+4. **Sign out** — `POST /auth/sign-out` clears the session cookie.
+
+## Example app
+
+`frontends/nextjs` runs on dev port 5179. Register a confidential client with
+`frontends/nextjs/scripts/register-client.sh`, paste `OAUTH_CLIENT_ID`/`OAUTH_CLIENT_SECRET` into
+`.env`, set `SESSION_SECRET`, then `npm install && npm run dev`.

@@ -1,0 +1,50 @@
+---
+title: Legal pages
+description: Publishing your terms of service and privacy policy.
+section: Compliance
+---
+
+**Compliance → Legal Pages** is where you write the two documents every product needs: a **terms of
+service** and a **privacy policy**. Both are authored in Markdown, in the dashboard, with a live
+preview.
+
+## Where they end up
+
+Published documents are served publicly, per application:
+
+```text
+/terms/{clientId}
+/privacy/{clientId}
+```
+
+There are also platform-wide fallbacks at `/terms` and `/privacy`, used when a client has no
+document of its own. The hosted login and sign-up pages link to whichever applies, so a user can
+always read what they are agreeing to before they agree to it.
+
+## Versioning and acceptance
+
+Publishing a new version does not silently re-consent your existing users.
+
+Acceptance is tracked per version, against the `POLICY_TERMS_VERSION` and `POLICY_PRIVACY_VERSION`
+values configured on the server. Bumping one of those tells GateKeeper that what users previously
+accepted is no longer current, and it can require them to accept again. Who has accepted what is
+visible on each user's [Privacy tab](/docs/data-subject-requests), which is what makes the
+acceptance auditable rather than merely asserted.
+
+> [!NOTE]
+> Editing the document text without bumping the version changes what new users see, but does not
+> ask existing users to re-accept. That is the right behaviour for fixing a typo and the wrong
+> behaviour for a substantive change — the distinction is yours to make.
+
+## The Markdown is sanitized
+
+Content is admin-authored Markdown, rendered to HTML and sanitized before it reaches a browser.
+
+That sanitization is not paranoia about you; it is defence in depth. These pages are linked
+directly from the login screen, so a script injected into a privacy policy would execute on a page
+adjacent to where users type their password. Scripts and event handlers are stripped, and there is
+no way to turn that off.
+
+> [!TIP]
+> Write the actual documents. A terms page that says "TODO" is worse than none — it is a public
+> statement that you have not thought about this, on a page your users are being asked to agree to.

@@ -1,0 +1,123 @@
+---
+title: Integrate your first app
+description: Register a client, run the Authorization Code + PKCE flow, and log a user in.
+section: Getting started
+---
+
+This is the chapter that pays off the rest. By the end, a real application performs a real login
+against your tenant.
+
+## Register the application
+
+Go to **OAuth Clients → Create**, and fill in the two fields that actually matter:
+
+**Client type.** Can this application keep a secret?
+
+- **Public** — a SPA, a mobile app, anything running on the user's device. It cannot hold a secret
+  (anyone can read the bundle), so PKCE is the *only* proof it offers at the token endpoint.
+- **Confidential** — a server-side web app. It gets a `client_secret` and authenticates with it.
+
+If you are unsure, you are almost certainly building a confidential client — see the note on
+backends below.
+
+**Redirect URIs.** Where GateKeeper is allowed to send the user back after they authorize.
+
+> [!WARNING]
+> Redirect URIs are matched **exactly**. No wildcards, no prefix matching, no ignoring the trailing
+> slash. `https://app.example.com/callback` and `https://app.example.com/callback/` are two
+> different URIs. This is the single most common integration failure, and it is deliberate — loose
+> redirect matching is how tokens get stolen.
+
+Save, then copy the **client id** from the Credentials tab. If the client is confidential, copy the
+secret too:
+
+> [!CAUTION]
+> The client secret is shown **once**, at creation and after each rotation. It is stored only as an
+> Argon2 hash, so GateKeeper genuinely cannot show it to you again. If you lose it, rotate it — and
+> expect the old one to stop working immediately.
+
+## The flow
+
+GateKeeper implements **OAuth 2.1**: Authorization Code with **mandatory PKCE**. There is no
+implicit flow and no password grant — both are removed in OAuth 2.1, and neither can be re-enabled.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User's browser
+    participant App as Your app
+    participant GK as GateKeeper
+
+    App->>App: generate code_verifier + code_challenge (S256)
+    App->>U: redirect to /oauth/authorize
+    U->>GK: GET /oauth/authorize?client_id&redirect_uri&code_challenge
+    GK->>U: hosted login page
+    U->>GK: credentials (+ MFA if required)
+    GK->>U: redirect back with ?code=...
+    U->>App: GET /callback?code=...
+    App->>GK: POST /oauth/token (code + code_verifier)
+    GK->>GK: verify challenge matches verifier
+    GK-->>App: access_token, id_token, refresh_token
+```
+
+Two details to hold on to:
+
+- **PKCE** is what stops a stolen authorization code from being redeemed by anyone else. Your app
+  invents a random `code_verifier`, sends only its SHA-256 hash up front, and reveals the verifier
+  when redeeming the code. An attacker who intercepts the code never saw the verifier.
+- The authorization code is **single-use and short-lived** (60 seconds). Redeem it immediately.
+
+## Exchange the code
+
+```bash
+curl -X POST https://gatekeeper.example.com/oauth/token \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "grant_type": "authorization_code",
+    "code": "the-code-from-the-redirect",
+    "code_verifier": "the-verifier-you-generated",
+    "client_id": "your-client-id",
+    "redirect_uri": "https://app.example.com/callback"
+  }'
+```
+
+You get back an access token, an ID token, and — if you asked for the `offline_access` scope — a
+refresh token.
+
+## Where to put the tokens
+
+This is the decision that determines whether your integration is secure, and it is worth being
+blunt about: **do not store tokens in `localStorage`.** Any script on your page can read them.
+
+The pattern to copy is a **backend-for-frontend (BFF)**: your server performs the code exchange,
+keeps the tokens server-side, and hands the browser nothing but an encrypted, `httpOnly` session
+cookie. The browser never sees an access token, so a cross-site scripting bug cannot steal one.
+
+> [!TIP]
+> There is a complete, working reference implementation of exactly this in the repository, under
+> `frontends/sveltekit-bff/` — a SvelteKit BFF that does the server-side exchange and stores the tokens in an
+> AES-256-GCM encrypted `httpOnly` cookie. Read it before writing your own.
+
+## Refresh tokens
+
+Refresh tokens **rotate**: each use returns a new one and invalidates the old.
+
+If GateKeeper ever sees an already-used refresh token presented again, it treats that as a stolen
+token and **revokes the entire family** — every descendant of that token, immediately. The
+legitimate user gets logged out, which is the correct outcome when a token has demonstrably leaked.
+The event lands in the audit log as `token.reuse_detected`.
+
+The practical consequence: never use a refresh token twice, and never let two processes share one.
+
+## Verifying tokens in your API
+
+Fetch the tenant's public keys from its JWKS endpoint and verify the signature. Your JWT library
+does this for you — point it at discovery and let it fetch and cache the keys by `kid`.
+
+```http
+GET /.well-known/jwks.json
+```
+
+Because each tenant signs with its own key, verification *is* your tenant isolation. A token from
+another tenant fails the signature check; you do not have to remember to compare a `tenant_id`
+claim yourself.

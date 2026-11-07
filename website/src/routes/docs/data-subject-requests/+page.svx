@@ -1,0 +1,58 @@
+---
+title: Data subject requests
+description: Handling access, erasure, and consent under GDPR and LGPD.
+section: Compliance
+---
+
+Under GDPR and LGPD, a person can ask you what data you hold about them, and can ask you to delete
+it. GateKeeper gives you both, on the **Privacy** tab of a user's detail page.
+
+> [!IMPORTANT]
+> These tools cover the data *GateKeeper* holds — identity, credentials, sessions, login history,
+> consents. They know nothing about the data your own application stores about that user. A complete
+> response to a data subject request almost always means combining a GateKeeper export with an
+> export from your own systems.
+
+## Export a user's data
+
+**Users → (a user) → Privacy → Export**. Produces a machine-readable dump of everything GateKeeper
+holds for that person, which is what you hand over in response to an access request.
+
+## Erase a user
+
+Also on the Privacy tab. This is the right-to-be-forgotten path.
+
+> [!CAUTION]
+> Erasure is irreversible, and it is not the same as deactivating an account. There is no undo, and
+> no support tooling to bring the user back — GateKeeper genuinely no longer has their data. Export
+> first if there is any chance you will need the record.
+
+Erasure does not remove the *fact* that actions occurred from the audit log. That is deliberate and
+generally the correct reading of the regulation: a tamper-evident record that something happened is
+not the same as continuing to process someone's personal data, and destroying your audit trail on
+request would be its own compliance failure. If you have a specific legal opinion that says
+otherwise for your jurisdiction, that is a conversation to have with counsel, not a setting.
+
+## Policy acceptances
+
+The Privacy tab also shows which versions of your terms and privacy policy this user accepted, and
+when.
+
+This is what turns "they agreed to the terms" into something you can actually evidence. Acceptance
+is tracked **per version** — so when you publish new terms, you can tell who has accepted the new
+ones and who is still on the old. Versions are gated by the `POLICY_TERMS_VERSION` and
+`POLICY_PRIVACY_VERSION` settings on the server. See [Legal pages](/docs/legal-pages).
+
+## Consents
+
+Which applications this user has granted access to, and the ability to revoke one. Revoking a
+consent means the next authorization for that client shows the consent screen again.
+
+## Retention purge
+
+**Compliance → Compliance** has a **purge** action, which deletes expired refresh tokens, dead
+sessions, and spent authorization codes.
+
+This is data-minimisation housekeeping: material that has already expired and serves no purpose is
+not data you should still be holding. Purging is safe — by definition nothing it removes is still
+valid — and it is recorded in the audit log as `data.purged`.

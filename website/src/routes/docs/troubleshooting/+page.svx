@@ -1,0 +1,79 @@
+---
+title: Troubleshooting
+description: The failures that actually happen, and what causes them.
+section: Reference
+---
+
+Collected gotchas. Most of these are silent — they do not raise an error in the dashboard, which is
+exactly why they are worth writing down.
+
+## `redirect_uri_mismatch` on every login
+
+By far the most common integration failure.
+
+Redirect URIs are matched **exactly**. Not by prefix, not by pattern, and not ignoring the trailing
+slash:
+
+```text
+registered: https://app.example.com/callback
+sent:       https://app.example.com/callback/     ✗ different URI
+sent:       http://app.example.com/callback       ✗ different scheme
+sent:       https://app.example.com/callback?x=1  ✗ different URI
+```
+
+Copy the URI your application actually sends — from the browser's network tab, not from memory —
+and register that string.
+
+## Users never receive password-reset or verification email
+
+There is no working [email provider](/docs/email), or its credentials are wrong.
+
+A bad SMTP password does not surface when you save the provider. It surfaces as users who never
+receive anything and have no way to tell you. Use the **Send test email** button; it is there
+specifically to turn a silent failure into a loud one.
+
+## The risk engine never flags a foreign login
+
+`GEOIP_CITY_DB_PATH` is not set on the server.
+
+Without the MaxMind databases, `NEW_COUNTRY` and `IMPOSSIBLE_TRAVEL` **can never fire** — two of the
+eight [signals](/docs/risk-engine), including the best one for catching a stolen password being used
+from another continent. Everything else keeps working, and nothing warns you.
+
+## Enabling `client_credentials` has no effect
+
+The OAuth client form offers a `client_credentials` checkbox, but the token endpoint does not
+implement that grant and OIDC discovery does not advertise it. There is currently **no
+machine-to-machine flow**. Ticking the box changes nothing; do not design against it.
+
+## A user was logged out unexpectedly
+
+Look for `token.reuse_detected` in the [audit log](/docs/audit-log).
+
+Refresh tokens rotate. If one is presented twice, GateKeeper concludes it leaked and revokes the
+entire token family, which logs the user out. The usual innocent cause is an application that
+persists a refresh token and uses it from two processes at once, or one that retries a failed
+token request with the same token. The non-innocent cause is that a refresh token really was
+stolen — which is exactly what the mechanism is for.
+
+## A role change did not take effect immediately
+
+Roles are re-resolved on every token issue **and every refresh**, but an access token already in
+flight keeps the claims it was minted with until it expires — up to 15 minutes.
+
+If you need instant revocation, deactivate the user (which stops the refresh) rather than only
+removing a role.
+
+## I lost the client secret
+
+It cannot be recovered. It is stored as an Argon2 hash, so GateKeeper genuinely does not have it.
+
+Rotate it on the **Credentials** tab, and deploy the new one — the old secret stops working the
+moment the new one is issued.
+
+## Admin API calls succeed when they should be rejected
+
+`REQUIRE_ADMIN_AUTH` is `false`.
+
+That downgrades the admin guard to best-effort: requests are attributed in the audit log but are no
+longer *blocked*. It exists for local development and must be `true` anywhere real.

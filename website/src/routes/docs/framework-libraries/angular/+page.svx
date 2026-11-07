@@ -1,0 +1,104 @@
+---
+title: Angular library
+description: The GateKeeper Angular package — a public SPA client with a signal service, provider, and route guard.
+section: Application libraries
+---
+
+`@gatekeeper/angular` is the Angular (2+) integration for GateKeeper. It wraps the
+framework-agnostic `@gatekeeper/spa-oauth` public client in a signal-based `GateKeeperService`, a
+`provideGateKeeper()` provider, and an `authGuard` route guard.
+
+The package source lives at `packages/gatekeeper-angular`; a runnable example is at
+`frontends/angular`. The package is consumed **from source** (no Ivy/`ng-packagr` build) — the
+example app's `tsconfig` `paths` point at `packages/gatekeeper-angular/src/public-api.ts`, so the
+app compiler builds it.
+
+## Requires a public OAuth client
+
+Angular SPAs run in the browser, so they must use a **public** OAuth client:
+
+- `client_type: "public"` — **no client secret**.
+- PKCE S256 is the only client protection.
+- Tokens live in `sessionStorage` and are exposed to XSS by design.
+- Add the app origin to the server's `CORS_ALLOWED_ORIGINS`.
+
+Prefer a confidential BFF whenever the framework has a server runtime.
+
+## Provide the client
+
+```ts
+import { bootstrapApplication } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
+import { provideGateKeeper, type GateKeeperSpaConfig } from '@gatekeeper/angular';
+import { AppComponent } from './app/app.component';
+
+// Angular has no Vite import.meta.env; edit these or wire them to environment.ts.
+const config: GateKeeperSpaConfig = {
+	idpBaseUrl: 'http://localhost:8080',
+	authUiBaseUrl: 'http://localhost:5173',
+	tenantId: '',
+	clientId: '',
+	redirectUri: 'http://localhost:5177/',
+	scope: 'openid profile email'
+};
+
+bootstrapApplication(AppComponent, {
+	providers: [provideRouter([]), provideGateKeeper(config)]
+});
+```
+
+`provideGateKeeper()` registers the config token, the service, and an `APP_INITIALIZER` that runs
+`handleRedirectCallback()` on boot so a `?code=` return is finished before the app renders. Only the
+public `clientId` is configured — no secret.
+
+## Read state from the signal service
+
+`GateKeeperService` exposes Angular signals, so templates update automatically:
+
+```ts
+import { Component, inject } from '@angular/core';
+import { GateKeeperService } from '@gatekeeper/angular';
+
+@Component({
+	standalone: true,
+	template: `
+		@if (gk.isAuthenticated()) {
+			<p>Signed in as {{ gk.user()?.email ?? gk.user()?.sub }}</p>
+			<button (click)="gk.signOut()">Sign out</button>
+		} @else {
+			<button (click)="gk.signIn()">Sign in</button>
+		}
+	`
+})
+export class AccountComponent {
+	gk = inject(GateKeeperService);
+}
+```
+
+The service exposes the `snapshot`, `status`, `isAuthenticated`, `user`, `expiresAt`, and `error`
+signals, plus `signIn()`, `signOut()`, `refresh()`, `getAccessToken()`, and `fetchUserInfo()`.
+
+## Guard protected routes
+
+```ts
+import { authGuard } from '@gatekeeper/angular';
+
+export const routes = [
+	{ path: 'account', canActivate: [authGuard], loadComponent: () => import('./account') }
+];
+```
+
+`authGuard` allows navigation when authenticated; otherwise it kicks off `signIn()` and blocks the
+route.
+
+## Fetch userinfo
+
+```ts
+const claims = await this.gk.fetchUserInfo(); // GET /oauth/userinfo?tenant_id=... (Bearer)
+```
+
+## Example app
+
+`frontends/angular` is a standalone Angular 18 SPA (dev port 5177). Register a public client with
+`frontends/angular/scripts/register-public-client.sh`, set the values in `src/gatekeeper.config.ts`,
+add `http://localhost:5177` to `CORS_ALLOWED_ORIGINS`, then `npm install && npm start`.

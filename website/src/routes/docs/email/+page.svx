@@ -1,0 +1,89 @@
+---
+title: Email
+description: The SMTP server that sends your transactional mail, and the templates for it.
+section: Configuring a tenant
+---
+
+GateKeeper sends mail for exactly three things: **verifying an email address**, **resetting a
+password**, and **delivering an MFA code**. All three are dead in the water without a working SMTP
+provider, so this is usually the second thing you configure after your first client.
+
+The **Email** page has two tabs: **Providers** and **Templates**.
+
+## Providers
+
+A provider is an SMTP server. Add one per tenant, or several if different applications should send
+from different addresses.
+
+| Field | Notes |
+| --- | --- |
+| **Name** | Your label for it. |
+| **Host / Port** | The SMTP server. |
+| **Username / Password** | Credentials. The password is encrypted at rest (AES-256-GCM) and never returned by the API. |
+| **From email / From name** | What recipients see in their inbox. |
+| **Encryption** | `starttls` (587), `tls` (465), or `none`. |
+| **Default** | The provider used by any client that hasn't picked one. |
+
+There are presets for **Gmail**, **Microsoft 365**, and **Hostinger**, which fill in the host, port,
+and encryption for you.
+
+> [!TIP]
+> `none` exists for local development against a mail catcher like Mailhog. Never use it against a
+> real SMTP server — the password crosses the network in the clear.
+
+### Send a test email first
+
+Every provider has a **Send test email** button. Use it. A wrong SMTP password does not surface as
+a dashboard error at configuration time; it surfaces later as a user who never received their
+password reset and has no way to tell you.
+
+### Per-application providers
+
+An OAuth client can be pinned to a specific provider, or left on **Tenant default**. This is how
+one tenant sends its customer-facing mail from `hello@acme.com` and its internal admin mail from
+`noreply@internal.acme.com`.
+
+## Templates
+
+Three templates, one per thing GateKeeper sends:
+
+| Type | Sent when |
+| --- | --- |
+| `email_verification` | A new user needs to confirm their address. |
+| `password_reset` | A user asked to reset their password. |
+| `mfa_code` | A one-time code is being delivered by email. |
+
+Bodies are written in **MJML** — a markup language that compiles to email-client-safe HTML, so you
+do not have to hand-write nested tables to survive Outlook.
+
+### Variables
+
+Templates interpolate a small set of variables:
+
+| Variable | Contains |
+| --- | --- |
+| `app_name` | The client's name. |
+| `code` | The OTP, for `mfa_code`. |
+| `link` | The action URL, for verification and reset. |
+| `expiry` | How long the code or link is valid. |
+| `support_email` | Your support address. |
+
+Use the **live preview** while editing — it renders the MJML with sample values, so you can see
+what lands in the inbox without sending yourself a dozen test mails.
+
+> [!WARNING]
+> A template that drops `{link}` from the password-reset mail, or `{code}` from the MFA mail,
+> produces a perfectly valid email that the user cannot act on. The preview is there to catch
+> exactly this; look at it before saving.
+
+## What breaks without email
+
+Worth being explicit, because the failures are all silent from the admin's side:
+
+- **Self-service password reset** — the user gets no mail and cannot recover their account.
+- **Email verification** — new users can never confirm, so they can never sign in.
+- **Email MFA** — the code never arrives, and the user is locked out of an account that is
+  otherwise fine.
+
+If you have turned on self-registration or self-service password reset
+([tenant settings](/docs/first-tenant)), you need a working provider.

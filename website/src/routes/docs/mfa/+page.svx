@@ -1,0 +1,77 @@
+---
+title: Multi-factor authentication
+description: The three factors, how users enrol, and when MFA is demanded.
+section: Configuring a tenant
+---
+
+GateKeeper supports three second factors. They are enabled **per OAuth client**, on that client's
+MFA policy — so the same user can be forced through MFA on your admin console and waved through on
+your marketing site.
+
+| Factor | What the user does | Notes |
+| --- | --- | --- |
+| **Email OTP** | Receives a one-time code by mail | Needs a working [email provider](/docs/email). Weakest of the three. |
+| **TOTP** | Reads a code from an authenticator app | No dependency on email delivery. |
+| **WebAuthn** | Taps a passkey or security key | Strongest. Phishing-resistant by construction. |
+
+> [!TIP]
+> WebAuthn is the one worth pushing users toward. Because the credential is bound to your origin,
+> a passkey **cannot be phished** — a user on a lookalike domain simply has nothing to hand over.
+> Email and TOTP codes can both be relayed to an attacker in real time by a convincing enough
+> phishing page.
+
+## Where MFA gets demanded
+
+Two independent triggers, and it is worth understanding that they are separate:
+
+1. **The client's policy.** If **MFA required** is on, every login to that app needs a second
+   factor. Full stop.
+2. **The risk engine.** Even when the policy does not require MFA, a login that scores as
+   high-risk can be *stepped up* to demand it — a login from a new country, say. See
+   [How risk scoring works](/docs/risk-engine).
+
+So turning **MFA required** off does not mean "no MFA". It means "no MFA *unless the login looks
+wrong*", which for most consumer products is exactly the behaviour you want.
+
+## The login sequence
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant GK as GateKeeper
+
+    U->>GK: email + password
+    GK->>GK: score the login (risk engine)
+    alt MFA required, or risk is high
+        GK-->>U: choose a factor
+        U->>GK: code / passkey
+        GK->>GK: verify
+    end
+    GK-->>U: authorization code
+    Note over U,GK: the code is then exchanged for tokens
+```
+
+The session between the first step and the last is short-lived (10 minutes) and single-use. The
+authorization code it produces lives for 60 seconds.
+
+## Enrolment
+
+Users manage their own factors — enrol an authenticator app, register a passkey, rename or remove a
+device, and pick a preferred factor. Administrators do not enrol factors on a user's behalf.
+
+> [!IMPORTANT]
+> There is no administrator "bypass MFA for this user" switch, and no way for you to read a user's
+> TOTP secret. If someone loses their only factor, the recovery path is a password reset through a
+> verified email address — which is why [email](/docs/email) has to actually work before you make
+> MFA mandatory.
+
+## Timeouts
+
+| Thing | Lifetime |
+| --- | --- |
+| Login session (between password and MFA) | 10 minutes |
+| Email OTP | 10 minutes |
+| WebAuthn challenge | 5 minutes |
+| Authorization code | 60 seconds |
+| Access token | 15 minutes |
+| Refresh token | 30 days |

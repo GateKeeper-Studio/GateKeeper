@@ -1,0 +1,75 @@
+---
+title: Application libraries
+description: Framework-specific GateKeeper clients and the extension pattern for adding more.
+section: Application libraries
+---
+
+<script lang="ts">
+	import FrameworkLibraryTable from '$lib/docs/framework-library-table.svelte';
+</script>
+
+GateKeeper applications should use a **backend-for-frontend (BFF)** integration whenever the
+framework has a server runtime. Tokens stay server-side, the browser receives only an encrypted
+`httpOnly` session cookie, and the application calls GateKeeper through a small framework-specific
+adapter. `@gatekeeper/sveltekit-bff`, `@gatekeeper/nextjs`, and `@gatekeeper/remix` are all
+**confidential** clients of this kind — they hold a client secret on the server.
+
+Browser-only frameworks sit on the other side of that boundary. A single-page app cannot keep a
+secret, so it registers as a **public** OAuth client: no client secret, PKCE S256 as the only
+client protection, and tokens that live in the browser (`sessionStorage`), exposed to XSS by design.
+`@gatekeeper/react`, `@gatekeeper/vue`, `@gatekeeper/angular`, `@gatekeeper/angularjs`, and the
+framework-agnostic `@gatekeeper/browser` are public clients.
+
+> **Public clients require a public OAuth client.** Register each SPA with `client_type: "public"`
+> and **no client secret**, and add its dev origin to the server's `CORS_ALLOWED_ORIGINS` (the SPA
+> calls `/oauth/token` and `/oauth/userinfo` directly from the browser). Prefer a confidential BFF
+> whenever the framework has a server runtime.
+
+## Shared cores
+
+To avoid re-implementing security-sensitive OAuth logic per framework, the adapters build on two
+framework-agnostic cores:
+
+- **`@gatekeeper/spa-oauth`** — the public Authorization Code + PKCE browser client (subscribable
+  state machine, `sessionStorage` tokens, silent refresh). React, Vue, Angular, and AngularJS are
+  thin idiomatic bindings over it.
+- **`@gatekeeper/bff-core`** — the confidential BFF core (AES-256-GCM `httpOnly` session cookie,
+  refresh-token rotation with coalescing). Next.js and Remix bind their route/loader idioms to it.
+
+The repository keeps every adapter as a downloadable package under `packages/`. The website docs
+track them through a small catalog in `website/src/lib/docs/framework-libraries.ts`, so adding a
+new framework later follows the same shape instead of becoming a one-off docs change.
+
+## Current packages
+
+<FrameworkLibraryTable />
+
+## What belongs in a framework library
+
+A framework package should own the integration details that are easy to get subtly wrong:
+
+- Reading and writing the encrypted GateKeeper session cookie.
+- Loading the session into the framework's request-local state.
+- Refreshing access tokens before expiry, with refresh-token rotation handled once per token.
+- Exposing browser-safe session data without leaking access, ID, or refresh tokens.
+- Providing server helpers for authenticated `/me/*` calls, including profile updates.
+- Providing framework-native UI/context helpers when the framework has a component model.
+
+It should **not** own tenant configuration, client registration, or publishing. Those remain
+deployment and package-management concerns for the consuming application.
+
+## Adding another framework
+
+When you add another adapter, reuse a shared core instead of re-implementing the flow:
+
+1. Add a package under `packages/gatekeeper-<framework>`.
+2. For a server-capable framework, bind the framework's route/hook idioms to `@gatekeeper/bff-core`
+   (confidential); for a browser-only framework, bind to `@gatekeeper/spa-oauth` (public). Do not
+   copy OAuth or session logic into the adapter.
+3. Add framework-native entry points for request hooks, server loaders/actions, and client context.
+4. Add the package to `website/src/lib/docs/framework-libraries.ts` (set `clientType`).
+5. Create `/docs/framework-libraries/<slug>/+page.svx`.
+6. Add a working example under `frontends/<framework>` and list it in `frontends/README.md`.
+
+The package documentation should explain the public API and the example should prove the API works
+in a real app.
