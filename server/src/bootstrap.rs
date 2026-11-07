@@ -67,7 +67,10 @@ use crate::{
                 set_preferred_mfa_method, start_totp_enrollment, start_webauthn_enrollment,
                 start_webauthn_login, verify_email_otp, verify_totp, verify_webauthn,
             },
-            oauth::{authorize_request, discovery, jwks, token_exchange, token_refresh, userinfo},
+            oauth::{
+                authorize_request, discovery, end_session, jwks, token_exchange, token_refresh,
+                userinfo,
+            },
             oauth_client::{
                 create_oauth_client, delete_oauth_client,
                 external_provider::{
@@ -555,11 +558,16 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 &signing_key_repository,
             ))),
             discovery: Arc::new(discovery::use_case::UseCase::new(issuer)),
+            end_session: Arc::new(end_session::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&token_verifier),
+            )),
         }),
         oauth_clients: Arc::new(OAuthClientUseCases {
-            create_oauth_client: Arc::new(create_oauth_client::use_case::UseCase::new(Arc::clone(
-                &uow_factory,
-            ))),
+            create_oauth_client: Arc::new(create_oauth_client::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                webhook_allow_private_targets,
+            )),
             list_oauth_clients: Arc::new(list_oauth_clients::use_case::UseCase::new(
                 Arc::clone(&oauth_client_repository),
                 Arc::clone(&tenant_repository),
@@ -574,9 +582,10 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 Arc::clone(&external_identity_provider_repository),
                 Arc::clone(&custom_field_definition_repository),
             )),
-            update_oauth_client: Arc::new(update_oauth_client::use_case::UseCase::new(Arc::clone(
-                &uow_factory,
-            ))),
+            update_oauth_client: Arc::new(update_oauth_client::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                webhook_allow_private_targets,
+            )),
             rotate_oauth_client_secret: Arc::new(
                 rotate_oauth_client_secret::use_case::UseCase::new(Arc::clone(&uow_factory)),
             ),

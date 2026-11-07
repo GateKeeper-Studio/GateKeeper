@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::shared::backchannel_logout::{EndedSessions, announce_ended_sessions};
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -43,6 +44,15 @@ impl UseCase {
             .ok_or_else(|| {
                 DomainError::NotFound(format!("User with id {} not found", command.user_id))
             })?;
+
+        // Tell every app the user was signed in to (back-channel logout).
+        announce_ended_sessions(
+            &*uow,
+            command.tenant_id,
+            command.user_id,
+            EndedSessions::All,
+        )
+        .await?;
 
         uow.refresh_token_repository()
             .revoke_by_user(command.tenant_id, command.user_id)

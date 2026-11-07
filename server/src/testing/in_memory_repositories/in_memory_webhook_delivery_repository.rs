@@ -9,7 +9,8 @@ use uuid::Uuid;
 
 use crate::{
     domain::{
-        entities::webhook_delivery::WebhookDelivery, errors::DomainError,
+        entities::webhook_delivery::{DeliveryTarget, WebhookDelivery},
+        errors::DomainError,
         repositories::webhook_delivery_repository::WebhookDeliveryRepository,
     },
     testing::in_memory_unit_of_work::InMemoryRepository,
@@ -57,19 +58,20 @@ impl WebhookDeliveryRepository for InMemoryWebhookDeliveryRepository {
         &self,
         deliveries: &[WebhookDelivery],
     ) -> Result<(), DomainError> {
-        // Mirrors the DB's uq_webhook_delivery (event_id, subscription_id) +
-        // ON CONFLICT DO NOTHING, so a test can replay fan-out and assert no
-        // duplicate delivery appears — exactly as production behaves.
-        let existing: HashSet<(Uuid, Uuid)> = self
+        // Mirrors the DB's unique keys (event_id, subscription_id) and
+        // (event_id, client_id) + ON CONFLICT DO NOTHING, so a test can replay
+        // fan-out and assert no duplicate delivery appears — exactly as production
+        // behaves.
+        let existing: HashSet<(Uuid, DeliveryTarget)> = self
             .snapshot()
             .into_iter()
-            .map(|d| (d.event_id(), d.subscription_id()))
+            .map(|d| (d.event_id(), d.target()))
             .collect();
 
         let mut draft = self.memory.draft.lock().unwrap();
         let mut seen = existing;
         for delivery in deliveries {
-            let key = (delivery.event_id(), delivery.subscription_id());
+            let key = (delivery.event_id(), delivery.target());
             if seen.contains(&key) {
                 continue;
             }
@@ -112,7 +114,7 @@ impl WebhookDeliveryRepository for InMemoryWebhookDeliveryRepository {
         let mut items: Vec<WebhookDelivery> = self
             .snapshot()
             .into_iter()
-            .filter(|d| d.tenant_id() == tenant_id)
+            .filter(|d| d.tenant_id() == tenant_id && d.subscription_id().is_some())
             .collect();
         items.sort_by_key(|d| std::cmp::Reverse(d.created_at()));
 
@@ -128,7 +130,7 @@ impl WebhookDeliveryRepository for InMemoryWebhookDeliveryRepository {
         Ok(self
             .snapshot()
             .into_iter()
-            .filter(|d| d.tenant_id() == tenant_id)
+            .filter(|d| d.tenant_id() == tenant_id && d.subscription_id().is_some())
             .count() as u32)
     }
 }

@@ -8,8 +8,9 @@ use crate::{
             client_view::ClientView,
             update_oauth_client::{command::Command, response::Response},
             validation::{
-                normalize_optional, require_non_empty, validate_client_languages,
-                validate_initiate_login_uri, validate_legal_uri, validate_login_appearance,
+                normalize_optional, require_non_empty, validate_backchannel_logout_uri,
+                validate_client_languages, validate_initiate_login_uri, validate_legal_uri,
+                validate_login_appearance, validate_post_logout_redirect_uris,
                 validate_redirect_uris,
             },
         },
@@ -19,12 +20,19 @@ use crate::{
 
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
+    // WEBHOOK_ALLOW_PRIVATE_TARGETS: the back-channel logout URI is an outbound
+    // target exactly like a webhook URL, so the same escape hatch applies.
+    allow_private_targets: bool,
 }
 
 impl UseCase {
-    pub fn new(unit_of_work_factory: Arc<dyn UnitOfWorkFactory>) -> Self {
+    pub fn new(
+        unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
+        allow_private_targets: bool,
+    ) -> Self {
         Self {
             unit_of_work_factory,
+            allow_private_targets,
         }
     }
 
@@ -58,6 +66,10 @@ impl UseCase {
 
         let initiate_login_uri = normalize_optional(command.initiate_login_uri);
         validate_initiate_login_uri(&initiate_login_uri)?;
+
+        validate_post_logout_redirect_uris(&command.post_logout_redirect_uris)?;
+        let backchannel_logout_uri = normalize_optional(command.backchannel_logout_uri);
+        validate_backchannel_logout_uri(&backchannel_logout_uri, self.allow_private_targets)?;
 
         let login_appearance = validate_login_appearance(command.login_appearance)?;
         let (allowed_languages, default_language) =
@@ -112,6 +124,10 @@ impl UseCase {
             command.is_active,
         );
         client.set_magic_link_enabled(command.magic_link_enabled);
+        client.set_backchannel_logout(
+            backchannel_logout_uri,
+            command.backchannel_logout_session_required,
+        );
 
         uow.oauth_client_repository().update(&client).await?;
         uow.commit().await?;

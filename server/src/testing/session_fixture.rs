@@ -9,12 +9,16 @@ use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 use crate::{
-    application::use_cases::{
-        oauth::token_refresh,
-        session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
+    application::{
+        shared::backchannel_logout::LogoutNotice,
+        use_cases::{
+            oauth::{end_session, token_refresh},
+            session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
+        },
     },
     domain::entities::{
         audit_event::AuditEvent,
+        domain_event_type::DomainEventType,
         oauth_client::{ClientType, MfaPolicy, OAuthClient},
         refresh_token::RefreshToken,
         signing_key::{SigningAlgorithm, SigningKey},
@@ -27,13 +31,14 @@ use crate::{
         in_memory_repositories::{
             in_memory_audit_event_repository::InMemoryAuditEventRepository,
             in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
+            in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
             in_memory_refresh_token_repository::InMemoryRefreshTokenRepository,
             in_memory_signing_key_repository::InMemorySigningKeyRepository,
             in_memory_tenant_repository::InMemoryTenantRepository,
             in_memory_user_repository::InMemoryUserRepository,
         },
         in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
-        oauth_fakes::FakeTokenSigner,
+        oauth_fakes::{FakeTokenSigner, FakeTokenVerifier},
     },
     utils::oauth_crypto::sha256_hex,
 };
@@ -44,15 +49,22 @@ pub struct SessionFixture {
     pub clients: Arc<InMemoryOAuthClientRepository>,
     pub users: Arc<InMemoryUserRepository>,
     pub audit: Arc<InMemoryAuditEventRepository>,
+    pub events: Arc<InMemoryOutboxEventRepository>,
     pub tenant_id: Uuid,
     pub other_tenant_id: Uuid,
     pub alice: Uuid,
     pub bob: Uuid,
     // A user of the other tenant.
     pub carol: Uuid,
+    // Registered for back-channel logout.
     pub app: OAuthClient,
+    // Not registered: it is never notified.
     pub other_app: OAuthClient,
 }
+
+pub const APP_LOGOUT_URI: &str = "https://app.example.com/backchannel-logout";
+// Every fixture client registers this post_logout_redirect_uri.
+pub const POST_LOGOUT_URI: &str = "https://app.example.com/signed-out";
 
 // A seeded family: its id, and the raw value of its live (newest) token.
 pub struct SeededFamily {
@@ -70,7 +82,7 @@ fn client(tenant_id: Uuid, name: &str) -> OAuthClient {
         ClientType::Public,
         name.to_string(),
         vec!["https://app.example.com/callback".to_string()],
-        vec![],
+        vec![POST_LOGOUT_URI.to_string()],
         vec!["openid".to_string(), "offline_access".to_string()],
         vec![
             "authorization_code".to_string(),
@@ -122,7 +134,8 @@ pub fn build() -> SessionFixture {
         }
     }
 
-    let app = client(tenant_id, "Web App");
+    let mut app = client(tenant_id, "Web App");
+    app.set_backchannel_logout(Some(APP_LOGOUT_URI.to_string()), true);
     let other_app = client(tenant_id, "Mobile App");
     let clients = Arc::new(InMemoryOAuthClientRepository::new());
     {
@@ -143,12 +156,14 @@ pub fn build() -> SessionFixture {
 
     let refresh = Arc::new(InMemoryRefreshTokenRepository::new());
     let audit = Arc::new(InMemoryAuditEventRepository::new());
+    let events = Arc::new(InMemoryOutboxEventRepository::new());
     let factory = Arc::new(
         InMemoryUnitOfWorkFactory::new(users.clone(), tenants)
             .with_oauth_client_repository(clients.clone())
             .with_refresh_token_repository(refresh.clone())
             .with_signing_key_repository(keys)
-            .with_audit_event_repository(audit.clone()),
+            .with_audit_event_repository(audit.clone())
+            .with_outbox_event_repository(events.clone()),
     );
 
     SessionFixture {
@@ -157,6 +172,7 @@ pub fn build() -> SessionFixture {
         clients,
         users,
         audit,
+        events,
         tenant_id,
         other_tenant_id,
         alice: alice_id,
@@ -168,6 +184,19 @@ pub fn build() -> SessionFixture {
 }
 
 impl SessionFixture {
+    // The back-channel logout notices committed to the outbox so far.
+    pub fn logout_notices(&self) -> Vec<LogoutNotice> {
+        self.events
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| e.event_type() == DomainEventType::BackchannelLogout)
+            .filter_map(|e| LogoutNotice::from_payload(e.payload()))
+            .collect()
+    }
+
     pub fn list(&self) -> list_user_sessions::use_case::UseCase {
         list_user_sessions::use_case::UseCase::new(
             self.refresh.clone(),
@@ -178,6 +207,10 @@ impl SessionFixture {
 
     pub fn revoke(&self) -> revoke_user_session::use_case::UseCase {
         revoke_user_session::use_case::UseCase::new(self.factory.clone())
+    }
+
+    pub fn end_session(&self, verifier: FakeTokenVerifier) -> end_session::use_case::UseCase {
+        end_session::use_case::UseCase::new(self.factory.clone(), Arc::new(verifier))
     }
 
     pub fn revoke_all(&self) -> revoke_all_user_sessions::use_case::UseCase {

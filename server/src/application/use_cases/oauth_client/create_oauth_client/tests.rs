@@ -49,7 +49,7 @@ mod tests {
             InMemoryUnitOfWorkFactory::new(Arc::new(InMemoryUserRepository::new()), tenants)
                 .with_oauth_client_repository(clients.clone());
 
-        (clients, UseCase::new(Arc::new(factory)))
+        (clients, UseCase::new(Arc::new(factory), false))
     }
 
     fn base_command(tenant_id: Uuid, client_type: &str) -> Command {
@@ -70,6 +70,8 @@ mod tests {
             login_appearance: None,
             external_login_only: false,
             magic_link_enabled: false,
+            backchannel_logout_uri: None,
+            backchannel_logout_session_required: false,
             allowed_languages: vec!["en".to_string()],
             default_language: "en".to_string(),
             mfa_required: false,

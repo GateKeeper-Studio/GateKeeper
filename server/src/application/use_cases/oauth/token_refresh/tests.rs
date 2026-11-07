@@ -7,7 +7,8 @@ mod tests {
 
     use crate::{
         application::{
-            ports::risk_engine::RiskEngine,
+            ports::{risk_engine::RiskEngine, token_signer::TokenType},
+            shared::backchannel_logout::LogoutNotice,
             use_cases::oauth::token_refresh::{
                 command::Command,
                 use_case::{DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS, UseCase},
@@ -15,6 +16,7 @@ mod tests {
         },
         domain::{
             entities::{
+                domain_event_type::DomainEventType,
                 login_event::RiskDecision,
                 oauth_client::{ClientType, MfaPolicy, OAuthClient},
                 refresh_token::RefreshToken,
@@ -27,6 +29,7 @@ mod tests {
             fake_risk_engine::FakeRiskEngine,
             in_memory_repositories::{
                 in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
+                in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
                 in_memory_refresh_token_repository::InMemoryRefreshTokenRepository,
                 in_memory_signing_key_repository::InMemorySigningKeyRepository,
                 in_memory_tenant_repository::InMemoryTenantRepository,
@@ -47,6 +50,8 @@ mod tests {
     struct Ctx {
         use_case: UseCase,
         refresh: Arc<InMemoryRefreshTokenRepository>,
+        events: Arc<InMemoryOutboxEventRepository>,
+        signer: FakeTokenSigner,
         tenant_id: Uuid,
         client_internal_id: Uuid,
         family_id: Uuid,
@@ -81,6 +86,9 @@ mod tests {
             "en".to_string(),
             MfaPolicy::default(),
         );
+        // Registered for back-channel logout, so a session it loses is announced.
+        let mut client = client;
+        client.set_backchannel_logout(Some("https://app.example.com/logout".to_string()), false);
         let client_internal_id = client.id();
         let clients = Arc::new(InMemoryOAuthClientRepository::new());
         clients
@@ -103,6 +111,7 @@ mod tests {
             }
         }
 
+        let events = Arc::new(InMemoryOutboxEventRepository::new());
         let keys = Arc::new(InMemorySigningKeyRepository::new());
         let key = SigningKey::new(
             tenant_id,
@@ -119,11 +128,13 @@ mod tests {
         )
         .with_oauth_client_repository(clients)
         .with_refresh_token_repository(refresh.clone())
-        .with_signing_key_repository(keys);
+        .with_signing_key_repository(keys)
+        .with_outbox_event_repository(events.clone());
 
+        let signer = FakeTokenSigner::new();
         let use_case = UseCase::new(
             Arc::new(factory),
-            Arc::new(FakeTokenSigner::new()),
+            Arc::new(signer.clone()),
             "https://auth.test".to_string(),
             Arc::new(FakeAuditLogger::new()),
             DEFAULT_REFRESH_REUSE_LEEWAY_SECONDS,
@@ -134,6 +145,8 @@ mod tests {
         Ctx {
             use_case,
             refresh,
+            events,
+            signer,
             tenant_id,
             client_internal_id,
             family_id,
@@ -237,6 +250,79 @@ mod tests {
             .filter(|t| t.family_id() == ctx.family_id && t.is_active(Utc::now()))
             .count();
         assert_eq!(live_count, 0);
+
+        // ...and the RP is told its session ended (back-channel logout, in the outbox).
+        let notices = logout_notices(&ctx);
+        assert_eq!(notices.len(), 1);
+        assert_eq!(notices[0].sid, ctx.family_id);
+        assert_eq!(notices[0].client_id, ctx.client_internal_id);
+    }
+
+    fn logout_notices(ctx: &Ctx) -> Vec<LogoutNotice> {
+        ctx.events
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|e| e.event_type() == DomainEventType::BackchannelLogout)
+            .filter_map(|e| LogoutNotice::from_payload(e.payload()))
+            .collect()
+    }
+
+    // A family that already ended (signed out, so its tokens are revoked) was
+    // announced at the time; presenting one of its tokens again must not repeat it.
+    #[tokio::test]
+    async fn replay_of_a_revoked_token_does_not_announce_the_logout_again() {
+        let ctx = build(|tenant_id, client_id| {
+            let mut token = RefreshToken::new(
+                tenant_id,
+                sha256_hex(RAW_REFRESH),
+                client_id,
+                Uuid::now_v7(),
+                vec!["openid".to_string()],
+                Utc::now() + Duration::days(30),
+            );
+            token.revoke(Utc::now() - Duration::minutes(1));
+            vec![token]
+        });
+
+        let err = ctx
+            .use_case
+            .execute(command(ctx.tenant_id, RAW_REFRESH))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::InvalidGrant(_)));
+        assert!(logout_notices(&ctx).is_empty());
+    }
+
+    // The refreshed ID token stays in the same session: same `sid` as the family.
+    #[tokio::test]
+    async fn the_refreshed_id_token_keeps_the_session_id() {
+        let ctx = build(|tenant_id, client_id| {
+            vec![RefreshToken::new(
+                tenant_id,
+                sha256_hex(RAW_REFRESH),
+                client_id,
+                Uuid::now_v7(),
+                vec!["openid".to_string()],
+                Utc::now() + Duration::days(30),
+            )]
+        });
+
+        ctx.use_case
+            .execute(command(ctx.tenant_id, RAW_REFRESH))
+            .await
+            .unwrap();
+
+        let signed = ctx.signer.signed_tokens();
+        let (_, id_claims) = signed
+            .iter()
+            .find(|(typ, _)| *typ == TokenType::Id)
+            .expect("an ID token");
+        assert_eq!(id_claims["sid"], ctx.family_id.to_string());
+        assert!(logout_notices(&ctx).is_empty(), "a refresh ends nothing");
     }
 
     #[tokio::test]

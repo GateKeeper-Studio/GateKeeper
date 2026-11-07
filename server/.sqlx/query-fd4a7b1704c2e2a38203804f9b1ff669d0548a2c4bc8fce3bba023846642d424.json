@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, event_id, subscription_id, tenant_id, status, attempts,\n            next_attempt_at, last_error, last_status, created_at, delivered_at\n          FROM webhook_deliveries\n          WHERE tenant_id = $1\n          ORDER BY created_at DESC\n          LIMIT $2 OFFSET $3\n        ",
+  "query": "\n          SELECT id, event_id, subscription_id, client_id, tenant_id, status, attempts,\n            next_attempt_at, last_error, last_status, created_at, delivered_at\n          FROM webhook_deliveries\n          WHERE status = 'pending' AND next_attempt_at <= $1\n          ORDER BY next_attempt_at\n          LIMIT $2\n          FOR UPDATE SKIP LOCKED\n        ",
   "describe": {
     "columns": [
       {
@@ -38,6 +38,17 @@
       },
       {
         "ordinal": 3,
+        "name": "client_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "webhook_deliveries",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
         "name": "tenant_id",
         "type_info": "Uuid",
         "origin": {
@@ -48,7 +59,7 @@
         }
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "status",
         "type_info": "Varchar",
         "origin": {
@@ -59,7 +70,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "attempts",
         "type_info": "Int4",
         "origin": {
@@ -70,7 +81,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "next_attempt_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -81,7 +92,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "last_error",
         "type_info": "Text",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "last_status",
         "type_info": "Int4",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -114,7 +125,7 @@
         }
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "delivered_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -127,15 +138,15 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Int8",
+        "Timestamptz",
         "Int8"
       ]
     },
     "nullable": [
       false,
       false,
-      false,
+      true,
+      true,
       false,
       false,
       false,
@@ -146,5 +157,5 @@
       true
     ]
   },
-  "hash": "f8afdc403a16a144ff7a053148c5b0a370c9ada5462374ad69f0806bd1910386"
+  "hash": "fd4a7b1704c2e2a38203804f9b1ff669d0548a2c4bc8fce3bba023846642d424"
 }

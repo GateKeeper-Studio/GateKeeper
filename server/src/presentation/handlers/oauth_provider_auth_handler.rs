@@ -100,7 +100,7 @@ pub async fn callback(
 }
 
 // Minimal percent-encoding for the values placed in the redirect query string.
-fn urlencode(value: &str) -> String {
+pub(crate) fn urlencode(value: &str) -> String {
     value
         .bytes()
         .map(|b| match b {

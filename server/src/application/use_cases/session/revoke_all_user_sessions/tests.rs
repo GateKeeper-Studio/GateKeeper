@@ -57,6 +57,13 @@ mod tests {
         assert!(!live(&fx, a2.family_id));
         assert!(live(&fx, bobs.family_id), "other users keep their sessions");
 
+        // Back-channel logout: the registered app hears about Alice's session there;
+        // the unregistered one and Bob's session produce nothing.
+        let notices = fx.logout_notices();
+        assert_eq!(notices.len(), 1);
+        assert_eq!(notices[0].sid, a1.family_id);
+        assert_eq!(notices[0].user_id, fx.alice);
+
         let events = fx.audit_events();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].action(), USER_SESSION_REVOKED);

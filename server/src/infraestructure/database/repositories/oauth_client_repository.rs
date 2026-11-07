@@ -110,6 +110,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
             is_active, created_at, updated_at, external_login_only, magic_link_enabled,
+            backchannel_logout_uri, backchannel_logout_session_required,
             login_appearance as "login_appearance?: sqlx::types::Json<LoginAppearanceRow>"
           FROM oauth_clients
           WHERE tenant_id = $1 AND client_id = $2
@@ -154,6 +155,10 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             client.set_login_appearance(r.login_appearance.map(|j| j.0.into_domain()));
             client.set_external_login_only(r.external_login_only);
             client.set_magic_link_enabled(r.magic_link_enabled);
+            client.set_backchannel_logout(
+                r.backchannel_logout_uri,
+                r.backchannel_logout_session_required,
+            );
             client
         }))
     }
@@ -177,6 +182,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
             is_active, created_at, updated_at, external_login_only, magic_link_enabled,
+            backchannel_logout_uri, backchannel_logout_session_required,
             login_appearance as "login_appearance?: sqlx::types::Json<LoginAppearanceRow>"
           FROM oauth_clients
           WHERE client_id = $1
@@ -220,6 +226,10 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             client.set_login_appearance(r.login_appearance.map(|j| j.0.into_domain()));
             client.set_external_login_only(r.external_login_only);
             client.set_magic_link_enabled(r.magic_link_enabled);
+            client.set_backchannel_logout(
+                r.backchannel_logout_uri,
+                r.backchannel_logout_session_required,
+            );
             client
         }))
     }
@@ -239,6 +249,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
             is_active, created_at, updated_at, external_login_only, magic_link_enabled,
+            backchannel_logout_uri, backchannel_logout_session_required,
             login_appearance as "login_appearance?: sqlx::types::Json<LoginAppearanceRow>"
           FROM oauth_clients
           WHERE tenant_id = $1 AND id = $2
@@ -283,6 +294,10 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             client.set_login_appearance(r.login_appearance.map(|j| j.0.into_domain()));
             client.set_external_login_only(r.external_login_only);
             client.set_magic_link_enabled(r.magic_link_enabled);
+            client.set_backchannel_logout(
+                r.backchannel_logout_uri,
+                r.backchannel_logout_session_required,
+            );
             client
         }))
     }
@@ -303,6 +318,7 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
             is_active, created_at, updated_at, external_login_only, magic_link_enabled,
+            backchannel_logout_uri, backchannel_logout_session_required,
             login_appearance as "login_appearance?: sqlx::types::Json<LoginAppearanceRow>"
           FROM oauth_clients
           WHERE tenant_id = $1
@@ -352,6 +368,10 @@ impl OAuthClientRepository for DbOAuthClientRepository {
                 client.set_login_appearance(r.login_appearance.map(|j| j.0.into_domain()));
                 client.set_external_login_only(r.external_login_only);
                 client.set_magic_link_enabled(r.magic_link_enabled);
+                client.set_backchannel_logout(
+                    r.backchannel_logout_uri,
+                    r.backchannel_logout_session_required,
+                );
                 client
             })
             .collect())
@@ -385,8 +405,8 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             initiate_login_uri, allowed_languages, default_language,
             mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,
             is_active, created_at, updated_at, login_appearance, external_login_only,
-            magic_link_enabled)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+            magic_link_enabled, backchannel_logout_uri, backchannel_logout_session_required)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
         "#,
         client.id(),
         client.tenant_id(),
@@ -416,6 +436,8 @@ impl OAuthClientRepository for DbOAuthClientRepository {
         login_appearance as _,
         client.external_login_only(),
         client.magic_link_enabled(),
+        client.backchannel_logout_uri(),
+        client.backchannel_logout_session_required(),
       ),
       execute
     )
@@ -441,7 +463,8 @@ impl OAuthClientRepository for DbOAuthClientRepository {
             initiate_login_uri = $13, allowed_languages = $14, default_language = $15,
             mfa_required = $16, mfa_email_enabled = $17, mfa_totp_enabled = $18, mfa_webauthn_enabled = $19,
             is_active = $20, updated_at = $21, login_appearance = $22,
-            external_login_only = $23, magic_link_enabled = $24
+            external_login_only = $23, magic_link_enabled = $24,
+            backchannel_logout_uri = $25, backchannel_logout_session_required = $26
           WHERE tenant_id = $1 AND id = $2
         "#,
         client.tenant_id(),
@@ -468,6 +491,8 @@ impl OAuthClientRepository for DbOAuthClientRepository {
         login_appearance as _,
         client.external_login_only(),
         client.magic_link_enabled(),
+        client.backchannel_logout_uri(),
+        client.backchannel_logout_session_required(),
       ),
       execute
     )

@@ -21,4 +21,15 @@ pub trait TokenVerifier: Send + Sync {
     // selecting the right one by the `kid` in the JWT header. Asymmetric only —
     // an unsigned (`alg=none`) or HMAC token must be rejected.
     async fn verify(&self, token: &str, keys: &[SigningKey]) -> Result<VerifiedToken, DomainError>;
+
+    // Verifies an ID token presented as `id_token_hint` at the RP-Initiated Logout
+    // endpoint: `typ: JWT`, signature by `kid` against the published keys, issuer.
+    // NOT expiry — the spec has the OP accept an expired ID token as a hint, since an
+    // RP often signs a user out long after its ID token's lifetime. The audience is
+    // checked by the caller, who knows which client is asking.
+    async fn verify_id_token_hint(
+        &self,
+        token: &str,
+        keys: &[SigningKey],
+    ) -> Result<VerifiedToken, DomainError>;
 }

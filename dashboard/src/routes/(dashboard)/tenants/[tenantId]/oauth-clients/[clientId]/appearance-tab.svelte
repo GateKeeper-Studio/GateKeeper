@@ -206,6 +206,8 @@
 			externalLoginOnly: client.external_login_only,
 			// The update replaces the whole client: omitting this would switch it off.
 			magicLinkEnabled: client.magic_link_enabled,
+			backchannelLogoutUri: client.backchannel_logout_uri,
+			backchannelLogoutSessionRequired: client.backchannel_logout_session_required,
 			loginAppearance: buildAppearance(),
 			allowedLanguages,
 			defaultLanguage

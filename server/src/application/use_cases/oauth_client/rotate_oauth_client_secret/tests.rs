@@ -51,7 +51,7 @@ mod tests {
 
         (
             clients,
-            CreateUseCase::new(factory.clone()),
+            CreateUseCase::new(factory.clone(), false),
             UseCase::new(factory),
         )
     }
@@ -74,6 +74,8 @@ mod tests {
             login_appearance: None,
             external_login_only: false,
             magic_link_enabled: false,
+            backchannel_logout_uri: None,
+            backchannel_logout_session_required: false,
             allowed_languages: vec!["en".to_string()],
             default_language: "en".to_string(),
             mfa_required: false,

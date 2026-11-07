@@ -198,6 +198,12 @@ exempt list because their caller comes from the token.
   token revokes the whole token family and emits `token.reuse_detected`. A refresh (and
   the social-login callback) is also **risk-scored** by the same engine as an interactive
   login: geo-enriched, recorded as a login event, and refused on a critical decision.
+- **Ending sessions notifies the apps (OIDC Back-Channel Logout).** Any use case that
+  revokes a user's refresh tokens (or deletes the user) must first call
+  `announce_ended_sessions` (`application/shared/backchannel_logout.rs`) in the same unit
+  of work. It enqueues an outbox event per live session; the webhook dispatcher delivers
+  a `logout+jwt` per attempt. ID tokens carry `sid` = the refresh-token family id. See
+  `docs/FLOWS-OAUTH2-OIDC.md` §8.
 - **Passwords** use **Argon2id** through the **`PasswordHasher` port** only
   (`Argon2PasswordHasher`: blocking pool + semaphore, `PASSWORD_HASH_CONCURRENCY`).
   Never call `utils::password_hasher` or `spawn_blocking` from the application layer.

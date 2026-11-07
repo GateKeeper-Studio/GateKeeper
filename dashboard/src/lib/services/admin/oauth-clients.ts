@@ -31,6 +31,10 @@ export type OAuthClientView = {
 	external_login_only: boolean;
 	// Magic link login ("email me a sign-in link") is switched on for this client.
 	magic_link_enabled: boolean;
+	// OIDC Back-Channel Logout: where the IdP POSTs a signed logout_token when one of
+	// this client's sessions ends. null = the client is not notified.
+	backchannel_logout_uri: string | null;
+	backchannel_logout_session_required: boolean;
 	allowed_languages: string[];
 	default_language: string;
 	is_active: boolean;
@@ -79,6 +83,8 @@ export type CreateOAuthClientInput = {
 	// provider — the IdP rejects the update otherwise, so users can never be locked out.
 	externalLoginOnly: boolean;
 	magicLinkEnabled: boolean;
+	backchannelLogoutUri: string | null;
+	backchannelLogoutSessionRequired: boolean;
 	allowedLanguages: string[];
 	defaultLanguage: string;
 };
@@ -111,6 +117,8 @@ export type UpdateOAuthClientInput = {
 	// provider — the IdP rejects the update otherwise, so users can never be locked out.
 	externalLoginOnly: boolean;
 	magicLinkEnabled: boolean;
+	backchannelLogoutUri: string | null;
+	backchannelLogoutSessionRequired: boolean;
 	allowedLanguages: string[];
 	defaultLanguage: string;
 };
@@ -140,6 +148,8 @@ export async function createOAuthClient(
 			login_appearance: input.loginAppearance,
 			external_login_only: input.externalLoginOnly,
 			magic_link_enabled: input.magicLinkEnabled,
+			backchannel_logout_uri: input.backchannelLogoutUri,
+			backchannel_logout_session_required: input.backchannelLogoutSessionRequired,
 			allowed_languages: input.allowedLanguages,
 			default_language: input.defaultLanguage
 		});
@@ -175,6 +185,8 @@ export async function updateOAuthClient(
 			login_appearance: input.loginAppearance,
 			external_login_only: input.externalLoginOnly,
 			magic_link_enabled: input.magicLinkEnabled,
+			backchannel_logout_uri: input.backchannelLogoutUri,
+			backchannel_logout_session_required: input.backchannelLogoutSessionRequired,
 			allowed_languages: input.allowedLanguages,
 			default_language: input.defaultLanguage
 		});

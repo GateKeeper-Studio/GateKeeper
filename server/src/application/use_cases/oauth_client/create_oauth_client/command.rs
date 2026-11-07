@@ -94,6 +94,15 @@ pub struct Command {
     #[serde(default)]
     pub magic_link_enabled: bool,
 
+    // OIDC Back-Channel Logout: where to POST a signed logout_token when one of this
+    // client's sessions ends. Validated like a webhook URL; null/blank = none.
+    #[serde(default)]
+    pub backchannel_logout_uri: Option<String>,
+
+    // The RP requires `sid` in the logout token (OIDC metadata of the same name).
+    #[serde(default)]
+    pub backchannel_logout_session_required: bool,
+
     // Which supported locales this client's hosted login/sign-up page offers,
     // and which one it defaults to absent a user choice. Validated by
     // validate_client_languages before it reaches the entity.

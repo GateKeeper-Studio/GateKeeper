@@ -744,3 +744,246 @@ async fn webhook_claims_skip_rows_another_worker_holds(pool: PgPool) {
     let reclaimed = deliveries.claim_due(Utc::now(), 10).await.unwrap();
     assert_eq!(reclaimed.len(), 3);
 }
+
+// OIDC back-channel logout shares the outbox and the delivery table with the user
+// webhooks: a delivery targets a subscription OR an OAuth client, each kind with its
+// own idempotency key; both are claimed by the same SKIP LOCKED query; the admin
+// webhook log shows only webhook deliveries. The client registration round-trips.
+#[sqlx::test(migrations = "./migrations")]
+async fn logout_deliveries_share_the_webhook_delivery_table(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+
+    let mut client = seed_client(&pool, &tenant).await;
+    let clients = DbOAuthClientRepository::new(pool.clone());
+    client.set_backchannel_logout(Some("https://rp.example.com/bcl".to_string()), true);
+    clients.update(&client).await.unwrap();
+    let reloaded = clients
+        .find_by_id(tenant.id(), client.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        reloaded.backchannel_logout_uri(),
+        Some("https://rp.example.com/bcl")
+    );
+    assert!(reloaded.backchannel_logout_session_required());
+
+    let subscription = WebhookSubscription::new(
+        tenant.id(),
+        "hook".to_string(),
+        "https://hooks.example.com/in".to_string(),
+        "v1:test:sealed".to_string(),
+        vec![],
+        true,
+    );
+    DbWebhookSubscriptionRepository::new(pool.clone())
+        .add(&subscription)
+        .await
+        .unwrap();
+
+    let outbox = DbOutboxEventRepository::new(pool.clone());
+    let webhook_event = OutboxEvent::new(
+        tenant.id(),
+        DomainEventType::UserCreated,
+        serde_json::json!({ "data": {} }),
+    );
+    let logout_event = OutboxEvent::new(
+        tenant.id(),
+        DomainEventType::BackchannelLogout,
+        serde_json::json!({
+            "client_id": client.id().to_string(),
+            "sub": Uuid::now_v7().to_string(),
+            "sid": Uuid::now_v7().to_string(),
+        }),
+    );
+    outbox.enqueue(&webhook_event).await.unwrap();
+    outbox.enqueue(&logout_event).await.unwrap();
+    // The internal event type reads back (the claim skips unknown discriminators).
+    let claimed_events = outbox.claim_unpublished(10).await.unwrap();
+    assert!(
+        claimed_events
+            .iter()
+            .any(|e| e.event_type() == DomainEventType::BackchannelLogout)
+    );
+
+    let deliveries = DbWebhookDeliveryRepository::new(pool.clone());
+    let now = Utc::now() - Duration::seconds(1);
+    let rows = vec![
+        WebhookDelivery::new(webhook_event.id(), subscription.id(), tenant.id(), now),
+        WebhookDelivery::for_backchannel_logout(logout_event.id(), client.id(), tenant.id(), now),
+    ];
+    deliveries
+        .insert_many_ignoring_conflicts(&rows)
+        .await
+        .unwrap();
+    // A replayed fan-out inserts nothing, for either kind.
+    let replay = vec![
+        WebhookDelivery::new(webhook_event.id(), subscription.id(), tenant.id(), now),
+        WebhookDelivery::for_backchannel_logout(logout_event.id(), client.id(), tenant.id(), now),
+    ];
+    deliveries
+        .insert_many_ignoring_conflicts(&replay)
+        .await
+        .unwrap();
+
+    let due = deliveries.claim_due(Utc::now(), 10).await.unwrap();
+    assert_eq!(due.len(), 2);
+    let logout = due
+        .iter()
+        .find(|d| d.client_id().is_some())
+        .expect("the logout delivery is claimed like any other");
+    assert_eq!(logout.client_id(), Some(client.id()));
+    assert_eq!(logout.subscription_id(), None);
+
+    // The webhook delivery log does not list logout deliveries.
+    assert_eq!(deliveries.count_by_tenant_id(tenant.id()).await.unwrap(), 1);
+    let listed = deliveries
+        .find_by_tenant_id(tenant.id(), 1, 10)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].subscription_id(), Some(subscription.id()));
+
+    // Deleting the client removes its pending logout deliveries (ON DELETE CASCADE).
+    sqlx::query("DELETE FROM oauth_clients WHERE id = $1")
+        .bind(client.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(deliveries.claim_due(Utc::now(), 10).await.unwrap().len(), 1);
+}
+
+// End to end, against real Postgres, real ES256 keys and a real HTTP listener:
+// "sign out everywhere" commits a notice; the dispatcher turns it into a
+// form-encoded logout_token POST; the token verifies against the tenant's published
+// key exactly as an RP would check it (Back-Channel Logout 1.0 §2.6).
+#[sqlx::test(migrations = "./migrations")]
+async fn a_signed_out_session_reaches_the_app_as_a_verifiable_logout_token(pool: PgPool) {
+    use axum::{Router, extract::State, http::HeaderMap, routing::post};
+    use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::Jwk};
+    use web_api::{
+        application::{
+            ports::signing_key_generator::SigningKeyGenerator,
+            shared::{actor::Actor, backchannel_logout::BACKCHANNEL_LOGOUT_EVENT},
+            use_cases::{session::revoke_all_user_sessions, webhook::dispatch_pending_events},
+        },
+        domain::repositories::signing_key_repository::SigningKeyRepository,
+        infraestructure::{
+            crypto::{
+                ecdsa_key_generator::EcdsaKeyGenerator, jwt_signing_service::JwtSigningService,
+            },
+            database::{
+                repositories::signing_key_repository::DbSigningKeyRepository,
+                unit_of_work::DbUnitOfWorkFactory,
+            },
+            webhooks::reqwest_webhook_sender::ReqwestWebhookSender,
+        },
+    };
+
+    // The RP's back-channel logout endpoint: records what it received.
+    type Received = Arc<Mutex<Vec<(Option<String>, String)>>>;
+    async fn receive(State(received): State<Received>, headers: HeaderMap, body: String) {
+        let content_type = headers
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        received.lock().await.push((content_type, body));
+    }
+    let received: Received = Arc::new(Mutex::new(Vec::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let app = Router::new()
+        .route("/bcl", post(receive))
+        .with_state(received.clone());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let cipher = cipher();
+    let issuer = "https://idp.example.com".to_string();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let key = EcdsaKeyGenerator::new(Arc::clone(&cipher))
+        .generate(tenant.id())
+        .unwrap();
+    DbSigningKeyRepository::new(pool.clone())
+        .add(&key)
+        .await
+        .unwrap();
+
+    let mut client = seed_client(&pool, &tenant).await;
+    client.set_backchannel_logout(Some(format!("http://{address}/bcl")), false);
+    DbOAuthClientRepository::new(pool.clone())
+        .update(&client)
+        .await
+        .unwrap();
+    let user = seed_user(&pool, &tenant).await;
+    let session = RefreshToken::new(
+        tenant.id(),
+        format!("hash-{}", Uuid::now_v7()),
+        client.id(),
+        user.id(),
+        vec!["openid".to_string()],
+        Utc::now() + Duration::days(30),
+    );
+    DbRefreshTokenRepository::new(pool.clone())
+        .add(&session)
+        .await
+        .unwrap();
+
+    let factory = Arc::new(DbUnitOfWorkFactory::new(pool.clone(), Arc::clone(&cipher)));
+    revoke_all_user_sessions::use_case::UseCase::new(factory.clone())
+        .execute(
+            &Actor::System,
+            revoke_all_user_sessions::command::Command {
+                tenant_id: tenant.id(),
+                user_id: user.id(),
+                ip_address: None,
+                user_agent: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let tick = dispatch_pending_events::use_case::UseCase::new(
+        factory,
+        Arc::new(ReqwestWebhookSender::new(5)),
+        Arc::clone(&cipher),
+        Arc::new(JwtSigningService::new(Arc::clone(&cipher))),
+        issuer.clone(),
+        10,
+    )
+    .execute()
+    .await
+    .unwrap();
+    assert_eq!(tick.deliveries_succeeded, 1, "{tick:?}");
+
+    let received = received.lock().await;
+    assert_eq!(received.len(), 1);
+    let (content_type, body) = &received[0];
+    assert_eq!(
+        content_type.as_deref(),
+        Some("application/x-www-form-urlencoded")
+    );
+    let logout_token = body
+        .strip_prefix("logout_token=")
+        .expect("a single logout_token form field");
+
+    // Verify as the RP does: typ, signature by the published key, iss, aud, exp.
+    let header = decode_header(logout_token).unwrap();
+    assert_eq!(header.typ.as_deref(), Some("logout+jwt"));
+    assert_eq!(header.kid.as_deref(), Some(key.kid()));
+    let jwk: Jwk = serde_json::from_str(key.public_jwk()).unwrap();
+    let mut validation = Validation::new(Algorithm::ES256);
+    validation.set_issuer(&[issuer.as_str()]);
+    validation.set_audience(&[client.client_id().to_string()]);
+    let claims = decode::<serde_json::Value>(
+        logout_token,
+        &DecodingKey::from_jwk(&jwk).unwrap(),
+        &validation,
+    )
+    .expect("the logout token verifies against the tenant's published key")
+    .claims;
+    assert_eq!(claims["sub"], user.id().to_string());
+    assert_eq!(claims["sid"], session.family_id().to_string());
+    assert!(claims["events"].get(BACKCHANNEL_LOGOUT_EVENT).is_some());
+    assert!(claims.get("nonce").is_none());
+}

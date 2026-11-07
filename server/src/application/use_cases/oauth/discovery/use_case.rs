@@ -20,6 +20,7 @@ impl UseCase {
             token_endpoint: format!("{base}/oauth/token"),
             userinfo_endpoint: format!("{base}/oauth/userinfo"),
             jwks_uri: format!("{base}/.well-known/jwks.json"),
+            end_session_endpoint: format!("{base}/oauth/logout"),
             issuer: base,
             response_types_supported: vec!["code".to_string()],
             grant_types_supported: vec![
@@ -38,6 +39,8 @@ impl UseCase {
             ],
             id_token_signing_alg_values_supported: vec!["RS256".to_string(), "ES256".to_string()],
             subject_types_supported: vec!["public".to_string()],
+            backchannel_logout_supported: true,
+            backchannel_logout_session_supported: true,
         })
     }
 }

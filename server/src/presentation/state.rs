@@ -50,7 +50,10 @@ use crate::{
                 set_preferred_mfa_method, start_totp_enrollment, start_webauthn_enrollment,
                 start_webauthn_login, verify_email_otp, verify_totp, verify_webauthn,
             },
-            oauth::{authorize_request, discovery, jwks, token_exchange, token_refresh, userinfo},
+            oauth::{
+                authorize_request, discovery, end_session, jwks, token_exchange, token_refresh,
+                userinfo,
+            },
             oauth_client::{
                 create_oauth_client, delete_oauth_client,
                 external_provider::{
@@ -165,6 +168,8 @@ pub struct OAuthUseCases {
     pub userinfo: Arc<userinfo::use_case::UseCase>,
     pub jwks: Arc<jwks::use_case::UseCase>,
     pub discovery: Arc<discovery::use_case::UseCase>,
+    // RP-Initiated Logout (`/oauth/logout`).
+    pub end_session: Arc<end_session::use_case::UseCase>,
 }
 
 // OAuth clients and their external (social) identity providers.

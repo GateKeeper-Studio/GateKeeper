@@ -240,6 +240,15 @@ pub struct OAuthClient {
     // `allows_magic_link_login`).
     magic_link_enabled: bool,
 
+    // OIDC Back-Channel Logout 1.0 registration. When set, this RP is sent a signed
+    // `logout_token` (server to server) whenever one of its users' sessions ends, so
+    // it can end its own session too. Validated like a webhook URL (SSRF rules)
+    // before it reaches this entity. `backchannel_logout_session_required` is the
+    // RP's statement that it needs `sid` in that token; we always send `sid`, so it
+    // is stored and echoed, never a reason to skip a notification.
+    backchannel_logout_uri: Option<String>,
+    backchannel_logout_session_required: bool,
+
     // Which of the supported locales (domain::locale::SUPPORTED_LOCALES) this
     // client's hosted login/sign-up page offers to end users, and which one it
     // uses absent an explicit user choice. Always non-empty; default_language is
@@ -293,6 +302,8 @@ impl OAuthClient {
             login_appearance: None,
             external_login_only: false,
             magic_link_enabled: false,
+            backchannel_logout_uri: None,
+            backchannel_logout_session_required: false,
             allowed_languages,
             default_language,
             mfa_policy,
@@ -350,6 +361,8 @@ impl OAuthClient {
             login_appearance: None,
             external_login_only: false,
             magic_link_enabled: false,
+            backchannel_logout_uri: None,
+            backchannel_logout_session_required: false,
             allowed_languages,
             default_language,
             mfa_policy,
@@ -442,6 +455,13 @@ impl OAuthClient {
     // create, on rehydration, and by the update use case after update_details.
     pub fn set_magic_link_enabled(&mut self, magic_link_enabled: bool) {
         self.magic_link_enabled = magic_link_enabled;
+    }
+
+    // Set/clear the back-channel logout registration. Same lifecycle as
+    // set_magic_link_enabled: create, rehydration, and the update use case.
+    pub fn set_backchannel_logout(&mut self, uri: Option<String>, session_required: bool) {
+        self.backchannel_logout_uri = uri;
+        self.backchannel_logout_session_required = session_required;
     }
 
     // Rotate the client secret: replace the stored Argon2 hash with a freshly
@@ -539,6 +559,12 @@ impl OAuthClient {
     }
     pub fn magic_link_enabled(&self) -> bool {
         self.magic_link_enabled
+    }
+    pub fn backchannel_logout_uri(&self) -> Option<&str> {
+        self.backchannel_logout_uri.as_deref()
+    }
+    pub fn backchannel_logout_session_required(&self) -> bool {
+        self.backchannel_logout_session_required
     }
     // Magic link sign-in is offered only when the admin enabled it AND the client is
     // not external-login-only (which means "external providers and nothing else").

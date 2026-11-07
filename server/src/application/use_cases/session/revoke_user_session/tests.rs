@@ -82,6 +82,60 @@ mod tests {
         assert_eq!(event.ip_address(), Some("203.0.113.9"));
     }
 
+    // The app holding the session is told (OIDC back-channel logout), and only
+    // about that session.
+    #[tokio::test]
+    async fn the_app_is_told_its_session_ended() {
+        let fx = build();
+        let ended = fx.seed_family(fx.tenant_id, fx.alice, fx.app.id(), Duration::days(1), 1);
+        fx.seed_family(fx.tenant_id, fx.alice, fx.app.id(), Duration::hours(1), 0);
+
+        fx.revoke()
+            .execute(&alice(&fx), command(&fx, fx.alice, ended.family_id))
+            .await
+            .unwrap();
+
+        let notices = fx.logout_notices();
+        assert_eq!(notices.len(), 1);
+        assert_eq!(notices[0].sid, ended.family_id);
+        assert_eq!(notices[0].user_id, fx.alice);
+        assert_eq!(notices[0].client_id, fx.app.id());
+    }
+
+    #[tokio::test]
+    async fn an_app_without_a_back_channel_uri_is_not_notified() {
+        let fx = build();
+        let family = fx.seed_family(
+            fx.tenant_id,
+            fx.alice,
+            fx.other_app.id(),
+            Duration::hours(1),
+            0,
+        );
+
+        fx.revoke()
+            .execute(&alice(&fx), command(&fx, fx.alice, family.family_id))
+            .await
+            .unwrap();
+
+        assert!(fx.logout_notices().is_empty());
+    }
+
+    // Already over, so already announced: nothing new to say.
+    #[tokio::test]
+    async fn ending_an_ended_session_announces_nothing() {
+        let fx = build();
+        let family = fx.seed_family(fx.tenant_id, fx.alice, fx.app.id(), Duration::hours(1), 0);
+        fx.update_family(family.family_id, |t| t.revoke(Utc::now()));
+
+        fx.revoke()
+            .execute(&alice(&fx), command(&fx, fx.alice, family.family_id))
+            .await
+            .unwrap();
+
+        assert!(fx.logout_notices().is_empty());
+    }
+
     // The point of ending a session: the app cannot refresh any more.
     #[tokio::test]
     async fn an_ended_session_can_no_longer_refresh() {
@@ -180,6 +234,10 @@ mod tests {
         }
         assert!(!all_revoked(&fx, alices.family_id));
         assert!(fx.audit_events().is_empty());
+        assert!(
+            fx.logout_notices().is_empty(),
+            "nothing about Alice's session"
+        );
     }
 
     #[tokio::test]

@@ -58,7 +58,9 @@ impl DeliveryView {
         DeliveryView {
             id: delivery.id(),
             event_id: delivery.event_id(),
-            subscription_id: delivery.subscription_id(),
+            // The delivery log lists webhook deliveries only (see
+            // WebhookDeliveryRepository::find_by_tenant_id), so this is always set.
+            subscription_id: delivery.subscription_id().unwrap_or_default(),
             status: delivery.status().as_str().to_string(),
             attempts: delivery.attempts(),
             next_attempt_at: delivery.next_attempt_at().to_rfc3339(),

@@ -30,7 +30,8 @@ pub trait WebhookDeliveryRepository: Send + Sync {
     async fn update(&self, delivery: &WebhookDelivery) -> Result<(), DomainError>;
 
     // Admin delivery log — the debugging surface for "why hasn't my endpoint
-    // received anything".
+    // received anything". Webhook deliveries only: back-channel logout deliveries
+    // share the table but not this log (they have no subscription to show).
     async fn find_by_tenant_id(
         &self,
         tenant_id: Uuid,

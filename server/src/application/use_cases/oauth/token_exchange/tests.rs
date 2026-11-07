@@ -6,7 +6,10 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        application::use_cases::oauth::token_exchange::{command::Command, use_case::UseCase},
+        application::{
+            ports::token_signer::TokenType,
+            use_cases::oauth::token_exchange::{command::Command, use_case::UseCase},
+        },
         domain::{
             entities::{
                 authorization_code::AuthorizationCode,
@@ -47,6 +50,7 @@ mod tests {
         codes: Arc<InMemoryAuthorizationCodeRepository>,
         refresh: Arc<InMemoryRefreshTokenRepository>,
         audit: FakeAuditLogger,
+        signer: FakeTokenSigner,
         tenant_id: Uuid,
         user_id: Uuid,
     }
@@ -125,9 +129,10 @@ mod tests {
         .with_refresh_token_repository(refresh.clone());
 
         let audit = FakeAuditLogger::new();
+        let signer = FakeTokenSigner::new();
         let use_case = UseCase::new(
             Arc::new(factory),
-            Arc::new(FakeTokenSigner::new()),
+            Arc::new(signer.clone()),
             "https://auth.test".to_string(),
             Arc::new(audit.clone()),
             crate::testing::password_hasher::test_password_hasher(),
@@ -138,6 +143,7 @@ mod tests {
             codes,
             refresh,
             audit,
+            signer,
             tenant_id,
             user_id,
         }
@@ -180,6 +186,40 @@ mod tests {
                 .count_action(crate::domain::entities::audit_action::TOKEN_ISSUED),
             1
         );
+    }
+
+    // Back-channel logout names a session by `sid`; the ID token must carry the same
+    // value, which is the new refresh-token family. The access token does not.
+    #[tokio::test]
+    async fn the_id_token_carries_the_session_id() {
+        let ctx = setup();
+
+        ctx.use_case
+            .execute(make_command(ctx.tenant_id))
+            .await
+            .unwrap();
+
+        let family_id = ctx
+            .refresh
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()
+            .family_id();
+        let signed = ctx.signer.signed_tokens();
+        let (_, id_claims) = signed
+            .iter()
+            .find(|(typ, _)| *typ == TokenType::Id)
+            .expect("an ID token");
+        assert_eq!(id_claims["sid"], family_id.to_string());
+        let (_, access_claims) = signed
+            .iter()
+            .find(|(typ, _)| *typ == TokenType::Access)
+            .expect("an access token");
+        assert!(access_claims.get("sid").is_none());
     }
 
     #[tokio::test]

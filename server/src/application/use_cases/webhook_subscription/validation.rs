@@ -33,8 +33,19 @@ use crate::domain::{entities::domain_event_type::DomainEventType, errors::Domain
 // a careless or semi-trusted tenant admin, not as an airtight boundary against a
 // determined attacker who already controls DNS.
 pub fn validate_webhook_url(url: &str, allow_private_targets: bool) -> Result<(), DomainError> {
+    validate_outbound_url("webhook url", url, allow_private_targets)
+}
+
+// The same SSRF rules for any admin-supplied URL our server will POST to. Besides
+// webhooks this guards an OAuth client's `backchannel_logout_uri`, which the
+// dispatcher calls in exactly the same way. `label` only names the field in errors.
+pub fn validate_outbound_url(
+    label: &str,
+    url: &str,
+    allow_private_targets: bool,
+) -> Result<(), DomainError> {
     let invalid =
-        |reason: &str| DomainError::InvalidRequest(format!("webhook url is not allowed: {reason}"));
+        |reason: &str| DomainError::InvalidRequest(format!("{label} is not allowed: {reason}"));
 
     let url = url.trim();
     if url.is_empty() {
@@ -169,7 +180,7 @@ pub fn validate_event_types(event_types: Vec<String>) -> Result<Vec<String>, Dom
         if value.is_empty() {
             continue;
         }
-        if DomainEventType::parse(&value).is_none() {
+        if DomainEventType::parse_subscribable(&value).is_none() {
             return Err(DomainError::InvalidRequest(format!(
                 "unknown event type: '{value}'"
             )));
@@ -319,6 +330,15 @@ mod tests {
                 "expected {url} to be BLOCKED"
             );
         }
+    }
+
+    // Back-channel logout notices ride the outbox but are not webhook events.
+    #[test]
+    fn the_internal_logout_event_cannot_be_subscribed_to() {
+        assert!(matches!(
+            validate_event_types(vec!["oidc.backchannel_logout".to_string()]),
+            Err(DomainError::InvalidRequest(_))
+        ));
     }
 
     #[test]

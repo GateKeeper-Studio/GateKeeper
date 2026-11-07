@@ -121,7 +121,11 @@ mod tests {
             InMemoryUnitOfWorkFactory::new(Arc::new(InMemoryUserRepository::new()), tenants)
                 .with_oauth_client_repository(clients.clone())
                 .with_external_identity_provider_repository(external_providers.clone());
-        (clients, UseCase::new(Arc::new(factory)), external_providers)
+        (
+            clients,
+            UseCase::new(Arc::new(factory), false),
+            external_providers,
+        )
     }
 
     fn command(tenant_id: Uuid, id: Uuid) -> Command {
@@ -145,6 +149,8 @@ mod tests {
             login_appearance: None,
             external_login_only: false,
             magic_link_enabled: false,
+            backchannel_logout_uri: None,
+            backchannel_logout_session_required: false,
             allowed_languages: vec!["en".to_string()],
             default_language: "en".to_string(),
             mfa_required: false,

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only, magic_link_enabled,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE tenant_id = $1 AND id = $2\n        ",
+  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only, magic_link_enabled,\n            backchannel_logout_uri, backchannel_logout_session_required,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE tenant_id = $1 AND id = $2\n        ",
   "describe": {
     "columns": [
       {
@@ -302,6 +302,28 @@
       },
       {
         "ordinal": 27,
+        "name": "backchannel_logout_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "backchannel_logout_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 28,
+        "name": "backchannel_logout_session_required",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "backchannel_logout_session_required"
+          }
+        }
+      },
+      {
+        "ordinal": 29,
         "name": "login_appearance?: sqlx::types::Json<LoginAppearanceRow>",
         "type_info": "Jsonb",
         "origin": {
@@ -346,8 +368,10 @@
       true,
       false,
       false,
+      true,
+      false,
       true
     ]
   },
-  "hash": "649e0ae4f24f49bff56a7567248d8d3c38852acc23893685c92cebb08542bce8"
+  "hash": "2dcb1db3a070746640734f85861291597cd6f6939414bda8a86dc72ca30a84a9"
 }

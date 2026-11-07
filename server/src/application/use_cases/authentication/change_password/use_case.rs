@@ -5,6 +5,7 @@ use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::application::ports::password_hasher::PasswordHasher;
+use crate::application::shared::backchannel_logout::{EndedSessions, announce_ended_sessions};
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -120,6 +121,9 @@ impl UseCase {
 
         // 9. Lock out anyone who had access under the temporary password: revoke every
         //    live refresh token the user holds across all clients.
+        //    The apps holding those sessions are told through back-channel logout.
+        announce_ended_sessions(&*uow, tenant_id, user_id, EndedSessions::All).await?;
+
         uow.refresh_token_repository()
             .revoke_by_user(tenant_id, user_id)
             .await?;

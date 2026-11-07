@@ -84,6 +84,7 @@
 	let tosUri = $state(client?.tos_uri ?? '');
 	let policyUri = $state(client?.policy_uri ?? '');
 	let initiateLoginUri = $state(client?.initiate_login_uri ?? '');
+	let backchannelLogoutUri = $state(client?.backchannel_logout_uri ?? '');
 
 	let errors = $state<Record<string, string>>({});
 	let isLoading = $state(false);
@@ -165,7 +166,8 @@
 			emailProviderId: emailProviderId || null,
 			tosUri,
 			policyUri,
-			initiateLoginUri
+			initiateLoginUri,
+			backchannelLogoutUri
 		});
 
 		if (!result.success) {
@@ -180,6 +182,7 @@
 			// "Login page" tab — default to English-only until then.
 			const [data, err] = await createOAuthClient(tenantId, {
 				...result.data,
+				backchannelLogoutSessionRequired: false,
 				loginAppearance: null,
 				allowedLanguages: ['en'],
 				defaultLanguage: 'en'
@@ -214,6 +217,8 @@
 		// their own tab) so this full-replacement PUT doesn't wipe them.
 		const [err] = await updateOAuthClient(tenantId, client!.id, {
 			...result.data,
+			// Not editable here; the full-replacement PUT resends what the client has.
+			backchannelLogoutSessionRequired: client!.backchannel_logout_session_required,
 			loginAppearance: client!.login_appearance ?? null,
 			allowedLanguages: client!.allowed_languages,
 			defaultLanguage: client!.default_language
@@ -351,6 +356,30 @@
 			</p>
 			{#if errors.initiateLoginUri}
 				<p class="text-sm font-medium text-destructive">{errors.initiateLoginUri}</p>
+			{/if}
+		</div>
+	</div>
+
+	<Separator />
+
+	<!-- Single sign-out (OIDC Back-Channel Logout) -->
+	<div class="grid gap-4">
+		<span class="text-sm font-medium">{m.oauth_clients_form_backchannel_logout_section()}</span>
+		<div class="space-y-2">
+			<Label for="backchannelLogoutUri">{m.oauth_clients_form_backchannel_logout_uri_label()}</Label
+			>
+			<Input
+				id="backchannelLogoutUri"
+				type="url"
+				inputmode="url"
+				placeholder="https://app.example.com/auth/backchannel-logout"
+				bind:value={backchannelLogoutUri}
+			/>
+			<p class="text-sm text-muted-foreground">
+				{m.oauth_clients_form_backchannel_logout_uri_description()}
+			</p>
+			{#if errors.backchannelLogoutUri}
+				<p class="text-sm font-medium text-destructive">{errors.backchannelLogoutUri}</p>
 			{/if}
 		</div>
 	</div>

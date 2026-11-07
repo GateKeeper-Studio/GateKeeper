@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::application::shared::actor::Actor;
+use crate::application::shared::backchannel_logout::{EndedSessions, announce_ended_sessions};
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -51,6 +52,15 @@ impl UseCase {
         uow.user_repository().anonymize(user.id()).await?;
 
         // Invalidate / remove authentication + consent material.
+        // Every app the user was signed in to is told (back-channel logout).
+        announce_ended_sessions(
+            &*uow,
+            command.tenant_id,
+            command.user_id,
+            EndedSessions::All,
+        )
+        .await?;
+
         uow.refresh_token_repository()
             .revoke_by_user(command.tenant_id, command.user_id)
             .await?;

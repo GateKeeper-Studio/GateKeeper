@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::application::shared::backchannel_logout::{EndedSessions, announce_ended_sessions};
 use crate::{
     application::{
         ports::unit_of_work::UnitOfWorkFactory,
@@ -46,6 +47,16 @@ impl UseCase {
 
         // Scoped to the user: another user's session id is simply not found.
         // Revoking a session that already ended is not an error.
+        // Tell the session's app (back-channel logout). Scoped to this user's live
+        // sessions, so a foreign or already-ended id announces nothing.
+        announce_ended_sessions(
+            &*uow,
+            command.tenant_id,
+            command.user_id,
+            EndedSessions::Family(command.session_id),
+        )
+        .await?;
+
         let owned = uow
             .refresh_token_repository()
             .revoke_family_of_user(command.tenant_id, command.user_id, command.session_id)

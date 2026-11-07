@@ -32,6 +32,13 @@ backlog. A broker remains an option *behind* the outbox later: implementing
 `WebhookSender` (`application/ports/webhook_sender.rs`) with an AMQP/Kafka publisher
 would not touch a single use case.
 
+> **Also carried: OIDC back-channel logout.** The outbox and `webhook_deliveries` also
+> deliver logout notifications to OAuth clients: event type `oidc.backchannel_logout`,
+> rows whose `client_id` is set instead of `subscription_id`. Those notifications are
+> never sent to webhook subscriptions, and cannot be subscribed to. Their wire format is
+> the OIDC `logout_token`, not the envelope below. See
+> [`FLOWS-OAUTH2-OIDC.md`](FLOWS-OAUTH2-OIDC.md) §8.
+
 ---
 
 ## 2. Events
@@ -250,8 +257,10 @@ its result rather than being retried on the next boot.
 
 - `outbox_events` — the log. `published_at IS NULL` means "not yet fanned out".
 - `webhook_subscriptions` — tenant-scoped targets; secret encrypted at rest.
-- `webhook_deliveries` — one row per (event, subscription), holding the retry state.
-  Kept after success/death as the audit trail behind the delivery log.
+- `webhook_deliveries` — one row per (event, target), holding the retry state. The target
+  is a subscription (`subscription_id`) or, for back-channel logout, an OAuth client
+  (`client_id`) — exactly one of the two. Kept after success/death as the audit trail
+  behind the delivery log, which lists subscription deliveries only.
 
 Neither table is purged automatically; add retention to
 `compliance/purge_expired_data` if the volume warrants it.

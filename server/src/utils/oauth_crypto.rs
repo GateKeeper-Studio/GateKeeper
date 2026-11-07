@@ -3,6 +3,15 @@ use rand::{Rng, RngCore};
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
+// Reads a JWT's payload WITHOUT verifying the signature. Only for choosing which
+// key or client to verify against (e.g. the `aud` of an id_token_hint); the trust
+// decision is always a real verification afterwards.
+pub fn unverified_jwt_claims(token: &str) -> Option<serde_json::Value> {
+    let payload = token.split('.').nth(1)?;
+    let bytes = URL_SAFE_NO_PAD.decode(payload).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
 // 256 bits of entropy, URL-safe, no padding. Used for auth codes, refresh tokens,
 // session tokens, and client secrets — anything that must be unguessable.
 pub fn generate_opaque_token() -> String {

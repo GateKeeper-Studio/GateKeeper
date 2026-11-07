@@ -105,8 +105,12 @@ impl WebhookSubscription {
     // Does this subscription want the given event? An empty filter means "all",
     // so a tenant that just wants everything doesn't have to enumerate (and
     // re-enumerate every time a new event type ships).
+    // An empty filter means every SUBSCRIBABLE event: a back-channel logout
+    // notification is never a webhook, whatever the filter says.
     pub fn accepts(&self, event_type: DomainEventType) -> bool {
-        self.event_types.is_empty() || self.event_types.iter().any(|t| t == event_type.as_str())
+        event_type.is_subscribable()
+            && (self.event_types.is_empty()
+                || self.event_types.iter().any(|t| t == event_type.as_str()))
     }
 
     pub fn id(&self) -> Uuid {
