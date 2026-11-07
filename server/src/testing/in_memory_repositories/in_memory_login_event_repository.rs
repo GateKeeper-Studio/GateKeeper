@@ -8,8 +8,8 @@ use crate::domain::{
     entities::login_event::{LoginEvent, RiskSignal},
     errors::DomainError,
     repositories::login_event_repository::{
-        AttackedUser, CountryCount, LastSuccessfulLogin, LoginEventFilter, LoginEventRepository,
-        SecurityOverviewMetrics, SuspiciousIp,
+        AsnShare, AttackedUser, CountryCount, IpHistory, LastSuccessfulLogin, LoginEventFilter,
+        LoginEventRepository, SecurityOverviewMetrics, SuspiciousIp,
     },
 };
 
@@ -36,6 +36,16 @@ impl InMemoryLoginEventRepository {
     // No-op: writes are already durable in this fake. Present so the UoW can call it
     // uniformly alongside the other repositories.
     pub fn commit_events(&self) {}
+
+    // Every stored event with its signals, oldest first (test assertions).
+    pub fn all(&self) -> Vec<(LoginEvent, Vec<RiskSignal>)> {
+        self.store
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|s| (s.event.clone(), s.signals.clone()))
+            .collect()
+    }
 }
 
 fn identity_key(e: &LoginEvent) -> Option<String> {
@@ -177,6 +187,85 @@ impl LoginEventRepository for InMemoryLoginEventRepository {
                 && s.event.success()
                 && s.event.user_agent_hash() == Some(user_agent_hash)
         }))
+    }
+
+    async fn has_seen_asn(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        asn: i32,
+    ) -> Result<bool, DomainError> {
+        let store = self.store.lock().unwrap();
+        Ok(store.iter().any(|s| {
+            s.event.tenant_id() == tenant_id
+                && s.event.user_id() == Some(user_id)
+                && s.event.success()
+                && s.event.asn() == Some(asn)
+        }))
+    }
+
+    async fn asn_share(
+        &self,
+        tenant_id: Uuid,
+        asn: i32,
+        since: DateTime<Utc>,
+    ) -> Result<AsnShare, DomainError> {
+        let store = self.store.lock().unwrap();
+        let recent: Vec<&Stored> = store
+            .iter()
+            .filter(|s| {
+                s.event.tenant_id() == tenant_id
+                    && s.event.success()
+                    && s.event.asn().is_some()
+                    && s.event.created_at() >= since
+            })
+            .collect();
+        Ok(AsnShare {
+            from_asn: recent.iter().filter(|s| s.event.asn() == Some(asn)).count() as i64,
+            total: recent.len() as i64,
+        })
+    }
+
+    async fn ip_history(
+        &self,
+        tenant_id: Uuid,
+        ip: &str,
+        since: DateTime<Utc>,
+    ) -> Result<IpHistory, DomainError> {
+        let store = self.store.lock().unwrap();
+        let recent: Vec<&Stored> = store
+            .iter()
+            .filter(|s| {
+                s.event.tenant_id() == tenant_id
+                    && s.event.ip_address() == Some(ip)
+                    && s.event.created_at() >= since
+            })
+            .collect();
+        Ok(IpHistory {
+            attempts: recent.len() as i64,
+            failed: recent
+                .iter()
+                .filter(|s| !s.event.credentials_valid())
+                .count() as i64,
+        })
+    }
+
+    async fn count_successful_logins(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        cap: i64,
+    ) -> Result<i64, DomainError> {
+        let store = self.store.lock().unwrap();
+        let count = store
+            .iter()
+            .filter(|s| {
+                s.event.tenant_id() == tenant_id
+                    && s.event.user_id() == Some(user_id)
+                    && s.event.success()
+            })
+            .count() as i64;
+        Ok(count.min(cap))
     }
 
     async fn list(

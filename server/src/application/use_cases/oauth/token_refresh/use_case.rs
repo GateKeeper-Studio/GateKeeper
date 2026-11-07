@@ -11,7 +11,10 @@ use crate::{
             token_signer::TokenSigner,
             unit_of_work::UnitOfWorkFactory,
         },
-        shared::token_policy::REFRESH_TOKEN_TTL_DAYS,
+        shared::{
+            backchannel_logout::{EndedSessions, announce_ended_sessions},
+            token_policy::REFRESH_TOKEN_TTL_DAYS,
+        },
         use_cases::oauth::{
             token_refresh::{command::Command, response::Response},
             token_service::{TokenGrant, TokenMinter, authenticate_client},
@@ -115,6 +118,16 @@ impl UseCase {
 
             if !within_leeway {
                 if presented.rotated_at().is_some() || presented.revoked_at().is_some() {
+                    // Theft ends the session for the RP too: it is told through
+                    // back-channel logout (only if the family was still live — one
+                    // already revoked was announced when it ended).
+                    announce_ended_sessions(
+                        &*uow,
+                        command.tenant_id,
+                        presented.user_id(),
+                        EndedSessions::Family(presented.family_id()),
+                    )
+                    .await?;
                     uow.refresh_token_repository()
                         .revoke_family(command.tenant_id, presented.family_id())
                         .await?;
@@ -197,6 +210,7 @@ impl UseCase {
                     client: &client,
                     scopes: &scopes,
                     nonce: None,
+                    sid: Some(new_token.family_id()),
                     now,
                 },
             )

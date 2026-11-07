@@ -35,6 +35,16 @@ pub trait MfaChallengeRepository: Send + Sync {
         purpose: &MfaChallengePurpose,
         method: &MfaMethod,
     ) -> Result<(), DomainError>;
+    // Same, scoped to one login session. Used where the caller is not yet proven
+    // to be the user (a passkey session is opened from an email alone): burning
+    // every challenge of the user would let anyone who knows the email cancel the
+    // real user's ceremony in another session.
+    async fn invalidate_active_by_session(
+        &self,
+        auth_session_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+    ) -> Result<(), DomainError>;
 
     // Retention: hard-delete rows already past `expires_at`. Called by the
     // background purge; idempotent, so concurrent runs are harmless.

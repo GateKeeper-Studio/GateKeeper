@@ -16,11 +16,17 @@ pub const USER_EMAIL_VERIFIED: &str = "user.email.verified";
 pub const USER_PASSWORD_RESET_REQUESTED: &str = "user.password.reset_requested";
 pub const USER_PASSWORD_RESET: &str = "user.password.reset";
 pub const USER_PASSWORD_CHANGED: &str = "user.password.changed";
+// A one-time sign-in link was emailed (magic link login). Recorded only for an
+// existing, eligible account — the request endpoint itself answers the same for all.
+pub const USER_MAGIC_LINK_SENT: &str = "user.login.magic_link_sent";
 pub const USER_MFA_ENROLLED: &str = "user.mfa.enrolled";
 pub const USER_MFA_REMOVED: &str = "user.mfa.removed";
 // The user explicitly extended a pre-authorization session from the login UI. Worth
 // recording: a burst of these is what session-fixation probing would look like.
 pub const USER_SESSION_REFRESHED: &str = "user.session.refreshed";
+// A signed-in session (a refresh-token family) was ended — by the user from /me or by
+// an admin. `metadata.all = true` for "sign out everywhere".
+pub const USER_SESSION_REVOKED: &str = "user.session.revoked";
 
 // ── Data-subject rights (LGPD/GDPR) ──────────────────────────────────────────
 pub const USER_PROFILE_UPDATED: &str = "user.profile.updated";
@@ -71,6 +77,7 @@ pub const CUSTOM_FIELDS_REORDERED: &str = "custom_field.reordered";
 pub const SECURITY_IP_BLOCKED: &str = "security.ip.blocked";
 pub const SECURITY_IP_UNBLOCKED: &str = "security.ip.unblocked";
 pub const SECURITY_RISK_POLICY_UPDATED: &str = "security.risk_policy.updated";
+pub const SECURITY_LOGIN_EVENT_LABELED: &str = "security.login_event.labeled";
 
 // ── Platform / maintenance ───────────────────────────────────────────────────
 pub const ADMIN_LOGIN_SUCCESS: &str = "admin.login.success";

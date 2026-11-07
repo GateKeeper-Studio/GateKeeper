@@ -1,0 +1,51 @@
+---
+title: Login page branding
+description: Making the hosted login page look like your product.
+section: Configuring a tenant
+---
+
+GateKeeper hosts the login, sign-up, MFA, and password-reset screens for you. Hosting them
+centrally is what lets the risk engine and MFA work at all — but it means the pages are *yours* to
+brand. That is the **Appearance** tab on each OAuth client.
+
+Appearance is per client, so two apps in the same tenant can look completely different.
+
+## Layouts
+
+| Layout | Looks like |
+| --- | --- |
+| `centered` | Form centered on a plain background. |
+| `split_image` | Brand image on one side, form on the other. |
+| `card` | Form in a floating card over a background image. |
+| `minimal` | Compact — logo and form, nothing else. |
+
+`split_image` additionally lets you put the hero image on the **left** or the **right**.
+
+## The rest of the knobs
+
+| Field | Notes |
+| --- | --- |
+| **Logo URI** | `http(s)` URL, rendered in an `<img>`. |
+| **Background image URI** | `http(s)` URL. Used by `split_image` and `card`. |
+| **Heading / subtext** | Rendered as plain text. |
+| **Primary / accent color** | Validated hex. |
+| **Border radius** | Applied to inputs and buttons. |
+| **Font** | One of `inter`, `system`, `roboto`, `georgia`. |
+
+## Why you cannot inject CSS
+
+You may notice there is no "custom CSS" box, and that fonts are a fixed list of four rather than a
+free-text field. That is intentional, and it is not an oversight to work around.
+
+The login page is where users type their password. Anything that can inject styles or markup into
+that page can also reposition it, overlay it, or restyle it into a convincing phishing surface —
+and an administrator account is not the same trust level as the server itself. So every value here
+is constrained by construction: layouts and fonts are closed sets, colors are validated hex, image
+fields must be `http(s)` URLs, and all text is rendered as escaped text nodes.
+
+> [!NOTE]
+> The font names map to a bundled, safe font stack. A raw `font-family` string is never passed
+> through.
+
+If you need branding beyond what these fields allow, the honest answer is that you want your own
+login UI driving the API directly — not a more permissive hosted page.

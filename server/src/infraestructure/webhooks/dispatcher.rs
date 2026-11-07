@@ -6,13 +6,16 @@ use tokio::{sync::watch, task::JoinHandle, time};
 use crate::{
     application::{
         ports::{
-            secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory,
-            webhook_sender::WebhookSender,
+            secret_cipher::SecretCipher, token_signer::TokenSigner,
+            unit_of_work::UnitOfWorkFactory, webhook_sender::WebhookSender,
         },
         use_cases::webhook::dispatch_pending_events,
     },
     infraestructure::{
-        config::AppConfig, crypto::aes_gcm_secret_cipher::AesGcmSecretCipher,
+        config::AppConfig,
+        crypto::{
+            aes_gcm_secret_cipher::AesGcmSecretCipher, jwt_signing_service::JwtSigningService,
+        },
         database::unit_of_work::DbUnitOfWorkFactory,
         webhooks::reqwest_webhook_sender::ReqwestWebhookSender,
     },
@@ -42,10 +45,15 @@ pub fn spawn_dispatcher(
         Arc::clone(&secret_cipher),
     ));
 
+    // Signs back-channel logout tokens with the tenant's active key.
+    let signer: Arc<dyn TokenSigner> = Arc::new(JwtSigningService::new(Arc::clone(&secret_cipher)));
+
     let use_case = dispatch_pending_events::use_case::UseCase::new(
         uow_factory,
         sender,
         secret_cipher,
+        signer,
+        config.oauth_issuer.clone(),
         config.webhook_batch_size,
     );
 

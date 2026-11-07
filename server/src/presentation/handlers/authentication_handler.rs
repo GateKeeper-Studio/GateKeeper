@@ -12,7 +12,8 @@ use crate::{
     application::use_cases::{
         authentication::{
             authorize_session, change_password, confirm_email, forgot_password, login,
-            refresh_session, register, resend_confirm_email, reset_password,
+            redeem_magic_link, refresh_session, register, request_magic_link, resend_confirm_email,
+            reset_password,
         },
         oauth_client::get_client_auth_data,
     },
@@ -65,17 +66,25 @@ pub async fn login(
 
     match state.authentication.login.execute(payload).await {
         Ok(response) => {
-            let actor = Uuid::parse_str(&response.user_id).ok();
-            let event = AuditEvent::new(
-                None,
-                ActorType::User,
-                actor,
-                USER_LOGIN_SUCCESS,
-                Outcome::Success,
-            )
-            .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone())
-            .with_metadata(serde_json::json!({ "client_id": client_id }));
-            let _ = state.audit_logger.record(event).await;
+            // A passwordless login has proven nothing yet: it answered with a WebAuthn
+            // challenge, and verify_webauthn audits the outcome once the passkey is
+            // checked. Only a verified password is a login success here.
+            if response.credentials_verified {
+                let actor = response
+                    .user_id
+                    .as_deref()
+                    .and_then(|id| Uuid::parse_str(id).ok());
+                let event = AuditEvent::new(
+                    None,
+                    ActorType::User,
+                    actor,
+                    USER_LOGIN_SUCCESS,
+                    Outcome::Success,
+                )
+                .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone())
+                .with_metadata(serde_json::json!({ "client_id": client_id }));
+                let _ = state.audit_logger.record(event).await;
+            }
             Ok((StatusCode::OK, Json(response)))
         }
         Err(err) => {
@@ -184,6 +193,54 @@ pub async fn forgot_password(
         .await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// POST /v1/auth/magic-link
+//
+// "Email me a sign-in link". Always 202 with the code of a session waiting for the
+// click — the same answer, in the same time, whether or not the email has an account:
+// the account lookup and the email happen in the background. The hosted login keeps
+// the code in this browser; the link only works together with it.
+pub async fn request_magic_link(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    AppJson(mut payload): AppJson<request_magic_link::command::Command>,
+) -> Result<impl IntoResponse, ApiError> {
+    payload.validate().map_err(ApiError::Validation)?;
+
+    payload.ip_address = ctx.ip_address;
+    payload.user_agent = ctx.user_agent;
+
+    let response = state
+        .authentication
+        .request_magic_link
+        .execute(payload)
+        .await?;
+
+    Ok((StatusCode::ACCEPTED, Json(response)))
+}
+
+// POST /v1/auth/magic-link/redeem
+//
+// The emailed link was opened. Takes the link's `id` + `token` AND the waiting
+// session's code from this browser; answers like a password login (MFA routing,
+// forced change, then POST /v1/auth/authorize). Audit and risk are recorded by the
+// use case, in the same transaction as the sign-in.
+pub async fn redeem_magic_link(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    AppJson(mut payload): AppJson<redeem_magic_link::command::Command>,
+) -> Result<impl IntoResponse, ApiError> {
+    payload.ip_address = ctx.ip_address;
+    payload.user_agent = ctx.user_agent;
+
+    let response = state
+        .authentication
+        .redeem_magic_link
+        .execute(payload)
+        .await?;
+
+    Ok((StatusCode::OK, Json(response)))
 }
 
 // POST /v1/auth/reset-password

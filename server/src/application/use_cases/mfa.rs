@@ -11,3 +11,7 @@ pub mod start_webauthn_login;
 pub mod verify_email_otp;
 pub mod verify_totp;
 pub mod verify_webauthn;
+
+#[cfg(test)]
+mod passkey_session_lock_tests;
+mod risk_feedback_tests;

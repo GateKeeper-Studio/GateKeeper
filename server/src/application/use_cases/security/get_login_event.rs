@@ -4,8 +4,16 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    application::use_cases::security::views::{LoginEventView, RiskSignalView},
-    domain::{errors::DomainError, repositories::login_event_repository::LoginEventRepository},
+    application::use_cases::security::views::{
+        LoginEventLabelView, LoginEventView, RiskSignalView,
+    },
+    domain::{
+        errors::DomainError,
+        repositories::{
+            login_event_label_repository::LoginEventLabelRepository,
+            login_event_repository::LoginEventRepository,
+        },
+    },
 };
 
 // Read-only single login-event detail with its signals + related events (spec §9.1.3).
@@ -18,18 +26,30 @@ pub struct Query {
 pub struct Response {
     pub event: LoginEventView,
     pub signals: Vec<RiskSignalView>,
+    // Admin-only (this endpoint), never on the list views that `/me` reuses: the
+    // statistical model's verdict with its per-feature explanation, and the feature
+    // vector behind it (both null under the rules engine). Exposing them to end users
+    // would let an account holder probe the model.
+    pub risk_model: Option<serde_json::Value>,
+    pub features: Option<serde_json::Value>,
+    pub label: Option<LoginEventLabelView>,
     pub related_by_ip: Vec<LoginEventView>,
     pub related_by_user: Vec<LoginEventView>,
 }
 
 pub struct UseCase {
     login_event_repository: Arc<dyn LoginEventRepository>,
+    label_repository: Arc<dyn LoginEventLabelRepository>,
 }
 
 impl UseCase {
-    pub fn new(login_event_repository: Arc<dyn LoginEventRepository>) -> Self {
+    pub fn new(
+        login_event_repository: Arc<dyn LoginEventRepository>,
+        label_repository: Arc<dyn LoginEventLabelRepository>,
+    ) -> Self {
         Self {
             login_event_repository,
+            label_repository,
         }
     }
 
@@ -43,6 +63,13 @@ impl UseCase {
         };
 
         let signals = self.login_event_repository.signals_for(query.id).await?;
+        let label = self
+            .label_repository
+            .find(query.tenant_id, query.id)
+            .await?
+            .map(LoginEventLabelView::from);
+        let features = event.risk_features().cloned();
+        let risk_model = event.risk_model().cloned();
 
         let related_by_ip = match event.ip_address() {
             Some(ip) => {
@@ -64,6 +91,9 @@ impl UseCase {
         Ok(Some(Response {
             event: LoginEventView::from(event),
             signals: signals.into_iter().map(RiskSignalView::from).collect(),
+            risk_model,
+            features,
+            label,
             related_by_ip: related_by_ip
                 .into_iter()
                 .map(LoginEventView::from)

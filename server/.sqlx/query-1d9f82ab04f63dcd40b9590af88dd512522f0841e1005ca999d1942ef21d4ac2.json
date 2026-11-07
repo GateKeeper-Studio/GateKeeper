@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE auth_sessions\n          SET session_token_hash = $2, user_id = $3, authenticated_at = $4, expires_at = $5,\n            mfa_required = $6, mfa_verified_at = $7, mfa_method = $8, primary_factor = $9,\n            risk_login_event_id = $10\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Bool",
+        "Timestamptz",
+        "Varchar",
+        "Varchar",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1d9f82ab04f63dcd40b9590af88dd512522f0841e1005ca999d1942ef21d4ac2"
+}

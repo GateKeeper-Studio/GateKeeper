@@ -19,4 +19,19 @@ mod tests {
             vec!["S256".to_string()]
         );
     }
+
+    #[tokio::test]
+    async fn advertises_rp_initiated_and_back_channel_logout() {
+        let response = UseCase::new("https://auth.test".to_string())
+            .execute(Query)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.end_session_endpoint,
+            "https://auth.test/oauth/logout"
+        );
+        assert!(response.backchannel_logout_supported);
+        assert!(response.backchannel_logout_session_supported);
+    }
 }

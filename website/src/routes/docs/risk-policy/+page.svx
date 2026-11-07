@@ -1,0 +1,78 @@
+---
+title: Risk policy & monitoring
+description: Every tunable with its default, and the four screens for investigating a login.
+section: Security
+---
+
+The [risk engine](/docs/risk-engine) ships with defaults that work out of the box — a tenant with no
+saved policy uses them, so there is nothing to configure before you are protected. This page is
+about changing them, and about the screens that show you what the engine has been doing.
+
+## The policy
+
+**Security → Risk Policy**. Every field, with its default:
+
+| Setting | Default | What it controls |
+| --- | --- | --- |
+| **Enabled** | `true` | Master switch for the whole engine. |
+| **Failed attempts by IP** | `10` | Failures from one IP before `TOO_MANY_FAILED_ATTEMPTS_BY_IP` fires. |
+| **Failed attempts by user** | `5` | Failures against one account before that signal fires. |
+| **Password spraying threshold** | `10` | Distinct accounts one IP may touch before it looks like spraying. |
+| **Tenant attack threshold** | `100` | Tenant-wide failures before `TENANT_ATTACK_SPIKE` fires. |
+| **Medium risk** | `30` | Score at which a login becomes Medium. |
+| **High risk** | `60` | Score at which it becomes High. |
+| **Critical risk** | `90` | Score at which it becomes Critical. |
+| **Require MFA on high risk** | `true` | Step up to MFA at High. |
+| **Block on critical risk** | `true` | Refuse the login at Critical. |
+| **Temporary block** | `30` min | How long a temporary block lasts. |
+
+### Tuning it sensibly
+
+Thresholds trade false positives against false negatives, and the cost of each is not symmetric.
+
+Lowering **failed attempts by user** to `3` catches brute force sooner, at the cost of locking out
+people who genuinely fumbled their password three times — which, on a bad morning, is a lot of
+people. Raising it to `20` all but eliminates that annoyance and gives an attacker twenty free
+guesses per account.
+
+The sane way to change these is to look at what actually happens in your tenant first (the Login
+Events screen below shows real scores against real logins), rather than picking numbers in the
+abstract.
+
+> [!WARNING]
+> Turning **Enabled** off disables the entire engine — no scoring, no step-up MFA, no automatic
+> blocking. Failed logins are still recorded, but nothing acts on them. There are very few good
+> reasons to do this outside of debugging.
+
+## The monitoring screens
+
+### Login events
+
+Every attempt, successful or not, with its score, level, and decision. Open one to see **which
+signals fired and what each contributed** — this is the screen that tells you *why* a user got
+challenged for MFA, and the first place to look when someone says "it asked me for a code and it
+never does that".
+
+### Suspicious IPs
+
+Addresses with a pattern of failures, and where you **block** or **unblock** them.
+
+Blocking an IP adds `BLOCKED_IP` — 80 points — to every subsequent attempt from it. That alone
+does not quite reach the default Critical threshold of 90, so a blocked IP with no other signal
+lands at High: MFA is demanded rather than the login being refused. One more signal (a new device,
+say) tips it to Critical and the login is blocked outright.
+
+> [!TIP]
+> Blocking an IP is not the same as banning a person. Residential addresses are reassigned, and a
+> corporate NAT can put a thousand innocent users behind one IP. Prefer blocking for a defined
+> incident, and unblock afterwards.
+
+### Attacked users
+
+Accounts on the receiving end of a lot of failed attempts. These are the users most likely to be
+the target of a credential-stuffing run — a good list to consider forcing password resets on, or
+to proactively encourage onto [WebAuthn](/docs/mfa).
+
+### Overview
+
+The summary: volumes, logins by country, and the recent trend.

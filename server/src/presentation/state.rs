@@ -19,8 +19,8 @@ use crate::{
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
             authentication::{
                 authorize_session, change_password, confirm_current_password, confirm_email,
-                external_login, forgot_password, login, refresh_session, register,
-                resend_confirm_email, reset_password,
+                external_login, forgot_password, login, redeem_magic_link, refresh_session,
+                register, request_magic_link, resend_confirm_email, reset_password,
             },
             compliance::{
                 erase_user, export_user_data, list_audit_events, list_required_documents,
@@ -50,7 +50,10 @@ use crate::{
                 set_preferred_mfa_method, start_totp_enrollment, start_webauthn_enrollment,
                 start_webauthn_login, verify_email_otp, verify_totp, verify_webauthn,
             },
-            oauth::{authorize_request, discovery, jwks, token_exchange, token_refresh, userinfo},
+            oauth::{
+                authorize_request, discovery, end_session, jwks, token_exchange, token_refresh,
+                userinfo,
+            },
             oauth_client::{
                 create_oauth_client, delete_oauth_client,
                 external_provider::{
@@ -66,9 +69,11 @@ use crate::{
                 list_roles, list_user_roles, unassign_role_user, update_role_by_id,
             },
             security::{
-                block_ip, get_login_event, get_overview, get_risk_policy, list_attacked_users,
-                list_login_events, list_suspicious_ips, unblock_ip, update_risk_policy,
+                block_ip, get_login_event, get_overview, get_risk_policy, label_login_event,
+                list_attacked_users, list_login_events, list_suspicious_ips, unblock_ip,
+                update_risk_policy,
             },
+            session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
             tenant::{
                 create_tenant, delete_tenant_by_id, get_tenant_by_id, list_tenants,
                 update_tenant_appearance, update_tenant_by_id,
@@ -164,6 +169,8 @@ pub struct OAuthUseCases {
     pub userinfo: Arc<userinfo::use_case::UseCase>,
     pub jwks: Arc<jwks::use_case::UseCase>,
     pub discovery: Arc<discovery::use_case::UseCase>,
+    // RP-Initiated Logout (`/oauth/logout`).
+    pub end_session: Arc<end_session::use_case::UseCase>,
 }
 
 // OAuth clients and their external (social) identity providers.
@@ -179,6 +186,14 @@ pub struct OAuthClientUseCases {
     pub list_external_providers: Arc<list_external_providers::use_case::UseCase>,
     pub update_external_provider: Arc<update_external_provider::use_case::UseCase>,
     pub delete_external_provider: Arc<delete_external_provider::use_case::UseCase>,
+}
+
+// Signed-in sessions (active refresh-token families): list and end them, from /me
+// and from the admin API.
+pub struct SessionUseCases {
+    pub list_user_sessions: Arc<list_user_sessions::use_case::UseCase>,
+    pub revoke_user_session: Arc<revoke_user_session::use_case::UseCase>,
+    pub revoke_all_user_sessions: Arc<revoke_all_user_sessions::use_case::UseCase>,
 }
 
 // Consent grants.
@@ -198,6 +213,8 @@ pub struct AuthenticationUseCases {
     pub authorize_session: Arc<authorize_session::use_case::UseCase>,
     pub refresh_session: Arc<refresh_session::use_case::UseCase>,
     pub forgot_password: Arc<forgot_password::use_case::UseCase>,
+    pub request_magic_link: Arc<request_magic_link::use_case::UseCase>,
+    pub redeem_magic_link: Arc<redeem_magic_link::use_case::UseCase>,
     pub reset_password: Arc<reset_password::use_case::UseCase>,
     pub change_password: Arc<change_password::use_case::UseCase>,
     pub confirm_current_password: Arc<confirm_current_password::use_case::UseCase>,
@@ -274,6 +291,7 @@ pub struct SecurityUseCases {
     pub list_attacked_users: Arc<list_attacked_users::UseCase>,
     pub get_risk_policy: Arc<get_risk_policy::UseCase>,
     pub update_risk_policy: Arc<update_risk_policy::UseCase>,
+    pub label_login_event: Arc<label_login_event::UseCase>,
     pub block_ip: Arc<block_ip::UseCase>,
     pub unblock_ip: Arc<unblock_ip::UseCase>,
 }
@@ -300,6 +318,7 @@ pub struct AppState {
     pub oauth: Arc<OAuthUseCases>,
     pub oauth_clients: Arc<OAuthClientUseCases>,
     pub consents: Arc<ConsentUseCases>,
+    pub sessions: Arc<SessionUseCases>,
     pub authentication: Arc<AuthenticationUseCases>,
     pub mfa: Arc<MfaUseCases>,
     pub webhooks: Arc<WebhookUseCases>,

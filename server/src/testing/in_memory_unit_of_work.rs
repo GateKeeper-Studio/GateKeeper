@@ -20,7 +20,10 @@ use crate::{
             email_verification_token_repository::EmailVerificationTokenRepository,
             external_identity_provider_repository::ExternalIdentityProviderRepository,
             external_login_flow_repository::ExternalLoginFlowRepository,
-            group_repository::GroupRepository, login_event_repository::LoginEventRepository,
+            group_repository::GroupRepository,
+            login_event_label_repository::LoginEventLabelRepository,
+            login_event_repository::LoginEventRepository,
+            magic_link_token_repository::MagicLinkTokenRepository,
             mfa_challenge_repository::MfaChallengeRepository,
             mfa_enrollment_repository::MfaEnrollmentRepository,
             oauth_client_repository::OAuthClientRepository,
@@ -51,7 +54,9 @@ use crate::{
         in_memory_external_identity_provider_repository::InMemoryExternalIdentityProviderRepository,
         in_memory_external_login_flow_repository::InMemoryExternalLoginFlowRepository,
         in_memory_group_repository::InMemoryGroupRepository,
+        in_memory_login_event_label_repository::InMemoryLoginEventLabelRepository,
         in_memory_login_event_repository::InMemoryLoginEventRepository,
+        in_memory_magic_link_token_repository::InMemoryMagicLinkTokenRepository,
         in_memory_mfa_challenge_repository::InMemoryMfaChallengeRepository,
         in_memory_mfa_enrollment_repository::InMemoryMfaEnrollmentRepository,
         in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
@@ -124,6 +129,7 @@ pub struct InMemoryUnitOfWork {
     mfa_enrollment_repository: Arc<InMemoryMfaEnrollmentRepository>,
     mfa_challenge_repository: Arc<InMemoryMfaChallengeRepository>,
     password_reset_token_repository: Arc<InMemoryPasswordResetTokenRepository>,
+    magic_link_token_repository: Arc<InMemoryMagicLinkTokenRepository>,
     password_change_token_repository: Arc<InMemoryPasswordChangeTokenRepository>,
     email_provider_repository: Arc<InMemoryEmailProviderRepository>,
     external_identity_provider_repository: Arc<InMemoryExternalIdentityProviderRepository>,
@@ -137,6 +143,7 @@ pub struct InMemoryUnitOfWork {
     webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
     webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
     tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
+    login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
 }
 
 impl InMemoryUnitOfWork {
@@ -158,6 +165,7 @@ impl InMemoryUnitOfWork {
         mfa_enrollment_repository: Arc<InMemoryMfaEnrollmentRepository>,
         mfa_challenge_repository: Arc<InMemoryMfaChallengeRepository>,
         password_reset_token_repository: Arc<InMemoryPasswordResetTokenRepository>,
+        magic_link_token_repository: Arc<InMemoryMagicLinkTokenRepository>,
         password_change_token_repository: Arc<InMemoryPasswordChangeTokenRepository>,
         email_provider_repository: Arc<InMemoryEmailProviderRepository>,
         external_identity_provider_repository: Arc<InMemoryExternalIdentityProviderRepository>,
@@ -171,6 +179,7 @@ impl InMemoryUnitOfWork {
         webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
         webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
         tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
+        login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
     ) -> Self {
         Self {
             user_repository,
@@ -189,6 +198,7 @@ impl InMemoryUnitOfWork {
             mfa_enrollment_repository,
             mfa_challenge_repository,
             password_reset_token_repository,
+            magic_link_token_repository,
             password_change_token_repository,
             email_provider_repository,
             external_identity_provider_repository,
@@ -202,6 +212,7 @@ impl InMemoryUnitOfWork {
             webhook_subscription_repository,
             webhook_delivery_repository,
             tenant_risk_policy_repository,
+            login_event_label_repository,
         }
     }
 }
@@ -274,6 +285,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         Arc::clone(&self.password_reset_token_repository) as Arc<dyn PasswordResetTokenRepository>
     }
 
+    fn magic_link_token_repository(&self) -> Arc<dyn MagicLinkTokenRepository> {
+        Arc::clone(&self.magic_link_token_repository) as Arc<dyn MagicLinkTokenRepository>
+    }
+
     fn password_change_token_repository(&self) -> Arc<dyn PasswordChangeTokenRepository> {
         Arc::clone(&self.password_change_token_repository) as Arc<dyn PasswordChangeTokenRepository>
     }
@@ -327,6 +342,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         Arc::clone(&self.tenant_risk_policy_repository) as Arc<dyn TenantRiskPolicyRepository>
     }
 
+    fn login_event_label_repository(&self) -> Arc<dyn LoginEventLabelRepository> {
+        Arc::clone(&self.login_event_label_repository) as Arc<dyn LoginEventLabelRepository>
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), DomainError> {
         self.user_repository.memory.commit();
         self.tenant_repository.memory.commit();
@@ -346,6 +365,7 @@ impl UnitOfWork for InMemoryUnitOfWork {
         self.mfa_enrollment_repository.memory.commit();
         self.mfa_challenge_repository.memory.commit();
         self.password_reset_token_repository.memory.commit();
+        self.magic_link_token_repository.memory.commit();
         self.password_change_token_repository.memory.commit();
         self.email_provider_repository.memory.commit();
         self.external_identity_provider_repository.memory.commit();
@@ -380,6 +400,7 @@ pub struct InMemoryUnitOfWorkFactory {
     mfa_enrollment_repository: Arc<InMemoryMfaEnrollmentRepository>,
     mfa_challenge_repository: Arc<InMemoryMfaChallengeRepository>,
     password_reset_token_repository: Arc<InMemoryPasswordResetTokenRepository>,
+    magic_link_token_repository: Arc<InMemoryMagicLinkTokenRepository>,
     password_change_token_repository: Arc<InMemoryPasswordChangeTokenRepository>,
     email_provider_repository: Arc<InMemoryEmailProviderRepository>,
     external_identity_provider_repository: Arc<InMemoryExternalIdentityProviderRepository>,
@@ -393,6 +414,7 @@ pub struct InMemoryUnitOfWorkFactory {
     webhook_subscription_repository: Arc<InMemoryWebhookSubscriptionRepository>,
     webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
     tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
+    login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
 }
 
 impl InMemoryUnitOfWorkFactory {
@@ -426,6 +448,7 @@ impl InMemoryUnitOfWorkFactory {
             mfa_enrollment_repository: Arc::new(InMemoryMfaEnrollmentRepository::new()),
             mfa_challenge_repository: Arc::new(InMemoryMfaChallengeRepository::new()),
             password_reset_token_repository: Arc::new(InMemoryPasswordResetTokenRepository::new()),
+            magic_link_token_repository: Arc::new(InMemoryMagicLinkTokenRepository::new()),
             password_change_token_repository: Arc::new(InMemoryPasswordChangeTokenRepository::new()),
             email_provider_repository: Arc::new(InMemoryEmailProviderRepository::new()),
             external_identity_provider_repository: Arc::new(
@@ -441,7 +464,16 @@ impl InMemoryUnitOfWorkFactory {
             login_event_repository: Arc::new(InMemoryLoginEventRepository::new()),
             security_block_repository: Arc::new(InMemorySecurityBlockRepository::new()),
             tenant_risk_policy_repository: Arc::new(InMemoryTenantRiskPolicyRepository::new()),
+            login_event_label_repository: Arc::new(InMemoryLoginEventLabelRepository::new()),
         }
+    }
+
+    pub fn with_login_event_label_repository(
+        mut self,
+        repo: Arc<InMemoryLoginEventLabelRepository>,
+    ) -> Self {
+        self.login_event_label_repository = repo;
+        self
     }
 
     pub fn with_login_event_repository(mut self, repo: Arc<InMemoryLoginEventRepository>) -> Self {
@@ -605,6 +637,14 @@ impl InMemoryUnitOfWorkFactory {
         self
     }
 
+    pub fn with_magic_link_token_repository(
+        mut self,
+        repo: Arc<InMemoryMagicLinkTokenRepository>,
+    ) -> Self {
+        self.magic_link_token_repository = repo;
+        self
+    }
+
     pub fn with_password_change_token_repository(
         mut self,
         repo: Arc<InMemoryPasswordChangeTokenRepository>,
@@ -666,6 +706,7 @@ impl UnitOfWorkFactory for InMemoryUnitOfWorkFactory {
             Arc::clone(&self.mfa_enrollment_repository),
             Arc::clone(&self.mfa_challenge_repository),
             Arc::clone(&self.password_reset_token_repository),
+            Arc::clone(&self.magic_link_token_repository),
             Arc::clone(&self.password_change_token_repository),
             Arc::clone(&self.email_provider_repository),
             Arc::clone(&self.external_identity_provider_repository),
@@ -679,6 +720,7 @@ impl UnitOfWorkFactory for InMemoryUnitOfWorkFactory {
             Arc::clone(&self.webhook_subscription_repository),
             Arc::clone(&self.webhook_delivery_repository),
             Arc::clone(&self.tenant_risk_policy_repository),
+            Arc::clone(&self.login_event_label_repository),
         )))
     }
 }

@@ -121,7 +121,11 @@ mod tests {
             InMemoryUnitOfWorkFactory::new(Arc::new(InMemoryUserRepository::new()), tenants)
                 .with_oauth_client_repository(clients.clone())
                 .with_external_identity_provider_repository(external_providers.clone());
-        (clients, UseCase::new(Arc::new(factory)), external_providers)
+        (
+            clients,
+            UseCase::new(Arc::new(factory), false),
+            external_providers,
+        )
     }
 
     fn command(tenant_id: Uuid, id: Uuid) -> Command {
@@ -144,6 +148,9 @@ mod tests {
             initiate_login_uri: None,
             login_appearance: None,
             external_login_only: false,
+            magic_link_enabled: false,
+            backchannel_logout_uri: None,
+            backchannel_logout_session_required: false,
             allowed_languages: vec!["en".to_string()],
             default_language: "en".to_string(),
             mfa_required: false,
@@ -402,6 +409,42 @@ mod tests {
         let saved = stored.get(&client.id()).unwrap();
         assert!(saved.external_login_only());
         assert!(!saved.allows_password_login());
+    }
+
+    // The update is a full replace: the flag is saved when sent, and a caller that
+    // omits it (serde default false) turns the feature off.
+    #[tokio::test]
+    async fn saves_and_clears_magic_link_enabled() {
+        let tenant_id = Uuid::now_v7();
+        let client = make_client(tenant_id);
+        let (clients, use_case, _) = setup_with_providers(tenant_id, Some(&client), &[]);
+
+        let mut cmd = command(tenant_id, client.id());
+        cmd.magic_link_enabled = true;
+        let view = use_case
+            .execute(&crate::application::shared::actor::Actor::System, cmd)
+            .await
+            .unwrap();
+        assert!(view.magic_link_enabled);
+        assert!(
+            clients
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .get(&client.id())
+                .unwrap()
+                .allows_magic_link_login()
+        );
+
+        let view = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                command(tenant_id, client.id()),
+            )
+            .await
+            .unwrap();
+        assert!(!view.magic_link_enabled);
     }
 
     // Turning it back OFF needs no provider — it only ever adds a way in.

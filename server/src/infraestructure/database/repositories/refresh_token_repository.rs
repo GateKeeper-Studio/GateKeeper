@@ -1,11 +1,13 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::{
     domain::{
-        entities::refresh_token::RefreshToken, errors::DomainError,
-        repositories::refresh_token_repository::RefreshTokenRepository,
+        entities::refresh_token::RefreshToken,
+        errors::DomainError,
+        repositories::refresh_token_repository::{RefreshTokenFamily, RefreshTokenRepository},
     },
     infraestructure::database::executor::{DbExecutor, SharedTx, run},
 };
@@ -181,6 +183,86 @@ impl RefreshTokenRepository for DbRefreshTokenRepository {
         .map_err(map_sqlx_error)?;
 
         Ok(())
+    }
+
+    async fn find_active_families_by_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<RefreshTokenFamily>, DomainError> {
+        // One row per family: its newest token (rn = 1), plus the family's first
+        // created_at. A family is live when that newest token is.
+        let rows = run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          SELECT family_id AS "family_id!", client_id AS "client_id!", scopes AS "scopes!",
+            signed_in_at AS "signed_in_at!", created_at AS "last_used_at!",
+            expires_at AS "expires_at!"
+          FROM (
+            SELECT family_id, client_id, scopes, created_at, expires_at, revoked_at, rotated_at,
+              MIN(created_at) OVER (PARTITION BY family_id) AS signed_in_at,
+              ROW_NUMBER() OVER (PARTITION BY family_id ORDER BY created_at DESC, id DESC) AS rn
+            FROM refresh_tokens
+            WHERE tenant_id = $1 AND user_id = $2
+          ) latest
+          WHERE rn = 1 AND revoked_at IS NULL AND rotated_at IS NULL AND expires_at > $3
+          ORDER BY created_at DESC
+        "#,
+                tenant_id,
+                user_id,
+                now,
+            ),
+            fetch_all
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| RefreshTokenFamily {
+                family_id: r.family_id,
+                client_id: r.client_id,
+                scopes: r.scopes,
+                signed_in_at: r.signed_in_at,
+                last_used_at: r.last_used_at,
+                expires_at: r.expires_at,
+            })
+            .collect())
+    }
+
+    async fn revoke_family_of_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        family_id: Uuid,
+    ) -> Result<bool, DomainError> {
+        // The ownership check and the revoke are one statement: the UPDATE is scoped
+        // to the user, and EXISTS reports whether the user owns the family at all.
+        let owned = run!(
+            self.executor,
+            sqlx::query_scalar!(
+                r#"
+          WITH revoked AS (
+            UPDATE refresh_tokens
+            SET revoked_at = now()
+            WHERE tenant_id = $1 AND user_id = $2 AND family_id = $3 AND revoked_at IS NULL
+            RETURNING id
+          )
+          SELECT EXISTS (
+            SELECT 1 FROM refresh_tokens
+            WHERE tenant_id = $1 AND user_id = $2 AND family_id = $3
+          ) AS "owned!"
+        "#,
+                tenant_id,
+                user_id,
+                family_id,
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(owned)
     }
 
     async fn delete_expired(

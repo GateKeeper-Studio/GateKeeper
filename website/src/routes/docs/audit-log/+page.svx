@@ -1,0 +1,48 @@
+---
+title: Audit log
+description: The append-only record of everything that happened.
+section: Compliance
+---
+
+**Compliance → Audit Log** is the tenant's record of every consequential action, by administrators
+and by users. It is **append-only**: entries cannot be edited or deleted from the dashboard, which
+is what makes it worth anything as evidence.
+
+## What gets recorded
+
+Roughly sixty action types, grouped by prefix:
+
+| Prefix | Covers |
+| --- | --- |
+| `admin.*` | Administrator sign-in and configuration changes. |
+| `user.*` | User creation, updates, deletion, sign-in. |
+| `token.*` | Token issue, refresh, revoke — including `token.reuse_detected`. |
+| `role.*`, `group.*` | Assignments and removals. |
+| `oauth_client.*` | Client created, updated, secret rotated. |
+| `consent.*` | Consent granted or revoked. |
+| `security.*` | IP blocks, risk decisions. |
+| `external_provider.*` | Social login configuration. |
+| `policy.accepted` | A user accepted a version of your terms or privacy policy. |
+| `data.purged` | Retention purge ran. |
+
+## The entries worth alerting on
+
+Most of the log is routine. These are not:
+
+- **`token.reuse_detected`** — a refresh token was presented twice. That should be impossible in
+  normal operation, and GateKeeper's response is to revoke the whole token family. It means a
+  refresh token leaked, and it is the single highest-signal entry in the log.
+- **`oauth_client.secret_rotated`** — if you did not do this, someone else did.
+- **`admin.*`** from an unfamiliar address — administrators can reconfigure your identity provider.
+
+## Using it in an investigation
+
+The usual shape of the question is "what happened to this account?", and the honest answer is that
+the audit log alone rarely tells you. Pair it with **[Login Events](/docs/risk-policy)**: the audit
+log tells you *what was done*, while login events tell you *how risky the sign-in that did it
+looked*. A `user.password_changed` is unremarkable on its own and rather more interesting when the
+login that preceded it scored 70 from a new country.
+
+> [!NOTE]
+> The audit log is scoped to a tenant. Actions against the organization itself, including admin
+> account changes, are not in a tenant's log.

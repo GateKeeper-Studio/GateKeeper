@@ -7,7 +7,7 @@ use axum::{
 };
 
 use crate::presentation::{
-    handlers::{compliance_handler, mfa_handler, security_handler},
+    handlers::{compliance_handler, mfa_handler, security_handler, session_handler},
     routes::AppState,
 };
 
@@ -56,6 +56,15 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
         .route(
             "/me/mfa/webauthn/finish",
             post(mfa_handler::finish_webauthn_enrollment),
+        )
+        // ── Self-service sessions: the apps I'm signed in to, and ending them ──────
+        .route(
+            "/me/sessions",
+            get(session_handler::list_my_sessions).delete(session_handler::revoke_all_my_sessions),
+        )
+        .route(
+            "/me/sessions/{session_id}",
+            axum::routing::delete(session_handler::revoke_my_session),
         )
         // ── Self-service sign-in activity (own recent login locations) ─────────────
         .route(

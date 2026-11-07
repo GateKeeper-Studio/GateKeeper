@@ -10,7 +10,7 @@ use crate::{
         },
         errors::DomainError,
         repositories::login_event_repository::{
-            AttackedUser, CountryCount, LastSuccessfulLogin, LoginEventFilter,
+            AsnShare, AttackedUser, CountryCount, IpHistory, LastSuccessfulLogin, LoginEventFilter,
             LoginEventRepository, SecurityOverviewMetrics, SuspiciousIp,
         },
     },
@@ -60,6 +60,8 @@ struct LoginEventRow {
     risk_score: i32,
     risk_level: String,
     decision: String,
+    risk_features: Option<serde_json::Value>,
+    risk_model: Option<serde_json::Value>,
     created_at: DateTime<Utc>,
 }
 
@@ -91,6 +93,7 @@ impl LoginEventRow {
             RiskDecision::from_str(&self.decision),
             self.created_at,
         )
+        .with_scoring(self.risk_features, self.risk_model)
     }
 }
 
@@ -105,9 +108,10 @@ impl LoginEventRepository for DbLoginEventRepository {
             (id, tenant_id, user_id, client_id, username_normalized, username_hash,
              ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,
              city, latitude, longitude, asn, isp, credentials_valid, success,
-             failure_reason, risk_score, risk_level, decision, created_at)
+             failure_reason, risk_score, risk_level, decision, created_at,
+             risk_features, risk_model)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-                  $16, $17, $18, $19, $20, $21, $22, $23, $24)
+                  $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
         "#,
                 event.id(),
                 event.tenant_id(),
@@ -133,6 +137,8 @@ impl LoginEventRepository for DbLoginEventRepository {
                 event.risk_level().as_str(),
                 event.decision().as_str(),
                 event.created_at(),
+                event.risk_features(),
+                event.risk_model(),
             ),
             execute
         )
@@ -326,6 +332,106 @@ impl LoginEventRepository for DbLoginEventRepository {
         Ok(seen.unwrap_or(false))
     }
 
+    async fn has_seen_asn(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        asn: i32,
+    ) -> Result<bool, DomainError> {
+        let seen = run!(
+            self.executor,
+            sqlx::query_scalar!(
+                r#"SELECT EXISTS(
+                     SELECT 1 FROM "login_events"
+                     WHERE tenant_id = $1 AND user_id = $2 AND success = true AND asn = $3
+                   )"#,
+                tenant_id,
+                user_id,
+                asn
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(seen.unwrap_or(false))
+    }
+
+    async fn asn_share(
+        &self,
+        tenant_id: Uuid,
+        asn: i32,
+        since: DateTime<Utc>,
+    ) -> Result<AsnShare, DomainError> {
+        let row = run!(
+            self.executor,
+            sqlx::query!(
+                r#"SELECT COUNT(*) FILTER (WHERE asn = $2) AS "from_asn!",
+                          COUNT(*) AS "total!"
+                   FROM "login_events"
+                   WHERE tenant_id = $1 AND success = true AND asn IS NOT NULL
+                     AND created_at >= $3"#,
+                tenant_id,
+                asn,
+                since
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(AsnShare {
+            from_asn: row.from_asn,
+            total: row.total,
+        })
+    }
+
+    async fn ip_history(
+        &self,
+        tenant_id: Uuid,
+        ip: &str,
+        since: DateTime<Utc>,
+    ) -> Result<IpHistory, DomainError> {
+        let row = run!(
+            self.executor,
+            sqlx::query!(
+                r#"SELECT COUNT(*) AS "attempts!",
+                          COUNT(*) FILTER (WHERE credentials_valid = false) AS "failed!"
+                   FROM "login_events"
+                   WHERE tenant_id = $1 AND ip_address = $2 AND created_at >= $3"#,
+                tenant_id,
+                ip,
+                since
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(IpHistory {
+            attempts: row.attempts,
+            failed: row.failed,
+        })
+    }
+
+    async fn count_successful_logins(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+        cap: i64,
+    ) -> Result<i64, DomainError> {
+        let count = run!(
+            self.executor,
+            sqlx::query_scalar!(
+                r#"SELECT COUNT(*) AS "count!" FROM (
+                     SELECT 1 FROM "login_events"
+                     WHERE tenant_id = $1 AND user_id = $2 AND success = true
+                     LIMIT $3
+                   ) capped"#,
+                tenant_id,
+                user_id,
+                cap
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(count)
+    }
+
     async fn list(
         &self,
         tenant_id: Uuid,
@@ -341,7 +447,8 @@ impl LoginEventRepository for DbLoginEventRepository {
           SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,
                  ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,
                  city, latitude, longitude, asn, isp, credentials_valid, success,
-                 failure_reason, risk_score, risk_level, decision, created_at
+                 failure_reason, risk_score, risk_level, decision, risk_features,
+                 risk_model, created_at
           FROM "login_events"
           WHERE tenant_id = $1
             AND ($2::uuid IS NULL OR user_id = $2)
@@ -428,7 +535,8 @@ impl LoginEventRepository for DbLoginEventRepository {
           SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,
                  ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,
                  city, latitude, longitude, asn, isp, credentials_valid, success,
-                 failure_reason, risk_score, risk_level, decision, created_at
+                 failure_reason, risk_score, risk_level, decision, risk_features,
+                 risk_model, created_at
           FROM "login_events"
           WHERE tenant_id = $1 AND id = $2
         "#,
@@ -661,7 +769,8 @@ impl LoginEventRepository for DbLoginEventRepository {
           SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,
                  ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,
                  city, latitude, longitude, asn, isp, credentials_valid, success,
-                 failure_reason, risk_score, risk_level, decision, created_at
+                 failure_reason, risk_score, risk_level, decision, risk_features,
+                 risk_model, created_at
           FROM "login_events"
           WHERE tenant_id = $1 AND ip_address = $2 AND id <> $3
           ORDER BY created_at DESC
@@ -694,7 +803,8 @@ impl LoginEventRepository for DbLoginEventRepository {
           SELECT id, tenant_id, user_id, client_id, username_normalized, username_hash,
                  ip_address, ip_hash, user_agent, user_agent_hash, country_code, region,
                  city, latitude, longitude, asn, isp, credentials_valid, success,
-                 failure_reason, risk_score, risk_level, decision, created_at
+                 failure_reason, risk_score, risk_level, decision, risk_features,
+                 risk_model, created_at
           FROM "login_events"
           WHERE tenant_id = $1 AND user_id = $2 AND id <> $3
           ORDER BY created_at DESC

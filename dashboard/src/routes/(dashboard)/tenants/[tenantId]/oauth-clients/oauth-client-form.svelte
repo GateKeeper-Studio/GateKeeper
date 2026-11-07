@@ -74,6 +74,7 @@
 	let requirePkce = $state(client?.require_pkce ?? true);
 	let requireConsent = $state(client?.require_consent ?? true);
 	let externalLoginOnly = $state(client?.external_login_only ?? false);
+	let magicLinkEnabled = $state(client?.magic_link_enabled ?? false);
 	let mfaRequired = $state(client?.mfa_required ?? false);
 	let mfaEmailEnabled = $state(client?.mfa_email_enabled ?? true);
 	let mfaTotpEnabled = $state(client?.mfa_totp_enabled ?? true);
@@ -83,6 +84,7 @@
 	let tosUri = $state(client?.tos_uri ?? '');
 	let policyUri = $state(client?.policy_uri ?? '');
 	let initiateLoginUri = $state(client?.initiate_login_uri ?? '');
+	let backchannelLogoutUri = $state(client?.backchannel_logout_uri ?? '');
 
 	let errors = $state<Record<string, string>>({});
 	let isLoading = $state(false);
@@ -155,6 +157,7 @@
 			requirePkce,
 			requireConsent,
 			externalLoginOnly,
+			magicLinkEnabled,
 			mfaRequired,
 			mfaEmailEnabled,
 			mfaTotpEnabled,
@@ -163,7 +166,8 @@
 			emailProviderId: emailProviderId || null,
 			tosUri,
 			policyUri,
-			initiateLoginUri
+			initiateLoginUri,
+			backchannelLogoutUri
 		});
 
 		if (!result.success) {
@@ -178,6 +182,7 @@
 			// "Login page" tab — default to English-only until then.
 			const [data, err] = await createOAuthClient(tenantId, {
 				...result.data,
+				backchannelLogoutSessionRequired: false,
 				loginAppearance: null,
 				allowedLanguages: ['en'],
 				defaultLanguage: 'en'
@@ -212,6 +217,8 @@
 		// their own tab) so this full-replacement PUT doesn't wipe them.
 		const [err] = await updateOAuthClient(tenantId, client!.id, {
 			...result.data,
+			// Not editable here; the full-replacement PUT resends what the client has.
+			backchannelLogoutSessionRequired: client!.backchannel_logout_session_required,
 			loginAppearance: client!.login_appearance ?? null,
 			allowedLanguages: client!.allowed_languages,
 			defaultLanguage: client!.default_language
@@ -355,6 +362,30 @@
 
 	<Separator />
 
+	<!-- Single sign-out (OIDC Back-Channel Logout) -->
+	<div class="grid gap-4">
+		<span class="text-sm font-medium">{m.oauth_clients_form_backchannel_logout_section()}</span>
+		<div class="space-y-2">
+			<Label for="backchannelLogoutUri">{m.oauth_clients_form_backchannel_logout_uri_label()}</Label
+			>
+			<Input
+				id="backchannelLogoutUri"
+				type="url"
+				inputmode="url"
+				placeholder="https://app.example.com/auth/backchannel-logout"
+				bind:value={backchannelLogoutUri}
+			/>
+			<p class="text-sm text-muted-foreground">
+				{m.oauth_clients_form_backchannel_logout_uri_description()}
+			</p>
+			{#if errors.backchannelLogoutUri}
+				<p class="text-sm font-medium text-destructive">{errors.backchannelLogoutUri}</p>
+			{/if}
+		</div>
+	</div>
+
+	<Separator />
+
 	<!-- Legal links -->
 	<div class="grid gap-4">
 		<div class="space-y-2">
@@ -477,6 +508,18 @@
 				{m.oauth_clients_form_external_login_only_hint()}
 			</p>
 		{/if}
+
+		<!-- A sign-in link is not an external provider: an external-only client never
+		     offers one, so the box is disabled while that is on. -->
+		<label class="flex items-start gap-2 text-sm">
+			<Checkbox bind:checked={magicLinkEnabled} disabled={externalLoginOnly} class="mt-0.5" />
+			<span>
+				{m.oauth_clients_form_magic_link_label()}
+				<span class="text-muted-foreground">
+					{m.oauth_clients_form_magic_link_description()}
+				</span>
+			</span>
+		</label>
 
 		<label class="flex items-center gap-2 text-sm">
 			<Checkbox bind:checked={mfaRequired} />

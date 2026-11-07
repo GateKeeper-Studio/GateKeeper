@@ -1,0 +1,64 @@
+---
+title: Your first tenant
+description: Creating the isolation boundary that everything else lives inside.
+section: Getting started
+---
+
+A tenant is the container for a population of users and the applications they sign into. You need
+one before you can do anything else.
+
+## Create it
+
+From the sidebar's tenant switcher, choose **Create Tenant** (or visit
+`/tenants/new` on the dashboard origin). A fresh organization drops you straight here, since there is nothing
+else to look at.
+
+Creating a tenant generates its **ES256 signing keypair** on the spot. That keypair is what makes
+the tenant an OIDC issuer: it signs every token issued to every user in this tenant, and it is
+published at the tenant's JWKS endpoint so your applications can verify those tokens without
+calling back to GateKeeper.
+
+## The fields
+
+| Field | What it does |
+| --- | --- |
+| **Name** | Display name, shown in the switcher. |
+| **Description** | Free text, for your own benefit. |
+| **Active** | Turning this off disables sign-in for every user in the tenant. |
+| **Self-registration** | Whether end users may create their own accounts from the hosted sign-up page. Off means users can only be created by an admin. |
+| **Self-service password reset** | Whether end users may use "forgot password". Off means only an admin can reset a password. |
+
+The two self-service switches are the interesting ones. They are the difference between a
+consumer-style product (anyone can sign up, anyone can recover their account) and an internal tool
+(accounts are provisioned by an administrator and nobody else).
+
+> [!NOTE]
+> Self-service password reset needs a working SMTP provider, or the reset mail has nowhere to go.
+> Configure one under [Email](/docs/email) before you turn it on.
+
+## One tenant or several?
+
+Use a separate tenant when the users are genuinely a separate population:
+
+- **Yes:** staging and production. You do not want a staging account to be able to sign into
+  production, and separate signing keys guarantee it.
+- **Yes:** two unrelated products with unrelated user bases.
+- **No:** "admins" and "customers" of the same product. They are the same population with different
+  permissions — model that with [roles and groups](/docs/users-groups-roles).
+
+Splitting a tenant later is painful: users, credentials, and MFA enrolments do not move between
+tenants. Deciding this correctly now is worth the thought.
+
+## Your tenant's OIDC endpoints
+
+Once the tenant exists, it is a fully-formed issuer. These are the URLs your applications will use
+(and the two your libraries will discover on their own):
+
+```http
+GET /.well-known/openid-configuration
+GET /.well-known/jwks.json
+```
+
+Discovery advertises exactly what this provider supports — `response_types_supported: ["code"]`,
+`code_challenge_methods_supported: ["S256"]` — which is the subject of the
+[next page](/docs/integrate-your-app).

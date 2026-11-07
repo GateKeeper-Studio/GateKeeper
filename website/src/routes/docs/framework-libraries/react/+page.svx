@@ -1,0 +1,106 @@
+---
+title: React library
+description: The GateKeeper React package — a public SPA client with a provider, hooks, and auth components.
+section: Application libraries
+---
+
+`@gatekeeper/react` is the React integration for GateKeeper. It wraps the framework-agnostic
+`@gatekeeper/spa-oauth` public client in a React provider, hooks, and components, so a React SPA can
+sign users in with Authorization Code + PKCE without hand-rolling the flow.
+
+The package source lives at `packages/gatekeeper-react`; a runnable example is at `frontends/react`.
+
+## Requires a public OAuth client
+
+This runs entirely in the browser, so it must use a **public** OAuth client:
+
+- `client_type: "public"` — **no client secret**.
+- PKCE S256 is the only client protection.
+- Tokens live in `sessionStorage` and are exposed to XSS by design.
+- The SPA calls `/oauth/token` and `/oauth/userinfo` directly, so its origin must be in the
+  server's `CORS_ALLOWED_ORIGINS`.
+
+If your app has a server runtime, prefer a confidential BFF (`@gatekeeper/sveltekit-bff`,
+`@gatekeeper/nextjs`, `@gatekeeper/remix`) instead.
+
+## Wrap the app with the provider
+
+```tsx
+import { GateKeeperProvider, type GateKeeperSpaConfig } from '@gatekeeper/react';
+
+const config: GateKeeperSpaConfig = {
+	idpBaseUrl: import.meta.env.VITE_GATEKEEPER_IDP_BASE_URL,
+	authUiBaseUrl: import.meta.env.VITE_GATEKEEPER_AUTH_UI_BASE_URL,
+	tenantId: import.meta.env.VITE_GATEKEEPER_TENANT_ID,
+	clientId: import.meta.env.VITE_GATEKEEPER_CLIENT_ID,
+	redirectUri: `${window.location.origin}/`,
+	scope: 'openid profile email'
+};
+
+createRoot(document.getElementById('root')!).render(
+	<GateKeeperProvider config={config}>
+		<App />
+	</GateKeeperProvider>
+);
+```
+
+There is no client secret in this config — only the public `clientId`. The provider builds the
+client, subscribes to it with `useSyncExternalStore`, and (by default) finishes the redirect on
+mount when the URL carries `?code=`. Pass `handleRedirectCallback={false}` to disable that, or pass
+a pre-built `client` instead of `config`.
+
+## Read auth state with hooks
+
+```tsx
+import { useGateKeeper, useUser } from '@gatekeeper/react';
+
+function Profile() {
+	const { isAuthenticated, user, expiresAt, error, signIn, signOut, refresh, getAccessToken } =
+		useGateKeeper();
+
+	if (!isAuthenticated) return <button onClick={() => void signIn()}>Sign in</button>;
+	return <p>Signed in as {user?.email ?? user?.sub}</p>;
+}
+```
+
+`useGateKeeper()` returns `status`, `isAuthenticated`, `isLoading`, `user`, `expiresAt`, `error`,
+plus `signIn`, `signOut`, `refresh`, `getAccessToken`, and the raw `client`. `useUser()` is a
+shortcut for the current profile.
+
+`getAccessToken()` returns a non-expired access token (refreshing silently if it is within the skew
+window), for calling your own APIs.
+
+## Components
+
+```tsx
+import { SignInButton, SignOutButton, Authenticated } from '@gatekeeper/react';
+
+<SignInButton>Sign in with GateKeeper</SignInButton>
+<Authenticated fallback={<p>Please sign in.</p>}>
+	<SignOutButton />
+</Authenticated>
+```
+
+`<SignInButton>` calls `signIn()` (redirect to the hosted login); `<SignOutButton>` clears local
+state; `<Authenticated>` renders its children only when a session exists, with an optional
+`fallback`.
+
+## Sign-in / sign-out flow
+
+1. **Sign in** — `signIn()` mints PKCE, stashes the transaction in `sessionStorage`, and redirects
+   to `{AUTH_UI_BASE_URL}/auth/{clientId}/sign-in?...`.
+2. **Callback** — on return, the provider exchanges `?code=` for tokens and strips the params.
+3. **Refresh** — `getAccessToken()`/`refresh()` rotate the refresh token before expiry.
+4. **Sign out** — clears `sessionStorage` (there is no server-side logout endpoint).
+
+## Fetch userinfo
+
+```ts
+const claims = await client.fetchUserInfo(); // GET /oauth/userinfo?tenant_id=... (Bearer)
+```
+
+## Example app
+
+`frontends/react` is a Vite + React 18 SPA (dev port 5175). Register a public client with
+`frontends/react/scripts/register-public-client.sh`, paste the output into `.env`, add
+`http://localhost:5175` to `CORS_ALLOWED_ORIGINS`, then `npm install && npm run dev`.

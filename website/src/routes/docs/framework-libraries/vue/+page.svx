@@ -1,0 +1,93 @@
+---
+title: Vue library
+description: The GateKeeper Vue 3 package — a public SPA client exposed as a plugin and a composable.
+section: Application libraries
+---
+
+`@gatekeeper/vue` is the Vue 3 integration for GateKeeper. It wraps the framework-agnostic
+`@gatekeeper/spa-oauth` public client in a Vue plugin and a `useGateKeeper()` composable that
+exposes reactive auth state.
+
+The package source lives at `packages/gatekeeper-vue`; a runnable example is at `frontends/vue`.
+
+## Requires a public OAuth client
+
+Vue SPAs run in the browser, so they must use a **public** OAuth client:
+
+- `client_type: "public"` — **no client secret**.
+- PKCE S256 is the only client protection.
+- Tokens live in `sessionStorage` and are exposed to XSS by design.
+- Add the app origin to the server's `CORS_ALLOWED_ORIGINS` (it calls `/oauth/token` and
+  `/oauth/userinfo` directly).
+
+Prefer a confidential BFF whenever the framework has a server runtime.
+
+## Install the plugin
+
+```ts
+import { createApp } from 'vue';
+import { createGateKeeper } from '@gatekeeper/vue';
+import App from './App.vue';
+
+createApp(App)
+	.use(
+		createGateKeeper({
+			config: {
+				idpBaseUrl: import.meta.env.VITE_GATEKEEPER_IDP_BASE_URL,
+				authUiBaseUrl: import.meta.env.VITE_GATEKEEPER_AUTH_UI_BASE_URL,
+				tenantId: import.meta.env.VITE_GATEKEEPER_TENANT_ID,
+				clientId: import.meta.env.VITE_GATEKEEPER_CLIENT_ID,
+				redirectUri: `${window.location.origin}/`,
+				scope: 'openid profile email'
+			}
+		})
+	)
+	.mount('#app');
+```
+
+Only the public `clientId` is configured — no secret. The plugin builds the client, keeps a
+`shallowRef` of its snapshot, and finishes the redirect on mount when the URL carries `?code=`.
+Pass `handleRedirectCallback: false` to disable that, or `client` to supply a pre-built client.
+
+## Use the composable
+
+```vue
+<script setup lang="ts">
+import { useGateKeeper } from '@gatekeeper/vue';
+
+const { isAuthenticated, user, expiresAt, error, signIn, signOut, refresh, getAccessToken } =
+	useGateKeeper();
+</script>
+
+<template>
+	<button v-if="!isAuthenticated" @click="signIn()">Sign in</button>
+	<template v-else>
+		<p>Signed in as {{ user?.email ?? user?.sub }}</p>
+		<button @click="signOut()">Sign out</button>
+	</template>
+</template>
+```
+
+`useGateKeeper()` returns `computed` refs — `status`, `isAuthenticated`, `isLoading`, `user`,
+`expiresAt`, `error` — plus the actions `signIn`, `signOut`, `refresh`, `getAccessToken`, and the
+raw `client`. Because the values are `computed`, templates and watchers update automatically.
+
+## Sign-in / sign-out flow
+
+1. **Sign in** — `signIn()` mints PKCE, stashes the transaction, and redirects to
+   `{AUTH_UI_BASE_URL}/auth/{clientId}/sign-in?...`.
+2. **Callback** — the plugin exchanges `?code=` for tokens and strips the params.
+3. **Refresh** — `getAccessToken()`/`refresh()` rotate the refresh token before expiry.
+4. **Sign out** — clears `sessionStorage` (no server-side logout endpoint).
+
+## Fetch userinfo
+
+```ts
+const claims = await client.fetchUserInfo(); // GET /oauth/userinfo?tenant_id=... (Bearer)
+```
+
+## Example app
+
+`frontends/vue` is a Vite + Vue 3 SPA (dev port 5176). Register a public client with
+`frontends/vue/scripts/register-public-client.sh`, paste the output into `.env`, add
+`http://localhost:5176` to `CORS_ALLOWED_ORIGINS`, then `npm install && npm run dev`.

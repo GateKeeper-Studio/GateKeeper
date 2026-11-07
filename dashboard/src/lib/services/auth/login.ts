@@ -9,7 +9,12 @@ export enum EMfaType {
 
 type Request = {
 	email: string;
-	password: string;
+	/**
+	 * Omit for passwordless login: an account with no password and a confirmed
+	 * passkey then gets a WebAuthn challenge (`mfaType: 'webauthn'`) instead of a
+	 * session, and every other account the same 401 a wrong password gets.
+	 */
+	password?: string;
 	clientId: string;
 	redirectUri: string;
 	codeChallengeMethod: string;
@@ -27,7 +32,8 @@ type Response = {
 	mfaId?: string;
 	message: string;
 	sessionCode: string;
-	userId: string;
+	/** Absent on a passwordless login: the account id is not revealed before the passkey verifies. */
+	userId?: string;
 	changePasswordCode?: string | null;
 	webAuthnOptions?: unknown;
 	availableMfaMethods?: EMfaType[];
@@ -38,6 +44,9 @@ type Response = {
 	/** ISO-8601. The ceiling a refresh can never cross — when to stop offering one. */
 	sessionAbsoluteExpiresAt: string;
 };
+
+/** The sign-in answer; magic link redemption returns the same shape. */
+export type LoginResponse = Response;
 
 export async function loginApi(request: Request): Promise<Result<Response>> {
 	try {

@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*) AS \"attempts!\",\n                          COUNT(*) FILTER (WHERE credentials_valid = false) AS \"failed!\"\n                   FROM \"login_events\"\n                   WHERE tenant_id = $1 AND ip_address = $2 AND created_at >= $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "attempts!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "failed!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "425bdf49f8bf4637f53588741c0750d960a290345e5ff022df91989de5f607ee"
+}

@@ -56,10 +56,15 @@ pub async fn start_webauthn_login(
     Ok((StatusCode::OK, Json(response)))
 }
 
+// For a passwordless login this is where the user actually authenticates, so the
+// request context feeds the Risk Engine and the login audit event.
 pub async fn verify_webauthn(
     State(state): State<AppState>,
-    Json(payload): Json<verify_webauthn::command::Command>,
+    ctx: RequestContext,
+    Json(mut payload): Json<verify_webauthn::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
+    payload.ip_address = ctx.ip_address.clone();
+    payload.user_agent = ctx.user_agent.clone();
     let response = state.mfa.verify_mfa_webauthn.execute(payload).await?;
     Ok((StatusCode::OK, Json(response)))
 }

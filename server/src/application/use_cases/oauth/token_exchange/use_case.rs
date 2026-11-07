@@ -109,8 +109,21 @@ impl UseCase {
             .mark_consumed(&consumed)
             .await?;
 
-        // 5. Sign tokens with the tenant's ACTIVE signing key (kid stamped in header).
+        // 5. Issue + store a rotating refresh token (store the hash only). Created
+        //    first because its family id is the session id (`sid`) of the ID token.
         let scopes: Vec<String> = code.scopes().to_vec();
+        let raw_refresh = generate_opaque_token();
+        let refresh = RefreshToken::new(
+            command.tenant_id,
+            sha256_hex(&raw_refresh),
+            client.id(),
+            code.user_id(),
+            scopes.clone(),
+            now + Duration::days(REFRESH_TOKEN_TTL_DAYS),
+        );
+        uow.refresh_token_repository().add(&refresh).await?;
+
+        // 6. Sign tokens with the tenant's ACTIVE signing key (kid stamped in header).
         let tokens = self
             .minter
             .mint(
@@ -121,23 +134,12 @@ impl UseCase {
                     client: &client,
                     scopes: &scopes,
                     nonce: Some(code.nonce()),
+                    sid: Some(refresh.family_id()),
                     now,
                 },
             )
             .await?;
         let scope_str = tokens.scope.clone();
-
-        // 6. Issue + store a rotating refresh token (store the hash only).
-        let raw_refresh = generate_opaque_token();
-        let refresh = RefreshToken::new(
-            command.tenant_id,
-            sha256_hex(&raw_refresh),
-            client.id(),
-            code.user_id(),
-            scopes,
-            now + Duration::days(REFRESH_TOKEN_TTL_DAYS),
-        );
-        uow.refresh_token_repository().add(&refresh).await?;
 
         uow.commit().await?;
 

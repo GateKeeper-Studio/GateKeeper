@@ -1,0 +1,91 @@
+---
+title: Users, groups & roles
+description: Modelling who exists and what ends up in their token.
+section: Configuring a tenant
+---
+
+GateKeeper's access model is deliberately small: **users**, **groups**, and **roles**. That is all.
+
+> [!IMPORTANT]
+> There is no separate "permissions" entity. Roles are *names*, not bundles of fine-grained
+> permissions — GateKeeper puts them in the token and **your application decides what they mean**.
+> If you are looking for a screen to tick individual permissions on, there isn't one, and that is
+> by design.
+
+## The three concepts
+
+- **User** — one person. Has credentials, a profile, and MFA enrolments.
+- **Group** — a set of users. Use it for *organizational* structure: "Engineering", "Acme Corp".
+- **Role** — a capability name. Use it for *authorization*: "admin", "reporting_viewer".
+
+Groups and roles are assigned independently. A user can be in three groups and hold two roles.
+
+```mermaid
+flowchart LR
+    U["User<br/>ana@example.com"]
+    G1["Group: Engineering"]
+    G2["Group: Acme Corp"]
+    R1["Role: admin"]
+    R2["Role: reporting_viewer"]
+    T["Access token<br/>groups: [...]<br/>roles: [...]"]
+
+    U --> G1
+    U --> G2
+    U --> R1
+    U --> R2
+    G1 --> T
+    G2 --> T
+    R1 --> T
+    R2 --> T
+```
+
+Both land in the token, as the `groups` and `roles` claims. Your API reads those claims and
+enforces its own rules.
+
+## Roles are re-resolved on every token
+
+This is the part worth internalising.
+
+A user's roles and groups are looked up fresh **every time a token is issued — including on
+refresh.** They are not frozen into a long-lived session at login.
+
+The practical consequence is good: revoking a role takes effect at the user's next token refresh
+(within the 15-minute access-token lifetime), not whenever they happen to log out. You do not have
+to hunt down and kill sessions to remove someone's access.
+
+The flip side: an access token already in flight keeps whatever it was minted with until it
+expires. Access tokens are valid for 15 minutes, so that is your worst-case window.
+
+## Creating users
+
+Admins can create users directly (**Users → Create**), which is how you provision accounts when
+tenant self-registration is off.
+
+When you set a temporary password, tick **must change password**. The user is then forced through
+a password change on first sign-in, and the password you typed is never a long-term credential.
+
+> [!TIP]
+> If self-registration is on, users create themselves and confirm their email; you rarely create
+> users by hand. Which of the two you're doing is decided by the tenant's
+> **[self-registration setting](/docs/first-tenant)**.
+
+## The user detail page
+
+Three tabs:
+
+- **Overview** — profile, status, when they last signed in.
+- **Access** — their groups and roles, and where to change them.
+- **Privacy** — the GDPR/LGPD surface: export their data, erase them, review which policy versions
+  they accepted, and revoke an application's consent. See
+  [Data subject requests](/docs/data-subject-requests).
+
+## A worked example
+
+Say you are running a B2B product. A reasonable model:
+
+- One **tenant** for production.
+- One **group** per customer company — so you can see who belongs to Acme.
+- **Roles** for capability: `owner`, `member`, `reporting_viewer`.
+
+Your API then trusts the `roles` claim for permission checks, and uses the `groups` claim to scope
+queries to the right customer's data. GateKeeper never needs to know what "reporting_viewer" means.

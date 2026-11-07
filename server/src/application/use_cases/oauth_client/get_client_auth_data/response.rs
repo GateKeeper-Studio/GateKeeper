@@ -5,6 +5,7 @@ use crate::{
     domain::entities::{
         custom_field_definition::CustomFieldDefinition,
         external_identity_provider::ExternalIdentityProvider,
+        mfa_method::MfaMethod,
         oauth_client::{LoginAppearance, OAuthClient},
         tenant::Tenant,
     },
@@ -41,6 +42,13 @@ pub struct Response {
     // The self-service flags above are already forced false in that case, so a UI that
     // only reads them still does the right thing.
     pub external_login_only: bool,
+    // Whether the hosted page should offer "Sign in with a passkey" (passwordless
+    // login): the client takes email sign-in and allows WebAuthn. Only accounts
+    // with no password and a confirmed passkey can actually use it.
+    pub passkey_login_enabled: bool,
+    // Whether the hosted page should offer "Email me a sign-in link" (magic link
+    // login). See `OAuthClient::allows_magic_link_login`.
+    pub magic_link_login_enabled: bool,
     pub oauth_providers: Vec<OAuthProviderView>,
     // The tenant's active custom sign-up fields, in display order — the login
     // SPA renders these as additional inputs on the sign-up form.
@@ -178,6 +186,9 @@ impl Response {
                 PublicLoginAppearanceView::from_domain_resolved(a, requested_locale, default_locale)
             }),
             external_login_only,
+            passkey_login_enabled: !external_login_only
+                && client.allows_mfa_method(&MfaMethod::Webauthn),
+            magic_link_login_enabled: client.allows_magic_link_login(),
             oauth_providers: providers
                 .iter()
                 .map(|p| OAuthProviderView {

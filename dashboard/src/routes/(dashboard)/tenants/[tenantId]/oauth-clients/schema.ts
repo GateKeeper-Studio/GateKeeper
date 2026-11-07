@@ -46,6 +46,29 @@ const optionalSecureUrl = z
 	)
 	.transform((value) => value || null);
 
+// backchannel_logout_uri is a server-to-server target the IdP POSTs to, so the IdP
+// applies its SSRF rules (https only; http and private addresses only when the
+// operator allows them for local development). The form checks the shape; the
+// IdP's 400 explains anything else.
+const optionalOutboundUrl = z
+	.string()
+	.trim()
+	.refine(
+		(value) => {
+			if (value === '') return true;
+			try {
+				const url = new URL(value);
+				return (url.protocol === 'https:' || url.protocol === 'http:') && !value.includes('#');
+			} catch {
+				return false;
+			}
+		},
+		{
+			message: 'Use an absolute https URL without a fragment (#).'
+		}
+	)
+	.transform((value) => value || null);
+
 // Shared schema for the create + edit OAuth client forms. Arrays are pre-filtered
 // (empty strings dropped) before validation, so the `.min(1)` checks reflect real
 // content. Redirect-URI shape is validated only loosely here — the IdP performs the
@@ -82,6 +105,7 @@ export const oauthClientFormSchema = z.object({
 	// is server-side state this form doesn't know, so the IdP is the authority and its
 	// 400 surfaces as a form error.
 	externalLoginOnly: z.boolean(),
+	magicLinkEnabled: z.boolean(),
 	mfaRequired: z.boolean(),
 	mfaEmailEnabled: z.boolean(),
 	mfaTotpEnabled: z.boolean(),
@@ -90,7 +114,8 @@ export const oauthClientFormSchema = z.object({
 	emailProviderId: z.string().nullable(),
 	tosUri: optionalHttpUrl,
 	policyUri: optionalHttpUrl,
-	initiateLoginUri: optionalSecureUrl
+	initiateLoginUri: optionalSecureUrl,
+	backchannelLogoutUri: optionalOutboundUrl
 });
 
 export type OAuthClientFormValues = z.infer<typeof oauthClientFormSchema>;

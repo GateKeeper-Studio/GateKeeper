@@ -1,0 +1,156 @@
+---
+title: Browser library
+description: The GateKeeper vanilla JavaScript package: browser-safe session refresh, profile calls, MFA APIs, and custom elements.
+section: Application libraries
+---
+
+`@gatekeeper/browser` is the vanilla JavaScript integration package for GateKeeper
+applications. It is written in TypeScript, builds to plain ESM JavaScript, and has no Svelte,
+React, Vue, or server-runtime dependency.
+
+The package source lives at `packages/gatekeeper-browser`.
+
+## Browser-only boundary
+
+This package runs in the user's browser, so it deliberately does **not** implement the server-side
+parts from the SvelteKit BFF package:
+
+- No encrypted session cookie implementation.
+- No client secret handling.
+- No refresh-token storage.
+- No server-to-server GateKeeper calls.
+- No framework request hooks or server loaders.
+
+Instead, it calls same-origin backend-for-frontend endpoints that your application owns. Those
+endpoints should keep tokens in `httpOnly` server sessions and return only browser-safe state.
+
+## Create the browser client
+
+```ts
+import { createGateKeeperBrowserClient } from '@gatekeeper/browser';
+
+const gatekeeper = createGateKeeperBrowserClient({
+	initialSession: window.__GATEKEEPER_SESSION__,
+	sessionEndpoint: '/api/gatekeeper/session',
+	profileEndpoint: '/api/me/profile',
+	refreshSkewSeconds: 120
+});
+```
+
+The client exposes:
+
+- `getSnapshot()`, `getSession()`, `getUser()`, and `isAuthenticated()`.
+- `refresh()` for an immediate session refresh.
+- `startAutoRefresh()` and `stopAutoRefresh()`.
+- `subscribe()` and `on()` for UI state updates.
+- `updateUserProfile()` for the signed-in user's profile.
+
+By default, auto-refresh is enabled. The client schedules a `GET` request to
+`/api/gatekeeper/session` before `expiresAt`, using the configured `refreshSkewSeconds`.
+
+## Session endpoint contract
+
+The refresh endpoint should return this browser-safe shape:
+
+```ts
+type BrowserSafeSession = {
+	authenticated: boolean;
+	user: GateKeeperProfile | null;
+	expiresAt: number | null;
+};
+```
+
+Do not include refresh tokens. Access tokens should also stay server-side unless your application
+has explicitly chosen a browser-token architecture. The client has `getAccessToken()` only for
+applications that intentionally include a short-lived `accessToken` field in the response.
+
+With the SvelteKit BFF package, the endpoint looks like this:
+
+```ts
+import { json } from '@sveltejs/kit';
+import { gatekeeper } from '$lib/server/gatekeeper';
+
+export const GET = async ({ locals, cookies }) => {
+	const event = { locals, cookies };
+	await gatekeeper.loadSession(event);
+	return json(gatekeeper.getBrowserSession(event));
+};
+```
+
+## Update profile data
+
+```ts
+await gatekeeper.updateUserProfile({
+	displayName: 'Ada Lovelace',
+	firstName: 'Ada',
+	lastName: 'Lovelace'
+});
+```
+
+The default endpoint is `PUT /api/me/profile`. It should authenticate with the server-side session,
+call GateKeeper, and return the updated profile.
+
+## MFA headless API
+
+```ts
+import { createMfaClient } from '@gatekeeper/browser';
+
+const mfa = createMfaClient({ basePath: '/api/mfa' });
+
+const state = await mfa.listMethods();
+await mfa.setPreferredMethod('webauthn');
+const totp = await mfa.startTotpEnrollment();
+await mfa.confirmTotpEnrollment('123456');
+await mfa.addPasskey('YubiKey 5C');
+```
+
+The API matches the Svelte helper shape, so developers can move between framework-native and
+framework-agnostic UI without changing backend endpoints.
+
+## Use custom elements
+
+For no-framework pages, register the elements:
+
+```ts
+import { defineGateKeeperElements } from '@gatekeeper/browser/elements';
+
+defineGateKeeperElements();
+```
+
+Wrap the app with the provider:
+
+```html
+<gatekeeper-provider
+	session-endpoint="/api/gatekeeper/session"
+	profile-endpoint="/api/me/profile"
+	refresh-skew-seconds="120"
+>
+	<main id="app"></main>
+</gatekeeper-provider>
+```
+
+The provider dispatches `gatekeeper:change` with the current snapshot whenever session state
+changes.
+
+Add the default MFA component:
+
+```html
+<gatekeeper-mfa-configuration base-path="/api/mfa"></gatekeeper-mfa-configuration>
+```
+
+The MFA component renders light DOM with stable `gk-mfa__*` classes, so the consuming app can style
+it directly:
+
+```css
+.gk-mfa__section {
+	border: 1px solid var(--border);
+	padding: 1rem;
+}
+
+.gk-mfa__button--primary {
+	background: var(--brand);
+	color: white;
+}
+```
+
+Consumers who need fully custom UI should use `createMfaClient()` instead of the custom element.

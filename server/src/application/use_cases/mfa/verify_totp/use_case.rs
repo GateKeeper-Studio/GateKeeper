@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::Utc;
 
 use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
+use crate::application::shared::risk_feedback::{label_if_mfa_exhausted, label_mfa_passed};
 use crate::{
     application::{
         ports::{secret_cipher::SecretCipher, unit_of_work::UnitOfWorkFactory},
@@ -55,6 +56,9 @@ impl UseCase {
         if session.is_expired(now)
             || !session.is_authenticated()
             || !session.is_mfa_pending()
+            // A passkey (passwordless) session can only be opened by WebAuthn: a TOTP code
+            // alone must never act as a primary factor.
+            || !session.accepts_mfa_method(&MfaMethod::Totp)
             || session.pending_client_id() != client.id()
         {
             return Err(invalid());
@@ -114,6 +118,7 @@ impl UseCase {
                -> Result<(), DomainError> {
             challenge.register_failed_attempt();
             uow.mfa_challenge_repository().update(challenge).await?;
+            label_if_mfa_exhausted(&*uow, &session, challenge).await?;
             uow.commit().await?;
             Ok(())
         };
@@ -162,6 +167,7 @@ impl UseCase {
         uow.mfa_challenge_repository().update(&challenge).await?;
         uow.mfa_enrollment_repository().update(&enrollment).await?;
         uow.auth_session_repository().update(&session).await?;
+        label_mfa_passed(&*uow, &session).await?;
         uow.commit().await?;
 
         Ok(Response {

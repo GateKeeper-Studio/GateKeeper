@@ -51,6 +51,9 @@ two calls so they can't be tampered with.
    `response_type == code`, PKCE `S256` present, scopes non-empty after intersection.
 3. **Authenticate** from the user's own credentials (Argon2id + tenant pepper, on
    `spawn_blocking`). The user id is derived here; failures are generic.
+   `password` is optional: when it is absent or empty the request is a
+   **passwordless login** and continues as described in
+   [Passwordless login](#passwordless-login-a-passkey-as-the-primary-factor) below.
 4. Reject if the email isn't verified (`EmailNotConfirmed`) — the SPA routes to the
    confirm-email screen.
 5. Open an **`AuthSession`** that *freezes* the request (redirect_uri, scopes, state,
@@ -90,6 +93,182 @@ so the SPA can complete `POST /oauth/token` (see
 ### Supporting endpoint
 `GET /v1/auth/client/{client_id}/auth-data` returns the public auth-flow config the
 login SPA needs to render its screens (client name, allowed MFA methods, etc.).
+`passkeyLoginEnabled` tells the hosted page whether to offer "Sign in with a passkey"
+(the client takes email sign-in and allows WebAuthn).
+`magicLinkLoginEnabled` tells it whether to offer "Email me a sign-in link" (see
+[Magic link login](#magic-link-login-a-one-time-link-by-email)).
+
+### Passwordless login (a passkey as the primary factor)
+
+An account with **no password** (no `user_credentials` row — today, accounts
+provisioned by social sign-in) that has a **confirmed passkey** can sign in with the
+passkey alone. This is not a separate flow: `login` treats it as "no password factor
+configured, require WebAuthn", and every later step is the existing one.
+
+```
+  Login SPA                                     Provider
+     │ 1. POST /v1/auth/login { email, (no password), …frozen request }
+     │                                            │  · same client/request/pre-auth checks
+     │                                            │  · eligible? → AuthSession with
+     │                                            │    primary_factor = passkey, locked
+     │   → { session_code, mfa_type: "webauthn",  │    to WebAuthn + Login challenge
+     │       mfa_id, web_authn_options }          │  · not eligible → generic 401
+     │◀──────────────────────────────────────────│
+     │ 2. navigator.credentials.get(...)          │
+     │ 3. POST /v1/auth/verify-mfa/webauthn       │  mfa::verify_webauthn
+     │   { session_code, mfa_id, assertion }      │  · account still eligible? pre-auth gate
+     │                                            │  · verify assertion (UV required)
+     │                                            │  · risk-score + audit the LOGIN here
+     │◀──────────────────────────────────────────│  · session authenticated + unlocked
+     │ 4. POST /v1/auth/authorize (unchanged)     │  authentication::authorize_session
+```
+
+- **Eligibility** — the account exists, is active, has a verified email, has **no
+  password** and at least one confirmed WebAuthn enrollment, and the client allows
+  WebAuthn (and password login: `external_login_only` clients refuse `login`
+  outright). An account **with** a password always signs in with it.
+- **Every ineligible case answers like a wrong password**: the same generic
+  `AuthenticationError`, and the attempt is recorded by the risk engine
+  (`failure_reason = passkey_unavailable`) so it feeds the velocity / spraying rules.
+  Never `EmailNotConfirmed` — no proof was offered, so that would be an oracle. No
+  Argon2 runs on this path for anyone.
+- **The lock** — the session is opened with `AuthSession::identify_for_passkey`:
+  the user is bound but `authenticated_at` stays empty, `primary_factor = passkey`
+  (column `auth_sessions.primary_factor`), and only WebAuthn may clear it.
+  `accepts_mfa_method` makes the email-OTP and TOTP verifiers refuse it (a mailbox or a
+  TOTP code alone must never become a primary factor), and `is_mfa_pending` enforces
+  the same rule again as defense in depth. `authorize_session` needs no change: it
+  refuses any session that is still pending.
+- **No MFA block, no forced password change** — webauthn-rs requires user verification
+  on every assertion (`UserVerificationPolicy::Required`), so the passkey is already
+  multi-factor; it satisfies `client.mfa_required` and a risk `ALLOW_WITH_MFA`.
+- **Where the login happens** — `verify_webauthn` re-checks that the account is still
+  active and still has no password (a reset mid-flow does not kill sessions), runs the
+  pre-auth IP gate, verifies the assertion, and only then records the `login_event`
+  (`credentials_valid` = the assertion verified) and the `user.login.success` /
+  `user.login.failure` audit event (`metadata.method = "passkey"`). A risk
+  `BLOCK_TEMPORARILY` burns the challenge and the session. `POST /v1/auth/login` does
+  **not** audit a success for a passkey challenge — nothing was proven yet — and omits
+  `userId` from its response.
+- **Ceremonies are per session** — opening a passkey session needs no proof, so neither
+  `login` nor `verify-mfa/webauthn/start` invalidates the user's other live WebAuthn
+  challenges (that would let anyone who knows an email cancel the real user's
+  sign-in); `start` replaces only its own session's challenge.
+- **Failed assertions count** — every WebAuthn verify failure (second factor or
+  primary) increments the challenge's attempt counter; it dies after
+  `MfaChallenge::MAX_ATTEMPTS`, and the hosted page then fetches a fresh one.
+- **Recovery** — a user who loses their passkey device uses **forgot password**: the
+  reset link proves the mailbox and sets a password (the account then signs in with
+  it, back on the password path). This needs `tenant.can_self_forgot_password`. To keep
+  that path meaningful, `DELETE /me/mfa/methods/{id}` refuses (409) to remove the
+  **last** passkey of an account with no password unless a social identity is linked.
+- **Known trade-off: enumeration.** Email-first passkey login cannot hide which emails
+  are eligible: they get WebAuthn options (whose `allowCredentials` lists the account's
+  credential ids, WebAuthn §14.6.2), every other email gets 401. Mitigated by the
+  strict credential rate limit and by recording ineligible attempts in the risk engine
+  (IP velocity / spraying ⇒ temporary IP block). Note `register` already reveals
+  whether an email exists.
+- **Rolling deploys** — upgrade every server replica before exposing the hosted
+  page's passkey button: an older replica's email/TOTP verifier does not know about
+  `primary_factor`.
+- **Open follow-up** — step-up for passwordless accounts: `confirm_current_password`
+  passes for an account with no password, and enrolling a passkey needs only the
+  `account`-scoped token. A stolen token could therefore plant a passkey; notify on
+  enrollment / require recent authentication before relying on this broadly.
+
+### Magic link login (a one-time link by email)
+
+On clients where an admin turns it on (`oauth_clients.magic_link_enabled`, off by
+default), any active account with a verified email can ask for a one-time sign-in link
+instead of typing a password. It is the same flow as a password login from the moment
+the link is redeemed: same session, same MFA gate, same `authorize`.
+
+```
+  Asking tab (sign-in page)                Provider                       Mailbox
+     │ 1. POST /v1/auth/magic-link { email, …frozen request }
+     │                                       │  request_magic_link (SAME work for every email)
+     │                                       │  · client offers links? request valid? IP gate
+     │                                       │  · AuthSession primary_factor = magic_link,
+     │   ← 202 { sessionCode, expiresAt }    │    NO user bound
+     │◀──────────────────────────────────────│  · spawn the dispatch, return
+     │ keep sessionCode in localStorage      │
+     │ ("check your email" page)             │  MagicLinkDispatcher (background)
+     │                                       │  · eligible account? cooldown?
+     │                                       │  · magic_link_token (hash) → session
+     │                                       │──────── link …/magic-link#id=…&token=… ──▶
+     │                                                                              │
+  Link tab (same browser)                                                           │
+     │ 2. reads #id, #token + sessionCode from localStorage ◀──────────────────────┘
+     │ 3. POST /v1/auth/magic-link/redeem { id, token, sessionCode }
+     │                                       │  redeem_magic_link
+     │                                       │  · token hash (ct-eq), unexpired, unused
+     │                                       │  · sessionCode opens THE session of this link
+     │                                       │  · account still active + verified; IP gate
+     │                                       │  · consume, risk-score, audit the LOGIN
+     │   ← login-shaped response, new code   │  · authenticate, rotate code, MFA gate
+     │◀──────────────────────────────────────│
+     │ 4. BroadcastChannel → asking tab: MFA page or authorize → redirect to the RP
+```
+
+- **Constant time (S6).** The request takes only an email, so it must look the same
+  whether that email has an account. `request_magic_link` only touches public inputs
+  (the client, the authorization request, the caller's IP), opens a session that binds
+  nobody, and answers `202`. Everything that depends on the account — the lookup, the
+  token insert, the audit row, the SMTP round trip — runs in `MagicLinkDispatcher`
+  after the response, through the `TaskSpawner` port (`TokioTaskSpawner` in production).
+  Unknown, inactive and unverified accounts simply get no email.
+- **Same browser only (the "racing" defence).** Redeeming needs both the link's token
+  (the mailbox) and the code of the session that asked for it, which the hosted login
+  keeps in this browser's `localStorage`. A forwarded link, a corporate scanner that
+  opens links before the user, or a mail app's built-in browser has the token but not
+  the code: it is refused (`magic_link_wrong_browser` in the risk log), and **the token
+  is not consumed**, so it still works where it belongs. The page the link opens makes
+  no API call at all when it finds no binding.
+- **The secret is in the fragment** (`#id=…&token=…`): fragments never leave the
+  browser, so the token stays out of server, proxy and `Referer` logs; the page also
+  removes it from the address bar and sets `referrer: no-referrer`.
+- **Single use, short-lived, hashed.** `magic_link_tokens` stores SHA-256 of a 256-bit
+  token, looked up by row id and compared in constant time; 15 minutes
+  (`MAGIC_LINK_TTL_MINUTES`), the same as the waiting session. Deleting the session
+  (the retention purge) cascades to its links.
+- **The asking tab finishes.** The relying party keeps its PKCE verifier and `state` in
+  the asking tab's `sessionStorage`, so the link tab hands the redeem response back over
+  a `BroadcastChannel`; the asking tab acknowledges and continues exactly as after a
+  password (`continueAfterLogin`). With no answer within 2 s (asking tab closed), the
+  link tab finishes the sign-in itself.
+- **MFA still applies, but never by email.** The mailbox is the primary factor, so an
+  email code would prove it twice: `AuthSession::accepts_mfa_method` refuses `email` for
+  a `magic_link` session (`send-mfa`/`verify-mfa/email` refuse it; `is_mfa_pending`
+  enforces it again). TOTP and passkeys qualify, for `client.mfa_required` and for a
+  risk `ALLOW_WITH_MFA`. A client that requires MFA but allows only email cannot
+  complete a magic-link sign-in, so it does not offer one
+  (`OAuthClient::allows_magic_link_login`).
+- **Forced password change still applies** — a change code is issued exactly as on
+  login.
+- **No per-user invalidation.** Anyone who knows an email can request a link, so a new
+  request never cancels a link already sent; each link only works with its own session.
+  Mailbox flooding is bounded by a per-account cooldown (60 s,
+  `MAGIC_LINK_RESEND_COOLDOWN_SECONDS`) on top of the per-IP credential rate limit.
+  Only the newest request's binding is kept per browser, so only the newest link works
+  there.
+- **Audit and risk.** `user.login.magic_link_sent` when a link is mailed;
+  `user.login.success` / `user.login.failure` with `metadata.method = "magic_link"` at
+  redemption, in the same transaction. Every refused redemption is recorded by the risk
+  engine (`invalid_magic_link`, `magic_link_wrong_browser`, `account_unavailable`,
+  `ip_blocked`); a `BLOCK_TEMPORARILY` burns the link and the session.
+- **Known trade-offs.**
+  - Mail apps that open links in their own built-in browser fail the same-browser
+    check; the user must open the link in the browser where they asked for it.
+  - A background send is not durable: a restart between the `202` and the send loses
+    that email (the user presses "Send a new link").
+  - `forgot-password` and `confirm-email/resend` still send synchronously, so their
+    response time still differs between existing and unknown emails. `TaskSpawner` is
+    the tool to fix them.
+  - Requests for unknown emails leave sessions that bind nobody; they are cheap, purged
+    with the others and rate-limited per IP.
+- **Rolling deploys** — upgrade every replica before enabling the flag: an older binary
+  reads `primary_factor = 'magic_link'` as `passkey` (it fails closed), so such a
+  sign-in cannot complete there.
 
 ### External-provider-only clients (`external_login_only`)
 
@@ -143,10 +322,14 @@ client requires MFA but the user has no usable enrolled factor,
 | WebAuthn | `POST /v1/auth/verify-mfa/webauthn/start`, `POST /v1/auth/verify-mfa/webauthn` |
 
 Each opens/consumes an **`MfaChallenge`** bound to the user + session. Email OTP
-codes and WebAuthn challenge state are stored hashed/opaque with short TTLs (email
-OTP **10 min**, WebAuthn challenge **5 min**). TOTP is verified against the enrolled
-secret (decrypted via `SecretCipher` at verify time). On success the session's
+codes are stored hashed; WebAuthn ceremony state is stored server-side and never sent
+to the browser. Both have short TTLs (email OTP **10 min**, WebAuthn challenge
+**5 min**) and a cap of `MAX_ATTEMPTS` wrong tries. TOTP is verified against the
+enrolled secret (decrypted via `SecretCipher` at verify time). On success the session's
 second factor is satisfied and `authorize_session` may proceed.
+
+Every verifier gates on `AuthSession::accepts_mfa_method`: a **passkey session**
+(passwordless login, §1) accepts **WebAuthn only** — email OTP and TOTP refuse it.
 
 ### Self-service enrollment & management (`/me/mfa/*`, behind `require_auth`)
 | Endpoint | Action |
@@ -270,7 +453,8 @@ cannot pick its own IP.
 
 | Credential | TTL | Storage |
 |---|---|---|
-| Auth session (`session_code`) | 10 min | hash only |
+| Auth session (`session_code`) | 10 min (15 min while waiting for a magic link) | hash only |
+| Magic sign-in link | 15 min | hash only, single-use, same browser only |
 | Email OTP (MFA) | 10 min | hash only |
 | WebAuthn challenge | 5 min | opaque state |
 | Authorization code | 60 s | hash only, single-use |

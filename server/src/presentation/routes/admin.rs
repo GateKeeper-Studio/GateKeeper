@@ -13,8 +13,8 @@ use crate::presentation::{
         admin_me_handler, audit_handler, compliance_handler, consent_handler,
         email_provider_handler, email_template_handler, external_identity_provider_handler,
         group_handler, legal_document_handler, oauth_client_handler, role_handler,
-        security_handler, tenant_custom_field_handler, tenant_handler, user_handler,
-        webhook_subscription_handler,
+        security_handler, session_handler, tenant_custom_field_handler, tenant_handler,
+        user_handler, webhook_subscription_handler,
     },
     routes::AppState,
 };
@@ -227,6 +227,16 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
             "/tenants/{tenant_id}/users/{user_id}/consents/{client_id}",
             axum::routing::delete(consent_handler::revoke_consent),
         )
+        // ── User sessions: signed-in apps (refresh-token families), list + end ────
+        .route(
+            "/tenants/{tenant_id}/users/{user_id}/sessions",
+            get(session_handler::list_user_sessions)
+                .delete(session_handler::revoke_all_user_sessions),
+        )
+        .route(
+            "/tenants/{tenant_id}/users/{user_id}/sessions/{session_id}",
+            axum::routing::delete(session_handler::revoke_user_session),
+        )
         // ── Compliance: append-only audit log (WI-02), admin/read-only ────────────
         .route(
             "/tenants/{tenant_id}/audit-events",
@@ -244,6 +254,11 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
         .route(
             "/tenants/{tenant_id}/security/login-events/{id}",
             get(security_handler::get_login_event),
+        )
+        .route(
+            "/tenants/{tenant_id}/security/login-events/{id}/label",
+            put(security_handler::label_login_event)
+                .delete(security_handler::clear_login_event_label),
         )
         .route(
             "/tenants/{tenant_id}/security/suspicious-ips",

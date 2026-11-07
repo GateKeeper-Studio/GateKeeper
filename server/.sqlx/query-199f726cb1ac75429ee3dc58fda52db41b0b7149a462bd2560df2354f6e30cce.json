@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO \"tenant_risk_policies\"\n            (id, tenant_id, enabled, failed_ip_threshold, failed_user_threshold,\n             password_spraying_user_threshold, tenant_attack_threshold,\n             medium_risk_threshold, high_risk_threshold, critical_risk_threshold,\n             require_mfa_on_high_risk, block_on_critical_risk, temporary_block_minutes,\n             created_at, updated_at, scoring_mode)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)\n          ON CONFLICT (tenant_id) DO UPDATE SET\n            enabled = EXCLUDED.enabled,\n            failed_ip_threshold = EXCLUDED.failed_ip_threshold,\n            failed_user_threshold = EXCLUDED.failed_user_threshold,\n            password_spraying_user_threshold = EXCLUDED.password_spraying_user_threshold,\n            tenant_attack_threshold = EXCLUDED.tenant_attack_threshold,\n            medium_risk_threshold = EXCLUDED.medium_risk_threshold,\n            high_risk_threshold = EXCLUDED.high_risk_threshold,\n            critical_risk_threshold = EXCLUDED.critical_risk_threshold,\n            require_mfa_on_high_risk = EXCLUDED.require_mfa_on_high_risk,\n            block_on_critical_risk = EXCLUDED.block_on_critical_risk,\n            temporary_block_minutes = EXCLUDED.temporary_block_minutes,\n            scoring_mode = EXCLUDED.scoring_mode,\n            updated_at = now()\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Int4",
+        "Bool",
+        "Bool",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "199f726cb1ac75429ee3dc58fda52db41b0b7149a462bd2560df2354f6e30cce"
+}

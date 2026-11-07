@@ -11,8 +11,8 @@ use axum::{
 use crate::presentation::{
     handlers::{
         admin_auth_handler, authentication_handler, legal_document_handler,
-        oauth_authorize_handler, oauth_discovery_handler, oauth_provider_auth_handler,
-        oauth_token_handler, oauth_userinfo_handler,
+        oauth_authorize_handler, oauth_discovery_handler, oauth_logout_handler,
+        oauth_provider_auth_handler, oauth_token_handler, oauth_userinfo_handler,
     },
     routes::AppState,
 };
@@ -65,6 +65,13 @@ pub(super) fn router() -> Router<AppState> {
         .route(
             "/oauth/userinfo",
             get(oauth_userinfo_handler::userinfo).post(oauth_userinfo_handler::userinfo),
+        )
+        // OIDC RP-Initiated Logout: signs the user out of every app in the tenant and
+        // notifies the others by back-channel logout. Authenticates by the
+        // id_token_hint, so it sits outside the guarded routers.
+        .route(
+            "/oauth/logout",
+            get(oauth_logout_handler::logout_get).post(oauth_logout_handler::logout_post),
         )
         .route("/.well-known/jwks.json", get(oauth_discovery_handler::jwks))
         .route(

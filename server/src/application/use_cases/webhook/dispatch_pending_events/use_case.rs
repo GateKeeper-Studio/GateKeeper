@@ -6,13 +6,24 @@ use uuid::Uuid;
 
 use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
 use crate::{
-    application::ports::{
-        secret_cipher::SecretCipher,
-        unit_of_work::UnitOfWorkFactory,
-        webhook_sender::{WebhookRequest, WebhookSender},
+    application::{
+        ports::{
+            secret_cipher::SecretCipher,
+            token_signer::{TokenSigner, TokenType},
+            unit_of_work::{UnitOfWork, UnitOfWorkFactory},
+            webhook_sender::{LogoutTokenRequest, WebhookRequest, WebhookSender},
+        },
+        shared::backchannel_logout::{LogoutNotice, logout_token_claims},
     },
     domain::{
-        entities::{outbox_event::OutboxEvent, webhook_delivery::WebhookDelivery},
+        entities::{
+            domain_event_type::DomainEventType,
+            oauth_client::OAuthClient,
+            outbox_event::OutboxEvent,
+            signing_key::SigningKey,
+            webhook_delivery::{DeliveryStatus, DeliveryTarget, WebhookDelivery},
+            webhook_subscription::WebhookSubscription,
+        },
         errors::DomainError,
     },
 };
@@ -32,7 +43,28 @@ pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
     sender: Arc<dyn WebhookSender>,
     secret_cipher: Arc<dyn SecretCipher>,
+    // Back-channel logout: the logout token is a JWT signed with the tenant's active
+    // key and carrying the same `iss` as the ID tokens it refers to (the raw
+    // OAUTH_ISSUER, exactly as TokenMinter stamps it).
+    signer: Arc<dyn TokenSigner>,
+    issuer: String,
     batch_size: i64,
+}
+
+// A claimed delivery with everything needed to attempt it, resolved while the claim
+// transaction is open.
+enum Prepared {
+    Webhook {
+        delivery: WebhookDelivery,
+        subscription: WebhookSubscription,
+        event: OutboxEvent,
+    },
+    BackchannelLogout {
+        delivery: WebhookDelivery,
+        client: OAuthClient,
+        event: OutboxEvent,
+        key: Option<SigningKey>,
+    },
 }
 
 impl UseCase {
@@ -40,12 +72,16 @@ impl UseCase {
         unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
         sender: Arc<dyn WebhookSender>,
         secret_cipher: Arc<dyn SecretCipher>,
+        signer: Arc<dyn TokenSigner>,
+        issuer: String,
         batch_size: i64,
     ) -> Self {
         Self {
             unit_of_work_factory,
             sender,
             secret_cipher,
+            signer,
+            issuer,
             batch_size,
         }
     }
@@ -86,8 +122,41 @@ impl UseCase {
         // One event usually shares a tenant with its neighbours; cache so a batch of
         // 100 events from one tenant is a single subscription lookup.
         let mut subscriptions_by_tenant: HashMap<Uuid, Vec<_>> = HashMap::new();
+        // Back-channel logout events name their client; cache whether it still wants
+        // a notification, since one sign-out everywhere is several events.
+        let mut logout_targets: HashMap<(Uuid, Uuid), bool> = HashMap::new();
 
         for event in &events {
+            if event.event_type() == DomainEventType::BackchannelLogout {
+                // Not a webhook: it goes to the one OAuth client it names, if that
+                // client is still active and still registers a back-channel URI.
+                let Some(notice) = LogoutNotice::from_payload(event.payload()) else {
+                    continue;
+                };
+                let key = (event.tenant_id(), notice.client_id);
+                let wanted = match logout_targets.get(&key) {
+                    Some(wanted) => *wanted,
+                    None => {
+                        let wanted = uow
+                            .oauth_client_repository()
+                            .find_by_id(event.tenant_id(), notice.client_id)
+                            .await?
+                            .is_some_and(|c| c.is_active() && c.backchannel_logout_uri().is_some());
+                        logout_targets.insert(key, wanted);
+                        wanted
+                    }
+                };
+                if wanted {
+                    deliveries.push(WebhookDelivery::for_backchannel_logout(
+                        event.id(),
+                        notice.client_id,
+                        event.tenant_id(),
+                        now,
+                    ));
+                }
+                continue;
+            }
+
             let subscriptions = match subscriptions_by_tenant.get(&event.tenant_id()) {
                 Some(cached) => cached,
                 None => {
@@ -149,91 +218,232 @@ impl UseCase {
             // Resolve the target and payload for each delivery while we hold the UoW.
             let mut prepared = Vec::new();
             for delivery in due {
-                let subscription = uow
-                    .webhook_subscription_repository()
-                    .find_by_id(delivery.tenant_id(), delivery.subscription_id())
-                    .await?;
-                let event = uow
-                    .outbox_event_repository()
-                    .find_by_id(delivery.event_id())
-                    .await?;
-
-                if let (Some(subscription), Some(event)) = (subscription, event) {
-                    prepared.push((delivery, subscription, event));
+                if let Some(ready) = Self::prepare(&*uow, delivery).await? {
+                    prepared.push(ready);
                 }
-                // A missing subscription or event means it was deleted between the
-                // claim and now (ON DELETE CASCADE normally removes the delivery too).
+                // None means the target or event was deleted between the claim and
+                // now (ON DELETE CASCADE normally removes the delivery too).
                 // Skipping leaves the row for a later tick rather than crashing.
             }
             prepared
         };
 
-        for (mut delivery, subscription, event) in claimed {
+        for ready in claimed {
             response.deliveries_attempted += 1;
-
-            // Decrypt at the last possible moment, and never hold the plaintext
-            // beyond this iteration.
-            let secret = match self.secret_cipher.decrypt(
-                subscription.secret_encrypted(),
-                SecretContext::new(SecretPurpose::WebhookSecret, subscription.tenant_id()),
-            ) {
-                Ok(secret) => secret,
-                Err(e) => {
-                    // A key rotation or corrupted ciphertext. Record it as a failure so
-                    // it retries and eventually dies visibly, instead of silently
-                    // vanishing.
-                    tracing::error!(
-                        subscription_id = %subscription.id(),
-                        "failed to decrypt webhook secret: {e:?}"
-                    );
-                    delivery.record_failure(
-                        None,
-                        "secret decryption failed".to_string(),
-                        Utc::now(),
-                    );
-                    self.persist(&delivery).await?;
-                    response.deliveries_failed += 1;
-                    continue;
+            let delivery = match ready {
+                Prepared::Webhook {
+                    delivery,
+                    subscription,
+                    event,
+                } => self.deliver_webhook(delivery, &subscription, &event).await,
+                Prepared::BackchannelLogout {
+                    delivery,
+                    client,
+                    event,
+                    key,
+                } => {
+                    self.deliver_logout(delivery, &client, &event, key.as_ref())
+                        .await
                 }
             };
 
-            let body = envelope(&event);
-            let outcome = self
-                .sender
-                .send(WebhookRequest {
-                    url: subscription.url(),
-                    secret: &secret,
-                    event_id: event.id(),
-                    event_type: event.event_type().as_str(),
-                    body,
-                })
-                .await;
-
-            let now = Utc::now();
-            if outcome.success {
-                delivery.record_success(outcome.status.unwrap_or(200), now);
+            if delivery.status() == DeliveryStatus::Delivered {
                 response.deliveries_succeeded += 1;
             } else {
-                delivery.record_failure(
-                    outcome.status,
-                    outcome
-                        .error
-                        .unwrap_or_else(|| "delivery failed".to_string()),
-                    now,
-                );
                 response.deliveries_failed += 1;
             }
-
             self.persist(&delivery).await?;
         }
 
         Ok(())
     }
 
+    async fn prepare(
+        uow: &dyn UnitOfWork,
+        delivery: WebhookDelivery,
+    ) -> Result<Option<Prepared>, DomainError> {
+        let Some(event) = uow
+            .outbox_event_repository()
+            .find_by_id(delivery.event_id())
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(match delivery.target() {
+            DeliveryTarget::Subscription(subscription_id) => uow
+                .webhook_subscription_repository()
+                .find_by_id(delivery.tenant_id(), subscription_id)
+                .await?
+                .map(|subscription| Prepared::Webhook {
+                    delivery,
+                    subscription,
+                    event,
+                }),
+            DeliveryTarget::BackchannelLogout(client_id) => {
+                let client = uow
+                    .oauth_client_repository()
+                    .find_by_id(delivery.tenant_id(), client_id)
+                    .await?;
+                match client {
+                    Some(client) => {
+                        let key = uow
+                            .signing_key_repository()
+                            .find_active(delivery.tenant_id())
+                            .await?;
+                        Some(Prepared::BackchannelLogout {
+                            delivery,
+                            client,
+                            event,
+                            key,
+                        })
+                    }
+                    None => None,
+                }
+            }
+        })
+    }
+
+    // One webhook attempt: decrypt the subscription secret, send the HMAC-signed
+    // JSON envelope, record the outcome.
+    async fn deliver_webhook(
+        &self,
+        mut delivery: WebhookDelivery,
+        subscription: &WebhookSubscription,
+        event: &OutboxEvent,
+    ) -> WebhookDelivery {
+        // Decrypt at the last possible moment, and never hold the plaintext
+        // beyond this iteration.
+        let secret = match self.secret_cipher.decrypt(
+            subscription.secret_encrypted(),
+            SecretContext::new(SecretPurpose::WebhookSecret, subscription.tenant_id()),
+        ) {
+            Ok(secret) => secret,
+            Err(e) => {
+                // A key rotation or corrupted ciphertext. Record it as a failure so
+                // it retries and eventually dies visibly, instead of silently
+                // vanishing.
+                tracing::error!(
+                    subscription_id = %subscription.id(),
+                    "failed to decrypt webhook secret: {e:?}"
+                );
+                delivery.record_failure(None, "secret decryption failed".to_string(), Utc::now());
+                return delivery;
+            }
+        };
+
+        let outcome = self
+            .sender
+            .send(WebhookRequest {
+                url: subscription.url(),
+                secret: &secret,
+                event_id: event.id(),
+                event_type: event.event_type().as_str(),
+                body: envelope(event),
+            })
+            .await;
+
+        record(
+            &mut delivery,
+            outcome.success,
+            outcome.status,
+            outcome.error,
+        );
+        delivery
+    }
+
+    // One back-channel logout attempt: mint a fresh logout token (short-lived, so
+    // never reused across retries) and form-POST it to the client's URI.
+    async fn deliver_logout(
+        &self,
+        mut delivery: WebhookDelivery,
+        client: &OAuthClient,
+        event: &OutboxEvent,
+        key: Option<&SigningKey>,
+    ) -> WebhookDelivery {
+        // The client stopped wanting notifications after the event was fanned out
+        // (URI removed, client deactivated). Retrying cannot fix that.
+        let url = match client.backchannel_logout_uri() {
+            Some(url) if client.is_active() => url,
+            _ => {
+                delivery.abandon("client no longer accepts back-channel logout".to_string());
+                return delivery;
+            }
+        };
+        let Some(notice) = LogoutNotice::from_payload(event.payload()) else {
+            delivery.abandon("unreadable logout notice".to_string());
+            return delivery;
+        };
+        // A tenant always has an active key; if it is momentarily missing (mid
+        // rotation), retry on the normal schedule.
+        let Some(key) = key else {
+            delivery.record_failure(None, "no active signing key".to_string(), Utc::now());
+            return delivery;
+        };
+
+        let claims = logout_token_claims(
+            &self.issuer,
+            &client.client_id().to_string(),
+            &notice,
+            Utc::now(),
+        );
+        let logout_token = match self.signer.sign(key, &claims, TokenType::Logout).await {
+            Ok(token) => token,
+            Err(e) => {
+                tracing::error!(client_id = %client.id(), "failed to sign logout token: {e:?}");
+                delivery.record_failure(
+                    None,
+                    "logout token signing failed".to_string(),
+                    Utc::now(),
+                );
+                return delivery;
+            }
+        };
+
+        let outcome = self
+            .sender
+            .send_logout_token(LogoutTokenRequest { url, logout_token })
+            .await;
+
+        if !outcome.success {
+            tracing::warn!(
+                client_id = %client.id(),
+                status = ?outcome.status,
+                "back-channel logout delivery failed"
+            );
+        }
+        record(
+            &mut delivery,
+            outcome.success,
+            outcome.status,
+            outcome.error,
+        );
+        delivery
+    }
+
     async fn persist(&self, delivery: &WebhookDelivery) -> Result<(), DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
         uow.webhook_delivery_repository().update(delivery).await?;
         uow.commit().await
+    }
+}
+
+// Applies one attempt's outcome to the retry state machine.
+fn record(
+    delivery: &mut WebhookDelivery,
+    success: bool,
+    status: Option<u16>,
+    error: Option<String>,
+) {
+    let now = Utc::now();
+    if success {
+        delivery.record_success(status.unwrap_or(200), now);
+    } else {
+        delivery.record_failure(
+            status,
+            error.unwrap_or_else(|| "delivery failed".to_string()),
+            now,
+        );
     }
 }
 

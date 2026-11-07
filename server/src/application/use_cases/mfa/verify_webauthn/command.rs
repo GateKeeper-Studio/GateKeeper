@@ -9,4 +9,11 @@ pub struct Command {
     pub session_code: String,
     pub mfa_id: Uuid,
     pub assertion_data: Value,
+
+    // Request context for the Risk Engine and the audit trail of a passwordless
+    // login, injected by the handler from `RequestContext` — never from the body.
+    #[serde(skip_deserializing, default)]
+    pub ip_address: Option<String>,
+    #[serde(skip_deserializing, default)]
+    pub user_agent: Option<String>,
 }

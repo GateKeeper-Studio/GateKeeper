@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     domain::{
-        entities::webhook_delivery::{DeliveryStatus, WebhookDelivery},
+        entities::webhook_delivery::{DeliveryStatus, DeliveryTarget, WebhookDelivery},
         errors::DomainError,
         repositories::webhook_delivery_repository::WebhookDeliveryRepository,
     },
@@ -16,21 +16,26 @@ use crate::{
 // SELECTs below cannot share a plain mapping function even though they return an
 // identical column list. A macro expands at each site against its own type.
 // (Declared before use: macro_rules! is order-dependent within a file.)
+//
+// Evaluates to an Option: a row whose target columns break the "exactly one" rule
+// (the CHECK makes that impossible) is skipped rather than failing the batch.
 macro_rules! delivery_from_row {
     ($r:expr) => {
-        WebhookDelivery::reconstruct(
-            $r.id,
-            $r.event_id,
-            $r.subscription_id,
-            $r.tenant_id,
-            DeliveryStatus::from_db(&$r.status),
-            $r.attempts,
-            $r.next_attempt_at,
-            $r.last_error,
-            $r.last_status,
-            $r.created_at,
-            $r.delivered_at,
-        )
+        DeliveryTarget::from_columns($r.subscription_id, $r.client_id).map(|target| {
+            WebhookDelivery::reconstruct(
+                $r.id,
+                $r.event_id,
+                target,
+                $r.tenant_id,
+                DeliveryStatus::from_db(&$r.status),
+                $r.attempts,
+                $r.next_attempt_at,
+                $r.last_error,
+                $r.last_status,
+                $r.created_at,
+                $r.delivered_at,
+            )
+        })
     };
 }
 
@@ -64,48 +69,76 @@ impl WebhookDeliveryRepository for DbWebhookDeliveryRepository {
             return Ok(());
         }
 
+        // Webhook and back-channel logout deliveries go in separately: each has its
+        // own idempotency key, (event_id, subscription_id) and (event_id, client_id).
+        let (to_subscriptions, to_clients): (Vec<&WebhookDelivery>, Vec<&WebhookDelivery>) =
+            deliveries
+                .iter()
+                .partition(|d| matches!(d.target(), DeliveryTarget::Subscription(_)));
+
         // UNNEST turns the parallel arrays into rows, so the whole fan-out batch is
         // one round trip instead of N.
         //
-        // ON CONFLICT DO NOTHING against uq_webhook_delivery (event_id, subscription_id)
-        // is what makes phase 1 idempotent: if the worker died after inserting these
-        // but before stamping the event published, replaying inserts nothing new
-        // rather than double-delivering.
-        let ids: Vec<Uuid> = deliveries.iter().map(|d| d.id()).collect();
-        let event_ids: Vec<Uuid> = deliveries.iter().map(|d| d.event_id()).collect();
-        let subscription_ids: Vec<Uuid> = deliveries.iter().map(|d| d.subscription_id()).collect();
-        let tenant_ids: Vec<Uuid> = deliveries.iter().map(|d| d.tenant_id()).collect();
-        let statuses: Vec<String> = deliveries
-            .iter()
-            .map(|d| d.status().as_str().to_string())
-            .collect();
-        let attempts: Vec<i32> = deliveries.iter().map(|d| d.attempts()).collect();
-        let next_attempts: Vec<DateTime<Utc>> =
-            deliveries.iter().map(|d| d.next_attempt_at()).collect();
-        let created_ats: Vec<DateTime<Utc>> = deliveries.iter().map(|d| d.created_at()).collect();
-
-        run!(
-            self.executor,
-            sqlx::query!(
-                r#"
+        // ON CONFLICT DO NOTHING against the unique key is what makes phase 1
+        // idempotent: if the worker died after inserting these but before stamping
+        // the event published, replaying inserts nothing new rather than
+        // double-delivering.
+        if !to_subscriptions.is_empty() {
+            let rows = DeliveryColumns::of(&to_subscriptions);
+            let subscription_ids: Vec<Uuid> = to_subscriptions
+                .iter()
+                .filter_map(|d| d.subscription_id())
+                .collect();
+            run!(
+                self.executor,
+                sqlx::query!(
+                    r#"
           INSERT INTO webhook_deliveries (id, event_id, subscription_id, tenant_id,
             status, attempts, next_attempt_at, created_at)
           SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::uuid[],
             $5::varchar[], $6::int[], $7::timestamptz[], $8::timestamptz[])
           ON CONFLICT (event_id, subscription_id) DO NOTHING
         "#,
-                &ids,
-                &event_ids,
-                &subscription_ids,
-                &tenant_ids,
-                &statuses,
-                &attempts,
-                &next_attempts,
-                &created_ats,
-            ),
-            execute
-        )
-        .map_err(map_sqlx_error)?;
+                    &rows.ids,
+                    &rows.event_ids,
+                    &subscription_ids,
+                    &rows.tenant_ids,
+                    &rows.statuses,
+                    &rows.attempts,
+                    &rows.next_attempts,
+                    &rows.created_ats,
+                ),
+                execute
+            )
+            .map_err(map_sqlx_error)?;
+        }
+
+        if !to_clients.is_empty() {
+            let rows = DeliveryColumns::of(&to_clients);
+            let client_ids: Vec<Uuid> = to_clients.iter().filter_map(|d| d.client_id()).collect();
+            run!(
+                self.executor,
+                sqlx::query!(
+                    r#"
+          INSERT INTO webhook_deliveries (id, event_id, client_id, tenant_id,
+            status, attempts, next_attempt_at, created_at)
+          SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::uuid[],
+            $5::varchar[], $6::int[], $7::timestamptz[], $8::timestamptz[])
+          ON CONFLICT (event_id, client_id) WHERE client_id IS NOT NULL DO NOTHING
+        "#,
+                    &rows.ids,
+                    &rows.event_ids,
+                    &client_ids,
+                    &rows.tenant_ids,
+                    &rows.statuses,
+                    &rows.attempts,
+                    &rows.next_attempts,
+                    &rows.created_ats,
+                ),
+                execute
+            )
+            .map_err(map_sqlx_error)?;
+        }
 
         Ok(())
     }
@@ -121,7 +154,7 @@ impl WebhookDeliveryRepository for DbWebhookDeliveryRepository {
             self.executor,
             sqlx::query!(
                 r#"
-          SELECT id, event_id, subscription_id, tenant_id, status, attempts,
+          SELECT id, event_id, subscription_id, client_id, tenant_id, status, attempts,
             next_attempt_at, last_error, last_status, created_at, delivered_at
           FROM webhook_deliveries
           WHERE status = 'pending' AND next_attempt_at <= $1
@@ -136,7 +169,10 @@ impl WebhookDeliveryRepository for DbWebhookDeliveryRepository {
         )
         .map_err(map_sqlx_error)?;
 
-        Ok(rows.into_iter().map(|r| delivery_from_row!(r)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| delivery_from_row!(r))
+            .collect())
     }
 
     async fn update(&self, delivery: &WebhookDelivery) -> Result<(), DomainError> {
@@ -174,10 +210,10 @@ impl WebhookDeliveryRepository for DbWebhookDeliveryRepository {
             self.executor,
             sqlx::query!(
                 r#"
-          SELECT id, event_id, subscription_id, tenant_id, status, attempts,
+          SELECT id, event_id, subscription_id, client_id, tenant_id, status, attempts,
             next_attempt_at, last_error, last_status, created_at, delivered_at
           FROM webhook_deliveries
-          WHERE tenant_id = $1
+          WHERE tenant_id = $1 AND subscription_id IS NOT NULL
           ORDER BY created_at DESC
           LIMIT $2 OFFSET $3
         "#,
@@ -189,14 +225,17 @@ impl WebhookDeliveryRepository for DbWebhookDeliveryRepository {
         )
         .map_err(map_sqlx_error)?;
 
-        Ok(rows.into_iter().map(|r| delivery_from_row!(r)).collect())
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| delivery_from_row!(r))
+            .collect())
     }
 
     async fn count_by_tenant_id(&self, tenant_id: Uuid) -> Result<u32, DomainError> {
         let row = run!(
             self.executor,
             sqlx::query!(
-                r#"SELECT COUNT(*) as "count!" FROM webhook_deliveries WHERE tenant_id = $1"#,
+                r#"SELECT COUNT(*) as "count!" FROM webhook_deliveries WHERE tenant_id = $1 AND subscription_id IS NOT NULL"#,
                 tenant_id
             ),
             fetch_one
@@ -204,6 +243,34 @@ impl WebhookDeliveryRepository for DbWebhookDeliveryRepository {
         .map_err(map_sqlx_error)?;
 
         Ok(row.count as u32)
+    }
+}
+
+// The columns every delivery row shares, as the parallel arrays UNNEST takes.
+struct DeliveryColumns {
+    ids: Vec<Uuid>,
+    event_ids: Vec<Uuid>,
+    tenant_ids: Vec<Uuid>,
+    statuses: Vec<String>,
+    attempts: Vec<i32>,
+    next_attempts: Vec<DateTime<Utc>>,
+    created_ats: Vec<DateTime<Utc>>,
+}
+
+impl DeliveryColumns {
+    fn of(deliveries: &[&WebhookDelivery]) -> Self {
+        DeliveryColumns {
+            ids: deliveries.iter().map(|d| d.id()).collect(),
+            event_ids: deliveries.iter().map(|d| d.event_id()).collect(),
+            tenant_ids: deliveries.iter().map(|d| d.tenant_id()).collect(),
+            statuses: deliveries
+                .iter()
+                .map(|d| d.status().as_str().to_string())
+                .collect(),
+            attempts: deliveries.iter().map(|d| d.attempts()).collect(),
+            next_attempts: deliveries.iter().map(|d| d.next_attempt_at()).collect(),
+            created_ats: deliveries.iter().map(|d| d.created_at()).collect(),
+        }
     }
 }
 

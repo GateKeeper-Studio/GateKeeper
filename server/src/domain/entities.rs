@@ -25,6 +25,7 @@ pub mod email_template;
 pub mod email_verification_token;
 pub mod external_identity_provider;
 pub mod external_login_flow;
+pub mod magic_link_token;
 pub mod mfa_challenge;
 pub mod mfa_enrollment;
 pub mod mfa_method;
@@ -32,6 +33,7 @@ pub mod oauth_client;
 pub mod password_change_token;
 pub mod password_reset_token;
 pub mod refresh_token;
+pub mod risk_model;
 pub mod signing_key;
 pub mod social_identity;
 
@@ -43,6 +45,7 @@ pub mod policy_acceptance;
 
 // Fraud / suspicious-login detection (Risk Engine)
 pub mod login_event;
+pub mod login_event_label;
 pub mod security_block;
 pub mod tenant_risk_policy;
 

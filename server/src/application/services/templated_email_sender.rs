@@ -125,6 +125,26 @@ impl TemplatedEmailSender {
         .await
     }
 
+    /// Magic link login: the one-time link that signs the user in.
+    pub async fn send_magic_link(
+        &self,
+        tenant_id: Uuid,
+        provider: Option<&EmailProvider>,
+        to: &str,
+        link: &str,
+        app_name: &str,
+        expiry: &str,
+    ) -> Result<(), DomainError> {
+        let vars = vec![
+            ("link".to_string(), link.to_string()),
+            ("app_name".to_string(), app_name.to_string()),
+            ("expiry".to_string(), expiry.to_string()),
+            ("support_email".to_string(), support_email(provider)),
+        ];
+        self.send_templated(tenant_id, EmailTemplateType::MagicLink, provider, to, vars)
+            .await
+    }
+
     /// Sign-in second-factor email carrying the MFA code.
     pub async fn send_mfa_code(
         &self,

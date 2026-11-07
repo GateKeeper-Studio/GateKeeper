@@ -1,0 +1,158 @@
+# Rust memory-safety / quality gate for the server/ crate.
+# Mirrors the checklist §22 pipeline. The crate uses sqlx compile-time-checked
+# queries with NO offline cache, so anything that compiles (check/clippy/test/doc)
+# needs a live Postgres with migrations applied. Supply-chain checks operate on
+# Cargo.lock only and need no database.
+name: rust-ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    paths:
+      - "server/**"
+      - ".github/workflows/rust-ci.yml"
+
+# Toolchain comes from server/rust-toolchain.toml (pinned). Keep these in sync.
+env:
+  CARGO_TERM_COLOR: always
+  # Compile/test env the crate reads. These are CI-only throwaway secrets.
+  DATABASE_URL: postgres://gatekeeper:gatekeeper@localhost:5432/gatekeeper
+  JWT_SECRET: ci-only-throwaway-secret-not-used-anywhere-real
+
+defaults:
+  run:
+    working-directory: server
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:alpine
+        env:
+          POSTGRES_USER: gatekeeper
+          POSTGRES_PASSWORD: gatekeeper
+          POSTGRES_DB: gatekeeper
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gatekeeper"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml drives the version; installs clippy + rustfmt.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+
+      - name: Verify toolchain
+        run: |
+          rustc --version --verbose
+          cargo --version --verbose
+
+      # webauthn-rs links OpenSSL (via webauthn-attestation-ca), so the build needs
+      # its headers. Everything else in the TLS stack is rustls.
+      - name: Install OpenSSL headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libssl-dev
+
+      # sqlx macros validate against the live schema at compile time.
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --version ^0.9 --no-default-features --features postgres,rustls --locked
+
+      - name: Run migrations
+        run: sqlx migrate run
+
+      # The committed `.sqlx/` cache is what lets the container image build with no
+      # database. It silently goes stale the moment a query changes, and the failure
+      # only shows up at image-build time — so fail here instead.
+      - name: Verify sqlx offline cache is current
+        run: cargo sqlx prepare --check -- --lib
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Check
+        run: cargo check --all-targets --all-features --locked
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --all-targets --all-features --locked
+
+      - name: Docs
+        run: cargo doc --all-features --no-deps --locked
+
+  # Proves the production image still builds — which also proves the `.sqlx` cache
+  # is self-sufficient, since no database exists in this job at all.
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build server image
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  supply-chain:
+    # Advisory / license / ban / source gates. No compilation, no database.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: cargo-audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: server
+
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: server/Cargo.toml
+          command: check advisories bans licenses sources
+
+  # cargo-geiger tracks unsafe usage across the dependency graph. It compiles the
+  # graph, so it needs the DB too; kept separate and non-blocking — review its
+  # output for *unexpected* new unsafe rather than failing the build outright (§22).
+  geiger:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:alpine
+        env:
+          POSTGRES_USER: gatekeeper
+          POSTGRES_PASSWORD: gatekeeper
+          POSTGRES_DB: gatekeeper
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gatekeeper"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - name: Install cargo-geiger
+        run: cargo install cargo-geiger --locked
+      - name: Migrations
+        run: sqlx migrate run || true
+      - name: Geiger report
+        run: cargo geiger --all-features --locked || true

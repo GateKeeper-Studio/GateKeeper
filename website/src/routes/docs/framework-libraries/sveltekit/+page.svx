@@ -1,0 +1,229 @@
+---
+title: SvelteKit library
+description: The GateKeeper SvelteKit BFF package: sessions, refresh, user data, and MFA UI APIs.
+section: Application libraries
+---
+
+`@gatekeeper/sveltekit-bff` is the SvelteKit integration package for GateKeeper. It packages the
+client API that used to live inside the example frontend into a reusable TypeScript library that a
+SvelteKit application can install and configure.
+
+The package source lives at `packages/gatekeeper-sveltekit-bff`. The current frontend uses it as a
+working example.
+
+## What it provides
+
+The package covers the pieces a SvelteKit app needs to act as a secure BFF:
+
+- OAuth 2.1 Authorization Code + PKCE helpers.
+- Encrypted `httpOnly` session cookies.
+- `hooks.server.ts` integration that loads `event.locals.session`.
+- Automatic access-token refresh when the token is near expiry.
+- Refresh-token rotation coalescing, so concurrent requests do not reuse the same refresh token.
+- Server-side helpers for `getSession`, `requireSession`, `getUser`, `getAccessToken`,
+  `getIdToken`, and `getRefreshToken`.
+- A browser-safe session view for layouts and components.
+- A Svelte provider that keeps browser session state fresh without exposing tokens.
+- Typed profile update helpers for `PUT /me/profile`.
+- MFA configuration APIs, including a default Svelte component and headless functions.
+
+## Configure the client
+
+Create one server-side client from your private environment variables:
+
+```ts
+import { env } from '$env/dynamic/private';
+import { dev } from '$app/environment';
+import { createSvelteKitGateKeeperClient } from '@gatekeeper/sveltekit-bff';
+
+export const gatekeeper = createSvelteKitGateKeeperClient({
+	idpBaseUrl: env.IDP_BASE_URL,
+	authUiBaseUrl: env.AUTH_UI_BASE_URL,
+	tenantId: env.OAUTH_TENANT_ID,
+	clientId: env.OAUTH_CLIENT_ID,
+	clientSecret: env.OAUTH_CLIENT_SECRET,
+	redirectUri: env.OAUTH_REDIRECT_URI,
+	scope: env.OAUTH_SCOPE || 'openid profile email',
+	sessionSecret: env.SESSION_SECRET,
+	secureCookies: !dev
+});
+```
+
+`SESSION_SECRET` protects the encrypted session cookie. Use a strong production secret and rotate it
+as operational key material, because changing it invalidates existing sessions.
+
+## Load and refresh sessions
+
+Use the SvelteKit facade in `hooks.server.ts`:
+
+```ts
+import { gatekeeper } from '$lib/server/gatekeeper';
+import type { Handle } from '@sveltejs/kit';
+
+export const handle: Handle = ({ event, resolve }) =>
+	gatekeeper.handle({
+		event,
+		resolve: (resolvedEvent) => resolve(resolvedEvent as typeof event)
+	});
+```
+
+On every request, `handle()` reads the encrypted session cookie, refreshes the access token when it
+is close to expiry, writes the rotated session cookie, stores the result in `event.locals.session`,
+and applies basic hardening headers.
+
+By default refresh starts when the token has 120 seconds or less remaining. Pass
+`{ refreshSkewSeconds: 300 }` as the second argument to `createSvelteKitGateKeeperClient()` if your
+app needs a wider window.
+
+## Read user data on the server
+
+Server routes, actions, and load functions can read the current session from `event.locals`:
+
+```ts
+const session = gatekeeper.getSession(event);
+const user = gatekeeper.getUser(event);
+const accessToken = gatekeeper.getAccessToken(event);
+const idToken = gatekeeper.getIdToken(event);
+const refreshToken = gatekeeper.getRefreshToken(event);
+```
+
+Use `requireSession(event)` when the page or endpoint must be signed in. It throws
+`GateKeeperSessionRequiredError` if there is no active session.
+
+Keep token access server-side. Browser code should receive only the browser-safe view:
+
+```ts
+export const load = ({ locals }) => {
+	const session = gatekeeper.getBrowserSession(locals);
+	return { gatekeeper: session, user: session.user };
+};
+```
+
+That object contains `authenticated`, `user`, and `expiresAt`. It never contains the access token,
+ID token, or refresh token.
+
+## Wrap the Svelte app
+
+The Svelte entry point is exported from `@gatekeeper/sveltekit-bff/svelte`. Wrap the root layout
+with `GateKeeperProvider`:
+
+```svelte
+<script lang="ts">
+	import { GateKeeperProvider } from '@gatekeeper/sveltekit-bff/svelte';
+
+	let { data, children } = $props();
+</script>
+
+<GateKeeperProvider initialSession={data.gatekeeper}>
+	{@render children()}
+</GateKeeperProvider>
+```
+
+Add a same-origin refresh endpoint:
+
+```ts
+import { json } from '@sveltejs/kit';
+import { gatekeeper } from '$lib/server/gatekeeper';
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ locals, cookies }) => {
+	const event = { locals, cookies };
+	await gatekeeper.loadSession(event);
+	return json(gatekeeper.getBrowserSession(event));
+};
+```
+
+The provider calls that endpoint before `expiresAt`, so the browser context updates while the real
+token refresh still happens on the server. Child components can read the context:
+
+```ts
+import { getGateKeeperContext } from '@gatekeeper/sveltekit-bff/svelte';
+
+const gatekeeper = getGateKeeperContext();
+const user = $derived(gatekeeper.user);
+```
+
+## Update the signed-in user profile
+
+The package wraps `PUT /me/profile` with typed camelCase inputs:
+
+```ts
+const profile = await gatekeeper.updateMyProfileForEvent(event, {
+	displayName: 'Ada Lovelace',
+	firstName: 'Ada',
+	lastName: 'Lovelace'
+});
+```
+
+When the update succeeds, the helper updates the request-local session and rewrites the encrypted
+cookie so later reads see the new profile data.
+
+Only profile names are updated by this helper. Email changes, password changes, and account
+recovery remain separate GateKeeper flows.
+
+## Use the default MFA component
+
+`MfaConfiguration` renders a complete MFA settings UI for the signed-in user. It can list methods,
+choose the preferred method, enroll and confirm TOTP, register passkeys, rename methods, and remove
+methods.
+
+```svelte
+<script lang="ts">
+	import { MfaConfiguration } from '@gatekeeper/sveltekit-bff/svelte';
+
+	let { data } = $props();
+</script>
+
+<MfaConfiguration
+	initialMfa={data.mfa}
+	classes={{
+		section: 'settings-section',
+		primaryButton: 'button-primary',
+		dangerButton: 'button-danger'
+	}}
+/>
+```
+
+The component is intentionally styleable instead of opinionated. Consumers can target the default
+`gk-mfa__*` classes or pass a `classes` map. Use `basePath` when your app exposes MFA proxy
+endpoints somewhere other than `/api/mfa`.
+
+The example frontend includes a styled wrapper at
+`frontends/sveltekit-bff/src/lib/components/gatekeeper/styled-mfa-configuration.svelte`.
+
+## Build custom MFA UI
+
+Developers who need a fully custom component can use the same headless API:
+
+```ts
+import { createMfaClient } from '@gatekeeper/sveltekit-bff/svelte';
+
+const mfa = createMfaClient({ basePath: '/api/mfa' });
+
+const state = await mfa.listMethods();
+await mfa.setPreferredMethod('webauthn');
+const totp = await mfa.startTotpEnrollment();
+await mfa.confirmTotpEnrollment('123456');
+await mfa.addPasskey('YubiKey 5C');
+```
+
+The helper talks to same-origin BFF endpoints. Those endpoints should proxy to GateKeeper with
+server-side `idpFetch()`, so the browser never receives the access token directly.
+
+The example frontend includes both default-component usage at `/account/security` and a headless
+example at `/account/security/headless-example`.
+
+## Example routes in the frontend
+
+The current frontend demonstrates the package in these places:
+
+| File | Purpose |
+| --- | --- |
+| `frontends/sveltekit-bff/src/hooks.server.ts` | Loads and refreshes sessions for every request. |
+| `frontends/sveltekit-bff/src/routes/+layout.server.ts` | Exposes browser-safe session data. |
+| `frontends/sveltekit-bff/src/routes/+layout.svelte` | Wraps the app with `GateKeeperProvider`. |
+| `frontends/sveltekit-bff/src/routes/api/gatekeeper/session/+server.ts` | Refresh endpoint used by the provider. |
+| `frontends/sveltekit-bff/src/routes/api/me/profile/+server.ts` | Profile update endpoint. |
+| `frontends/sveltekit-bff/src/routes/api/mfa/**/+server.ts` | MFA proxy endpoints used by the component/headless client. |
+| `frontends/sveltekit-bff/src/routes/account/security/+page.svelte` | Styled default MFA component usage. |
+| `frontends/sveltekit-bff/src/routes/account/security/headless-example/+page.svelte` | Custom MFA UI built from the headless API. |

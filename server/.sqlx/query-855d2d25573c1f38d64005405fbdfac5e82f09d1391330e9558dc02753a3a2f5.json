@@ -1,0 +1,158 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, version, feature_schema, model, metrics, label_counts, trained_from,\n                      trained_to, status, created_at, promoted_at, retired_at\n               FROM risk_models\n               WHERE status = 'retired' AND promoted_at IS NOT NULL\n               ORDER BY retired_at DESC NULLS LAST\n               LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "version",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "version"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "feature_schema",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "feature_schema"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "model",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "model"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "metrics",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "metrics"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "label_counts",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "label_counts"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "trained_from",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "trained_from"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "trained_to",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "trained_to"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "status",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "promoted_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "promoted_at"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "retired_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "risk_models",
+            "name": "retired_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "855d2d25573c1f38d64005405fbdfac5e82f09d1391330e9558dc02753a3a2f5"
+}

@@ -1,6 +1,41 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+// Whether the statistical score (docs/RISK-SCORING.md) applies to this tenant. Only
+// meaningful when the platform runs the hybrid engine (RISK_SCORING=hybrid); under
+// the rules engine every tenant behaves as `Rules`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScoringMode {
+    // Today's behaviour: rules decide alone. The hybrid engine still records the
+    // feature vector, which is how a training dataset accumulates.
+    Rules,
+    // The model scores every attempt and its explanation is stored and shown, but it
+    // never changes a decision. How an admin judges its false positives first.
+    Shadow,
+    // The model may raise a login to step-up MFA (never block, never lower a rule
+    // decision).
+    Hybrid,
+}
+
+impl ScoringMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ScoringMode::Rules => "rules",
+            ScoringMode::Shadow => "shadow",
+            ScoringMode::Hybrid => "hybrid",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "rules" => Some(ScoringMode::Rules),
+            "shadow" => Some(ScoringMode::Shadow),
+            "hybrid" => Some(ScoringMode::Hybrid),
+            _ => None,
+        }
+    }
+}
+
 // Per-tenant tuning of the Risk Engine. A tenant with no persisted row uses
 // `defaults_for` (spec §19 "Recommended Defaults for MVP"), so the feature works
 // out of the box without a backfill; the admin PUT endpoint upserts a row.
@@ -27,6 +62,8 @@ pub struct TenantRiskPolicy {
 
     temporary_block_minutes: i32,
 
+    scoring_mode: ScoringMode,
+
     created_at: DateTime<Utc>,
     updated_at: Option<DateTime<Utc>>,
 }
@@ -48,6 +85,7 @@ impl TenantRiskPolicy {
             require_mfa_on_high_risk: true,
             block_on_critical_risk: true,
             temporary_block_minutes: 30,
+            scoring_mode: ScoringMode::Rules,
             created_at: Utc::now(),
             updated_at: None,
         }
@@ -116,9 +154,21 @@ impl TenantRiskPolicy {
             require_mfa_on_high_risk,
             block_on_critical_risk,
             temporary_block_minutes,
+            // Rehydrated with set_scoring_mode, keeping this signature stable.
+            scoring_mode: ScoringMode::Rules,
             created_at,
             updated_at,
         }
+    }
+
+    // Set by the admin update (which bumps updated_at through `update`) and on
+    // rehydration.
+    pub fn set_scoring_mode(&mut self, scoring_mode: ScoringMode) {
+        self.scoring_mode = scoring_mode;
+    }
+
+    pub fn scoring_mode(&self) -> ScoringMode {
+        self.scoring_mode
     }
 
     pub fn id(&self) -> Uuid {

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::application::ports::unit_of_work::UnitOfWorkFactory;
 use crate::application::shared::actor::Actor;
+use crate::application::shared::backchannel_logout::{EndedSessions, announce_ended_sessions};
 use crate::application::use_cases::tenant_user::delete_tenant_user_by_id::command::Command;
 use crate::application::use_cases::webhook::user_event_payload::user_deleted_event;
 use crate::domain::errors::DomainError;
@@ -44,6 +45,10 @@ impl UseCase {
             .ok_or_else(|| {
                 DomainError::NotFound(format!("User with id {} not found", command.user_id))
             })?;
+
+        // Deleting the user cascades away their refresh tokens: first tell every app
+        // they were signed in to (back-channel logout), while the sessions still exist.
+        announce_ended_sessions(&*uow, command.tenant_id, user.id(), EndedSessions::All).await?;
 
         uow.user_repository().delete_by_id(user.id()).await?;
 

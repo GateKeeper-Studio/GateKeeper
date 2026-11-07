@@ -6,7 +6,9 @@ use hmac::{Hmac, Mac};
 use reqwest::{Client, redirect::Policy};
 use sha2::Sha256;
 
-use crate::application::ports::webhook_sender::{WebhookOutcome, WebhookRequest, WebhookSender};
+use crate::application::ports::webhook_sender::{
+    LogoutTokenRequest, WebhookOutcome, WebhookRequest, WebhookSender,
+};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -60,23 +62,38 @@ impl WebhookSender for ReqwestWebhookSender {
             .send()
             .await;
 
-        match result {
-            Ok(response) => {
-                let status = response.status();
-                if status.is_success() {
-                    WebhookOutcome::delivered(status.as_u16())
-                } else {
-                    // A 3xx counts as a failure here: redirects are disabled, so the
-                    // consumer told us to go somewhere we will not follow.
-                    WebhookOutcome::rejected(
-                        status.as_u16(),
-                        format!("consumer responded {status}"),
-                    )
-                }
+        outcome_of(result)
+    }
+
+    async fn send_logout_token(&self, request: LogoutTokenRequest<'_>) -> WebhookOutcome {
+        // application/x-www-form-urlencoded with a single `logout_token` parameter,
+        // as Back-Channel Logout 1.0 §2.5 specifies.
+        let result = self
+            .http
+            .post(request.url)
+            .form(&[("logout_token", request.logout_token.as_str())])
+            .send()
+            .await;
+
+        outcome_of(result)
+    }
+}
+
+// The status-to-outcome rule both request kinds share.
+fn outcome_of(result: Result<reqwest::Response, reqwest::Error>) -> WebhookOutcome {
+    match result {
+        Ok(response) => {
+            let status = response.status();
+            if status.is_success() {
+                WebhookOutcome::delivered(status.as_u16())
+            } else {
+                // A 3xx counts as a failure here: redirects are disabled, so the
+                // consumer told us to go somewhere we will not follow.
+                WebhookOutcome::rejected(status.as_u16(), format!("consumer responded {status}"))
             }
-            // DNS failure, connection refused, TLS error, timeout — no status exists.
-            Err(e) => WebhookOutcome::transport_error(e.to_string()),
         }
+        // DNS failure, connection refused, TLS error, timeout — no status exists.
+        Err(e) => WebhookOutcome::transport_error(e.to_string()),
     }
 }
 

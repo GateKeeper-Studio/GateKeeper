@@ -1,0 +1,83 @@
+---
+title: How risk scoring works
+description: The eight signals, how they add up, and what GateKeeper does about it.
+section: Security
+---
+
+Every login attempt is scored. Signals fire, each contributing points; the points add up to a
+score; the score maps to a level; the level maps to a decision. Nothing about it is magic, and all
+of it is tunable — see [Risk policy & monitoring](/docs/risk-policy).
+
+```mermaid
+flowchart LR
+    A["Login attempt"] --> B["Signals fire<br/>each worth points"]
+    B --> C["Score<br/>sum of points"]
+    C --> D["Level<br/>Low / Medium / High / Critical"]
+    D --> E["Decision"]
+    E --> F["Allow"]
+    E --> G["Allow with MFA"]
+    E --> H["Block temporarily"]
+    E --> I["Review"]
+```
+
+## The eight signals
+
+| Signal | Points | Fires when |
+| --- | --- | --- |
+| `BLOCKED_IP` | 80 | The IP is on the tenant's block list. |
+| `IMPOSSIBLE_TRAVEL` | 50 | The same user logged in from two places too far apart to travel between in the elapsed time. |
+| `PASSWORD_SPRAYING` | 40 | One IP is trying a few passwords against many *different* accounts. |
+| `TOO_MANY_FAILED_ATTEMPTS_BY_IP` | 30 | One IP has failed too many times. |
+| `TOO_MANY_FAILED_ATTEMPTS_BY_USER` | 30 | One account has failed too many times. |
+| `TENANT_ATTACK_SPIKE` | 30 | The whole tenant is seeing an abnormal volume of failures. |
+| `NEW_COUNTRY` | 20 | This user has never signed in from this country before. |
+| `NEW_DEVICE` | 15 | This user has never signed in from this device before. |
+
+Signals stack. A login from a new device in a new country scores 35 on its own — enough to cross
+the default medium threshold — while either alone would not.
+
+> [!NOTE]
+> `PASSWORD_SPRAYING` is the one worth understanding. Classic brute force hammers *one* account and
+> is easy to spot. Spraying tries `Winter2024!` against *ten thousand* accounts — each account sees
+> a single failure, so per-user thresholds never trip. Detecting it requires looking across
+> accounts, which is why it is a distinct signal.
+
+## Score, level, decision
+
+The score maps to a level using three thresholds, which default to:
+
+| Level | Default score |
+| --- | --- |
+| Low | below 30 |
+| Medium | 30 or more |
+| High | 60 or more |
+| Critical | 90 or more |
+
+The level then produces a decision:
+
+- **Allow** — proceed normally.
+- **Allow with MFA** — proceed, but demand a second factor first. This is *step-up authentication*,
+  and it is the interesting one: the user is probably legitimate, just in an unusual position, so
+  you ask for more proof rather than blocking them.
+- **Block temporarily** — refuse, for a cooling-off period.
+- **Review** — flag for a human.
+
+By default, **high** risk requires MFA and **critical** risk blocks. Both are switches you can turn
+off.
+
+## The GeoIP dependency
+
+Two of the eight signals — `NEW_COUNTRY` and `IMPOSSIBLE_TRAVEL` — need to resolve an IP address to
+a location, which requires MaxMind databases on the server.
+
+> [!CAUTION]
+> If `GEOIP_CITY_DB_PATH` is not configured, those two signals **can never fire**. Nothing errors
+> and nothing warns you in the dashboard: the Security pages populate normally, logins are scored
+> normally, and the two most valuable account-takeover signals are simply always absent. If you
+> care about catching a stolen password being used from another continent, this must be set.
+
+## What this does not do
+
+The risk engine scores **logins**. It is not a fraud engine for your product's business logic, and
+it does not see anything that happens after a token is issued. A compromised session doing
+something anomalous inside your application is yours to detect.

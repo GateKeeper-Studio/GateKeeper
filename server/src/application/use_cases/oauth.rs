@@ -1,5 +1,6 @@
 pub mod authorize_request;
 pub mod discovery;
+pub mod end_session;
 pub mod jwks;
 pub mod token_exchange;
 pub mod token_refresh;

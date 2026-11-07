@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE risk_models SET status = 'retired', retired_at = now()\n               WHERE status = 'active' AND id <> $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "59299d3392ac3af194d7ab17ad5cd49a08cb7d14ee580566c2fe34775e5ea1d2"
+}

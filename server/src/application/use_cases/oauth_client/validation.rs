@@ -2,10 +2,13 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{
-    entities::oauth_client::{ClientType, HeroSide, LoginAppearance, LoginFont, LoginLayout},
-    errors::DomainError,
-    locale::is_supported_locale,
+use crate::{
+    application::use_cases::webhook_subscription::validation::validate_outbound_url,
+    domain::{
+        entities::oauth_client::{ClientType, HeroSide, LoginAppearance, LoginFont, LoginLayout},
+        errors::DomainError,
+        locale::is_supported_locale,
+    },
 };
 
 pub fn parse_client_type(value: &str) -> Result<ClientType, DomainError> {
@@ -32,17 +35,27 @@ pub fn validate_redirect_uris(uris: &[String]) -> Result<(), DomainError> {
         ));
     }
     for uri in uris {
-        validate_one(uri)?;
+        validate_one("redirect_uri", uri)?;
     }
     Ok(())
 }
 
-fn validate_one(uri: &str) -> Result<(), DomainError> {
+// RP-Initiated Logout sends the browser to one of these after sign-out, so they get
+// the same rules as redirect_uris. Unlike redirect_uris the list may be empty: the
+// logout endpoint then answers without redirecting.
+pub fn validate_post_logout_redirect_uris(uris: &[String]) -> Result<(), DomainError> {
+    for uri in uris {
+        validate_one("post_logout_redirect_uri", uri)?;
+    }
+    Ok(())
+}
+
+fn validate_one(label: &str, uri: &str) -> Result<(), DomainError> {
     let invalid = |msg: String| DomainError::InvalidRequest(msg);
 
     if uri.contains('#') {
         return Err(invalid(format!(
-            "redirect_uri must not contain a fragment: {uri}"
+            "{label} must not contain a fragment: {uri}"
         )));
     }
 
@@ -52,9 +65,7 @@ fn validate_one(uri: &str) -> Result<(), DomainError> {
         if uri.contains(':') && !uri.starts_with(':') {
             return Ok(());
         }
-        return Err(invalid(format!(
-            "redirect_uri must be an absolute URI: {uri}"
-        )));
+        return Err(invalid(format!("{label} must be an absolute URI: {uri}")));
     };
 
     match scheme {
@@ -65,7 +76,7 @@ fn validate_one(uri: &str) -> Result<(), DomainError> {
                 Ok(())
             } else {
                 Err(invalid(format!(
-                    "plain http redirect_uri is only allowed for loopback: {uri}"
+                    "plain http {label} is only allowed for loopback: {uri}"
                 )))
             }
         }
@@ -190,6 +201,21 @@ pub struct LoginAppearanceInput {
     pub border_radius: Option<String>,
     #[serde(default)]
     pub font_family: Option<String>,
+}
+
+// OIDC Back-Channel Logout: the RP endpoint our dispatcher POSTs a logout_token to.
+// It is an outbound request from inside our network to an admin-supplied address,
+// so it passes the same SSRF checks as a webhook URL (https only, no private or
+// metadata addresses, no fragment, no credentials). The spec also forbids a
+// fragment; the shared check already refuses one.
+pub fn validate_backchannel_logout_uri(
+    uri: &Option<String>,
+    allow_private_targets: bool,
+) -> Result<(), DomainError> {
+    match uri {
+        Some(uri) => validate_outbound_url("backchannel_logout_uri", uri, allow_private_targets),
+        None => Ok(()),
+    }
 }
 
 // SECURITY: this is the trust boundary for per-client login-page customization.

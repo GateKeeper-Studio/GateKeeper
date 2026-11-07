@@ -1,0 +1,99 @@
+---
+title: Remix library
+description: The GateKeeper Remix BFF package — Web-standard loaders/actions and a root-loader silent refresh.
+section: Application libraries
+---
+
+`@gatekeeper/remix` is the Remix integration for GateKeeper. It is a **backend-for-frontend (BFF)**,
+not a SPA: the Authorization Code + PKCE exchange runs on the server, and tokens live only inside an
+**AES-256-GCM encrypted, `httpOnly` cookie**. The browser never sees an access or refresh token.
+
+It binds Remix loader/action idioms to the framework-agnostic `@gatekeeper/bff-core` using only Web
+`Request`/`Response` (no Remix runtime import). The package source lives at
+`packages/gatekeeper-remix`; a runnable example is at `frontends/remix`.
+
+## Confidential client — client secret required
+
+Like the Next.js and SvelteKit BFFs, a Remix BFF keeps a real **client secret** on the server.
+Register a **confidential** client and keep the secret in server-only env. Because calls are
+server→server, **no CORS entry is needed**.
+
+## Configure the client
+
+```ts
+// app/gatekeeper.server.ts — the .server suffix keeps it out of the client bundle
+import { createRemixGateKeeper } from '@gatekeeper/remix';
+
+export const gatekeeper = createRemixGateKeeper({
+	idpBaseUrl: process.env.IDP_BASE_URL!,
+	authUiBaseUrl: process.env.AUTH_UI_BASE_URL!,
+	tenantId: process.env.OAUTH_TENANT_ID!,
+	clientId: process.env.OAUTH_CLIENT_ID!,
+	clientSecret: process.env.OAUTH_CLIENT_SECRET,
+	redirectUri: process.env.OAUTH_REDIRECT_URI!, // …/auth/callback
+	scope: process.env.OAUTH_SCOPE ?? 'openid profile email',
+	sessionSecret: process.env.SESSION_SECRET!, // openssl rand -hex 32
+	secureCookies: process.env.NODE_ENV === 'production'
+});
+```
+
+## Wire the auth routes
+
+Each auth route is one loader or action over the Web `Request`:
+
+```ts
+// app/routes/auth.sign-in.tsx
+export const loader = ({ request }) => gatekeeper.signInLoader(request);
+
+// app/routes/auth.callback.tsx
+export const loader = ({ request }) => gatekeeper.callbackLoader(request);
+
+// app/routes/auth.sign-out.tsx
+export const action = ({ request }) => gatekeeper.signOutAction(request);
+```
+
+## Silent refresh in the root loader
+
+`loadSession()` reads the session and, if needed, rotates the token (coalesced). It returns
+`Set-Cookie` `headers` you must merge into the root loader's response:
+
+```tsx
+// app/root.tsx
+export async function loader({ request }: LoaderFunctionArgs) {
+	const { session, headers } = await gatekeeper.loadSession(request);
+	return json({ authenticated: !!session, user: session?.user ?? null }, { headers });
+}
+```
+
+Merging `headers` writes the rotated `gk_session` cookie back to the browser before it expires.
+
+## Read the session in other routes
+
+For routes that don't return the refreshed headers, use the read-only accessors:
+
+```ts
+const session = gatekeeper.getSession(request); // no refresh
+const user = gatekeeper.getUser(request);
+```
+
+Guard a route by redirecting when there is no session:
+
+```ts
+import { redirect } from '@remix-run/node';
+if (!gatekeeper.getSession(request)) throw redirect('/auth/sign-in');
+```
+
+## The flow
+
+1. **Sign in** — `GET /auth/sign-in` mints PKCE + `state` + `nonce`, parks them in short-lived
+   `httpOnly` cookies, and redirects to the hosted login.
+2. **Callback** — `GET /auth/callback` validates `state`, exchanges the code (PKCE + secret),
+   verifies the id_token `nonce`, and seals the `gk_session` cookie.
+3. **Silent refresh** — the root loader rotates the token before expiry.
+4. **Sign out** — `POST /auth/sign-out` clears the session cookie.
+
+## Example app
+
+`frontends/remix` runs on dev port 5180. Register a confidential client with
+`frontends/remix/scripts/register-client.sh`, paste `OAUTH_CLIENT_ID`/`OAUTH_CLIENT_SECRET` into
+`.env`, set `SESSION_SECRET`, then `npm install && npm run dev`.

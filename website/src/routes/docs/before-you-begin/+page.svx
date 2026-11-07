@@ -1,0 +1,61 @@
+---
+title: Before you begin
+description: Getting a running server and your first administrator account.
+section: Getting started
+---
+
+This guide assumes GateKeeper is running and you can sign in. This page covers the one-time setup
+to get there. If someone has already given you a dashboard login, skip to
+[Your first tenant](/docs/first-tenant).
+
+## What has to be running
+
+Two processes and a database:
+
+| Piece | What it is |
+| --- | --- |
+| **Server** | The Rust identity provider. Serves the OAuth/OIDC endpoints and the admin API. |
+| **Dashboard** | This SvelteKit app. It is a pure client of the server's admin API. |
+| **PostgreSQL** | Everything is persisted here. |
+
+The dashboard never talks to the database. It calls the server over HTTP at the URL in
+`PUBLIC_API_BASE_URL`, which defaults to `http://localhost:8080`.
+
+## Creating the first administrator
+
+There is deliberately **no public admin signup endpoint** — if there were, anyone who could reach
+your server could mint themselves an administrator. The first admin is created from the CLI, on the
+machine running the server:
+
+```bash
+cargo run --bin create_admin -- admin@example.com 'a-strong-password'
+```
+
+This finds or creates a "Default Organization" and attaches the new administrator to it. You can
+pass an existing organization id as a third argument to add an admin to a specific organization
+instead.
+
+> [!TIP]
+> Use this same command to add colleagues later. Each administrator belongs to an organization and
+> can see every tenant that organization owns.
+
+## Signing in
+
+Go to `/login` on the dashboard origin and use the credentials you just created. You will land on the dashboard with no
+tenants yet, and an empty state inviting you to create your first one — which is exactly where the
+[next page](/docs/first-tenant) picks up.
+
+## Two settings worth knowing about now
+
+Both live in the server's environment, not in the dashboard, and both are easy to get wrong.
+
+> [!CAUTION]
+> `REQUIRE_ADMIN_AUTH=false` downgrades the admin API guard to *best-effort*: requests are still
+> attributed in the audit log, but they are no longer blocked. It exists for local development.
+> Never run a real deployment with it off.
+
+> [!WARNING]
+> If `GEOIP_CITY_DB_PATH` is not set, the risk engine silently loses two of its eight signals —
+> **new country** and **impossible travel** can never fire, because there is no way to resolve an
+> IP to a location. The Security pages will still work; they just won't catch those cases. See
+> [How risk scoring works](/docs/risk-engine).

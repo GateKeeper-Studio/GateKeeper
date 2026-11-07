@@ -18,7 +18,7 @@ use crate::{
         },
         errors::DomainError,
         repositories::{
-            login_event_repository::LoginEventRepository,
+            login_event_repository::{LastSuccessfulLogin, LoginEventRepository},
             security_block_repository::SecurityBlockRepository,
             tenant_risk_policy_repository::TenantRiskPolicyRepository,
         },
@@ -27,7 +27,48 @@ use crate::{
 };
 
 // Velocity counters look back over this window (spec §19: "N attempts / 10 minutes").
-const WINDOW_MINUTES: i64 = 10;
+pub(crate) const WINDOW_MINUTES: i64 = 10;
+
+// What the rules observed for one attempt, beyond the signals they raised: the raw
+// counts and history behind each threshold check. The hybrid engine
+// (`hybrid_risk_engine.rs`) builds its feature vector from these, so scoring adds no
+// duplicate queries.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct RuleFacts {
+    pub failed_by_ip: i64,
+    pub failed_by_user: i64,
+    pub distinct_users_by_ip: i64,
+    pub tenant_failures: i64,
+    // Set when the geo/device rules ran: a known user, valid credentials, and a
+    // previous successful login.
+    pub last_login: Option<LastSuccessfulLogin>,
+    pub new_country: bool,
+    pub new_device: bool,
+    // Distance and elapsed time since the last successful login, when both ends
+    // have coordinates.
+    pub travel: Option<(f64, f64)>,
+}
+
+// The rules' verdict on an attempt, before anything is persisted.
+pub(crate) enum Assessment {
+    // Nothing for a statistical score to add: an IP already blocked before
+    // authentication, or the Risk Engine switched off for the tenant.
+    Final {
+        geo: Option<GeoLocation>,
+        success: bool,
+        score: i32,
+        level: RiskLevel,
+        decision: RiskDecision,
+        signals: Vec<RiskSignal>,
+    },
+    // The rules ran: their signals, the policy that weighs them, and the facts.
+    Evaluated {
+        policy: TenantRiskPolicy,
+        geo: Option<GeoLocation>,
+        signals: Vec<RiskSignal>,
+        facts: RuleFacts,
+    },
+}
 
 // The deterministic, explainable Risk Engine. It reads *committed* prior login_events
 // for its velocity counters and writes each evaluated attempt on its own connection
@@ -55,6 +96,10 @@ impl DefaultRiskEngine {
         }
     }
 
+    pub(crate) fn login_event_repository(&self) -> &Arc<dyn LoginEventRepository> {
+        &self.login_event_repository
+    }
+
     async fn policy_for(&self, tenant_id: Uuid) -> TenantRiskPolicy {
         self.tenant_risk_policy_repository
             .find_by_tenant(tenant_id)
@@ -64,7 +109,8 @@ impl DefaultRiskEngine {
             .unwrap_or_else(|| TenantRiskPolicy::defaults_for(tenant_id))
     }
 
-    // Build the LoginEvent from the input + derived data and persist it with its signals.
+    // Build the LoginEvent from the input + derived data and persist it with its
+    // signals (and, from the hybrid engine, its feature vector and model verdict).
     #[allow(clippy::too_many_arguments)]
     async fn record(
         &self,
@@ -75,7 +121,8 @@ impl DefaultRiskEngine {
         level: RiskLevel,
         decision: RiskDecision,
         signals: &[RiskSignal],
-    ) -> Result<(), DomainError> {
+        scoring: Scoring,
+    ) -> Result<Uuid, DomainError> {
         let ip_hash = input.ip_address.as_deref().map(sha256_hex);
         let ua_hash = input.user_agent.as_deref().map(sha256_hex);
         let username_hash = input.username_normalized.as_deref().map(sha256_hex);
@@ -95,7 +142,8 @@ impl DefaultRiskEngine {
             ua_hash,
         )
         .with_failure_reason(input.failure_reason.clone())
-        .with_risk(score, level, decision);
+        .with_risk(score, level, decision)
+        .with_scoring(scoring.features, scoring.model);
 
         if let Some(geo) = geo {
             event = event.with_geo(
@@ -109,27 +157,15 @@ impl DefaultRiskEngine {
             );
         }
 
-        self.login_event_repository.add(&event, signals).await
-    }
-}
-
-#[async_trait]
-impl RiskEngine for DefaultRiskEngine {
-    async fn check_pre_auth(&self, tenant_id: Uuid, ip: Option<&str>) -> Result<bool, DomainError> {
-        let Some(ip) = ip else {
-            return Ok(false);
-        };
-        Ok(self
-            .security_block_repository
-            .find_active_ip_block(tenant_id, ip, Utc::now())
-            .await?
-            .is_some())
+        self.login_event_repository.add(&event, signals).await?;
+        Ok(event.id())
     }
 
-    async fn evaluate(
+    // The rules, without side effects: which signals fire, from which counts.
+    pub(crate) async fn assess(
         &self,
-        input: RiskEvaluationInput,
-    ) -> Result<RiskEvaluationResult, DomainError> {
+        input: &RiskEvaluationInput,
+    ) -> Result<Assessment, DomainError> {
         let policy = self.policy_for(input.tenant_id).await;
         let now = input.timestamp;
         let since = now - Duration::minutes(WINDOW_MINUTES);
@@ -147,73 +183,57 @@ impl RiskEngine for DefaultRiskEngine {
                 json!({ "reason": "active_ip_block" }),
             )];
             let score: i32 = signals.iter().map(RiskSignal::points).sum();
-            let level = RiskLevel::from_score(
+            return Ok(Assessment::Final {
+                geo,
+                success: false,
                 score,
-                policy.medium_risk_threshold(),
-                policy.high_risk_threshold(),
-                policy.critical_risk_threshold(),
-            );
-            let decision = RiskDecision::BlockTemporarily;
-            self.record(&input, &geo, false, score, level, decision, &signals)
-                .await?;
-            return Ok(RiskEvaluationResult {
-                score,
-                level,
-                decision,
+                level: level_of(score, &policy),
+                decision: RiskDecision::BlockTemporarily,
                 signals,
             });
         }
 
         // Risk Engine disabled for this tenant ⇒ record a plain ALLOW event, no signals.
         if !policy.enabled() {
-            let decision = RiskDecision::Allow;
-            let level = RiskLevel::Low;
-            self.record(
-                &input,
-                &geo,
-                input.credentials_valid,
-                0,
-                level,
-                decision,
-                &[],
-            )
-            .await?;
-            return Ok(RiskEvaluationResult {
+            return Ok(Assessment::Final {
+                geo,
+                success: input.credentials_valid,
                 score: 0,
-                level,
-                decision,
+                level: RiskLevel::Low,
+                decision: RiskDecision::Allow,
                 signals: Vec::new(),
             });
         }
 
         let mut signals: Vec<RiskSignal> = Vec::new();
+        let mut facts = RuleFacts::default();
 
         // --- Velocity signals (over prior failed attempts in the window) ---
         if let Some(ip) = input.ip_address.as_deref() {
-            let failed_ip = self
+            facts.failed_by_ip = self
                 .login_event_repository
                 .count_failed_by_ip(input.tenant_id, ip, since)
                 .await?;
-            if failed_ip >= policy.failed_ip_threshold() as i64 {
+            if facts.failed_by_ip >= policy.failed_ip_threshold() as i64 {
                 signals.push(RiskSignal::new(
                     RiskSignalType::TooManyFailedAttemptsByIp,
                     json!({
-                        "failed_attempts": failed_ip,
+                        "failed_attempts": facts.failed_by_ip,
                         "threshold": policy.failed_ip_threshold(),
                         "window_minutes": WINDOW_MINUTES,
                     }),
                 ));
             }
 
-            let distinct_users = self
+            facts.distinct_users_by_ip = self
                 .login_event_repository
                 .count_distinct_users_by_ip(input.tenant_id, ip, since)
                 .await?;
-            if distinct_users >= policy.password_spraying_user_threshold() as i64 {
+            if facts.distinct_users_by_ip >= policy.password_spraying_user_threshold() as i64 {
                 signals.push(RiskSignal::new(
                     RiskSignalType::PasswordSpraying,
                     json!({
-                        "distinct_users": distinct_users,
+                        "distinct_users": facts.distinct_users_by_ip,
                         "threshold": policy.password_spraying_user_threshold(),
                         "window_minutes": WINDOW_MINUTES,
                     }),
@@ -222,15 +242,15 @@ impl RiskEngine for DefaultRiskEngine {
         }
 
         if let Some(user_id) = input.user_id {
-            let failed_user = self
+            facts.failed_by_user = self
                 .login_event_repository
                 .count_failed_by_user(input.tenant_id, user_id, since)
                 .await?;
-            if failed_user >= policy.failed_user_threshold() as i64 {
+            if facts.failed_by_user >= policy.failed_user_threshold() as i64 {
                 signals.push(RiskSignal::new(
                     RiskSignalType::TooManyFailedAttemptsByUser,
                     json!({
-                        "failed_attempts": failed_user,
+                        "failed_attempts": facts.failed_by_user,
                         "threshold": policy.failed_user_threshold(),
                         "window_minutes": WINDOW_MINUTES,
                     }),
@@ -238,15 +258,15 @@ impl RiskEngine for DefaultRiskEngine {
             }
         }
 
-        let tenant_failures = self
+        facts.tenant_failures = self
             .login_event_repository
             .count_tenant_failures(input.tenant_id, since)
             .await?;
-        if tenant_failures >= policy.tenant_attack_threshold() as i64 {
+        if facts.tenant_failures >= policy.tenant_attack_threshold() as i64 {
             signals.push(RiskSignal::new(
                 RiskSignalType::TenantAttackSpike,
                 json!({
-                    "failed_attempts": tenant_failures,
+                    "failed_attempts": facts.tenant_failures,
                     "threshold": policy.tenant_attack_threshold(),
                     "window_minutes": WINDOW_MINUTES,
                 }),
@@ -270,6 +290,7 @@ impl RiskEngine for DefaultRiskEngine {
                             .has_seen_country(input.tenant_id, user_id, country)
                             .await?;
                         if !seen {
+                            facts.new_country = true;
                             signals.push(RiskSignal::new(
                                 RiskSignalType::NewCountry,
                                 json!({ "country_code": country }),
@@ -283,6 +304,7 @@ impl RiskEngine for DefaultRiskEngine {
                         if let (Some(lat1), Some(lon1)) = (g.latitude, g.longitude) {
                             let km = haversine_km(lat1, lon1, lat2, lon2);
                             let hours = (now - last.created_at).num_minutes().max(0) as f64 / 60.0;
+                            facts.travel = Some((km, hours));
                             if is_impossible_travel(km, hours) {
                                 signals.push(RiskSignal::new(
                                     RiskSignalType::ImpossibleTravel,
@@ -301,20 +323,64 @@ impl RiskEngine for DefaultRiskEngine {
                             .has_seen_user_agent(input.tenant_id, user_id, &ua_hash)
                             .await?;
                         if !seen {
+                            facts.new_device = true;
                             signals.push(RiskSignal::new(RiskSignalType::NewDevice, json!({})));
                         }
                     }
+
+                    facts.last_login = Some(last);
                 }
             }
         }
 
+        Ok(Assessment::Evaluated {
+            policy,
+            geo,
+            signals,
+            facts,
+        })
+    }
+
+    // Weighs the signals, applies the side effects, and records the attempt.
+    pub(crate) async fn finish(
+        &self,
+        input: &RiskEvaluationInput,
+        assessment: Assessment,
+        scoring: Scoring,
+    ) -> Result<RiskEvaluationResult, DomainError> {
+        let (policy, geo, signals) = match assessment {
+            Assessment::Final {
+                geo,
+                success,
+                score,
+                level,
+                decision,
+                signals,
+            } => {
+                let login_event_id = self
+                    .record(
+                        input, &geo, success, score, level, decision, &signals, scoring,
+                    )
+                    .await?;
+                return Ok(RiskEvaluationResult {
+                    score,
+                    level,
+                    decision,
+                    signals,
+                    login_event_id: Some(login_event_id),
+                });
+            }
+            Assessment::Evaluated {
+                policy,
+                geo,
+                signals,
+                ..
+            } => (policy, geo, signals),
+        };
+
+        let now = input.timestamp;
         let score: i32 = signals.iter().map(RiskSignal::points).sum();
-        let level = RiskLevel::from_score(
-            score,
-            policy.medium_risk_threshold(),
-            policy.high_risk_threshold(),
-            policy.critical_risk_threshold(),
-        );
+        let level = level_of(score, &policy);
 
         // The decision only gates a login that actually authenticated; a wrong password
         // fails regardless, so its decision stays ALLOW (the event still records signals).
@@ -355,7 +421,10 @@ impl RiskEngine for DefaultRiskEngine {
 
         let success = input.credentials_valid && decision != RiskDecision::BlockTemporarily;
 
-        self.record(&input, &geo, success, score, level, decision, &signals)
+        let login_event_id = self
+            .record(
+                input, &geo, success, score, level, decision, &signals, scoring,
+            )
             .await?;
 
         Ok(RiskEvaluationResult {
@@ -363,7 +432,46 @@ impl RiskEngine for DefaultRiskEngine {
             level,
             decision,
             signals,
+            login_event_id: Some(login_event_id),
         })
+    }
+}
+
+// What the hybrid engine adds to the persisted event. Empty for the rules engine.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Scoring {
+    pub features: Option<serde_json::Value>,
+    pub model: Option<serde_json::Value>,
+}
+
+pub(crate) fn level_of(score: i32, policy: &TenantRiskPolicy) -> RiskLevel {
+    RiskLevel::from_score(
+        score,
+        policy.medium_risk_threshold(),
+        policy.high_risk_threshold(),
+        policy.critical_risk_threshold(),
+    )
+}
+
+#[async_trait]
+impl RiskEngine for DefaultRiskEngine {
+    async fn check_pre_auth(&self, tenant_id: Uuid, ip: Option<&str>) -> Result<bool, DomainError> {
+        let Some(ip) = ip else {
+            return Ok(false);
+        };
+        Ok(self
+            .security_block_repository
+            .find_active_ip_block(tenant_id, ip, Utc::now())
+            .await?
+            .is_some())
+    }
+
+    async fn evaluate(
+        &self,
+        input: RiskEvaluationInput,
+    ) -> Result<RiskEvaluationResult, DomainError> {
+        let assessment = self.assess(&input).await?;
+        self.finish(&input, assessment, Scoring::default()).await
     }
 }
 

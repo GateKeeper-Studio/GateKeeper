@@ -349,7 +349,7 @@ mod tests {
         let login_res = login_uc
             .execute(login::command::Command {
                 email: email.clone(),
-                password: PASSWORD.to_string(),
+                password: Some(PASSWORD.to_string()),
                 client_id: client_id.clone(),
                 redirect_uri: REDIRECT_URI.to_string(),
                 response_type: "code".to_string(),

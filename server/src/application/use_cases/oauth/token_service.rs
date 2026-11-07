@@ -77,6 +77,10 @@ pub struct TokenGrant<'a> {
     // OIDC nonce from the authorization request; echoed in the ID token only when
     // the client sent one.
     pub nonce: Option<&'a str>,
+    // The session this grant belongs to: the refresh-token family id. Stamped into
+    // the ID token as `sid`, the same value a back-channel logout token carries, so
+    // an RP can match a logout to the session it opened.
+    pub sid: Option<Uuid>,
     pub now: DateTime<Utc>,
 }
 
@@ -147,6 +151,11 @@ impl TokenMinter {
             // nonce claim is improper and would fail a strict client's replay check.
             if let Some(nonce) = grant.nonce.filter(|n| !n.is_empty()) {
                 id_claims["nonce"] = json!(nonce);
+            }
+            // OIDC Back-Channel Logout §2.1: an OP that supports session logout
+            // includes `sid` in its ID tokens.
+            if let Some(sid) = grant.sid {
+                id_claims["sid"] = json!(sid.to_string());
             }
             Some(self.signer.sign(&key, &id_claims, TokenType::Id).await?)
         } else {

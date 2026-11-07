@@ -11,7 +11,11 @@ use validator::Validate;
 pub struct Command {
     #[validate(email(message = "A valid email is required"))]
     pub email: String,
-    pub password: String,
+    // Absent or empty ⇒ passwordless login: the account must have no password and
+    // a confirmed passkey, and the response is a WebAuthn challenge instead of an
+    // authenticated session (see `login::UseCase::begin_passkey_login`).
+    #[serde(default)]
+    pub password: Option<String>,
 
     pub client_id: String,
 

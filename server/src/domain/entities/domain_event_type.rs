@@ -9,11 +9,17 @@
 // intentionally line up with the audit-log action names in `audit_action.rs`, but
 // the two are independent: audit records what happened for compliance, this
 // announces it to other systems. Never rename one expecting the other to follow.
+//
+// One variant is NOT a webhook event: `BackchannelLogout` rides the same outbox (so
+// a sign-out and its OIDC Back-Channel Logout notification commit together) but is
+// delivered to OAuth clients, never to webhook subscriptions. `is_subscribable`
+// keeps it out of subscription filters, and `ALL` lists only subscribable events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DomainEventType {
     UserCreated,
     UserUpdated,
     UserDeleted,
+    BackchannelLogout,
 }
 
 impl DomainEventType {
@@ -22,20 +28,35 @@ impl DomainEventType {
             DomainEventType::UserCreated => "user.created",
             DomainEventType::UserUpdated => "user.updated",
             DomainEventType::UserDeleted => "user.deleted",
+            DomainEventType::BackchannelLogout => "oidc.backchannel_logout",
         }
     }
 
-    // Strict parse. Returns None for anything unknown so the application layer can
-    // reject an admin's filter rather than silently coercing it.
+    // Strict parse of a stored discriminator. Returns None for anything unknown.
+    // Admin input goes through `parse_subscribable` instead.
     pub fn parse(value: &str) -> Option<Self> {
         match value {
             "user.created" => Some(DomainEventType::UserCreated),
             "user.updated" => Some(DomainEventType::UserUpdated),
             "user.deleted" => Some(DomainEventType::UserDeleted),
+            "oidc.backchannel_logout" => Some(DomainEventType::BackchannelLogout),
             _ => None,
         }
     }
 
+    // The parse for a subscription's `event_types` filter: only events a webhook can
+    // receive, so an admin can neither subscribe to logout notifications nor have a
+    // typo silently accepted.
+    pub fn parse_subscribable(value: &str) -> Option<Self> {
+        Self::parse(value).filter(|t| t.is_subscribable())
+    }
+
+    // Whether webhook subscriptions may receive this event at all.
+    pub fn is_subscribable(&self) -> bool {
+        !matches!(self, DomainEventType::BackchannelLogout)
+    }
+
+    // Every event a webhook subscription can receive.
     pub const ALL: [DomainEventType; 3] = [
         DomainEventType::UserCreated,
         DomainEventType::UserUpdated,

@@ -15,6 +15,15 @@ pub struct WebhookRequest<'a> {
     pub body: String,
 }
 
+// One OIDC Back-Channel Logout request: `logout_token=<jwt>` form-POSTed to the
+// RP's registered back-channel logout URI (Back-Channel Logout 1.0 §2.5). There is
+// no HMAC here: the logout token is itself signed with the tenant key, and that
+// signature, checked against the published JWKS, is what the spec has the RP verify.
+pub struct LogoutTokenRequest<'a> {
+    pub url: &'a str,
+    pub logout_token: String,
+}
+
 // What came back. Note this is NOT a Result: a 500 from a consumer is ordinary
 // operating data that drives the retry state machine, not an error the dispatcher
 // should propagate — one broken subscriber must never abort a batch that still has
@@ -61,4 +70,8 @@ impl WebhookOutcome {
 #[async_trait]
 pub trait WebhookSender: Send + Sync {
     async fn send(&self, request: WebhookRequest<'_>) -> WebhookOutcome;
+
+    // Same transport rules as `send` (timeout, no redirects), different wire format.
+    // Any 2xx is success: the spec asks for 200 but tells OPs to accept 204 too.
+    async fn send_logout_token(&self, request: LogoutTokenRequest<'_>) -> WebhookOutcome;
 }

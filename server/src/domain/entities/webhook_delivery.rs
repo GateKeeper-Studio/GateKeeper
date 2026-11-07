@@ -48,7 +48,29 @@ impl DeliveryStatus {
     }
 }
 
-// One attempt-tracking row per (event, subscription). Splitting delivery state out
+// Who a delivery goes to. A webhook subscription receives the HMAC-signed JSON
+// event; an OAuth client with a `backchannel_logout_uri` receives an OIDC
+// Back-Channel Logout request (a signed `logout_token`). Both share this retry
+// state machine, the claim queries and the delivery table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DeliveryTarget {
+    Subscription(Uuid),
+    // oauth_clients.id (the internal id, not the public client_id).
+    BackchannelLogout(Uuid),
+}
+
+impl DeliveryTarget {
+    // The two nullable columns, exactly one of which is set (a CHECK enforces it).
+    pub fn from_columns(subscription_id: Option<Uuid>, client_id: Option<Uuid>) -> Option<Self> {
+        match (subscription_id, client_id) {
+            (Some(id), None) => Some(DeliveryTarget::Subscription(id)),
+            (None, Some(id)) => Some(DeliveryTarget::BackchannelLogout(id)),
+            _ => None,
+        }
+    }
+}
+
+// One attempt-tracking row per (event, target). Splitting delivery state out
 // of the event is what keeps one broken subscriber from holding up every other
 // subscriber of the same event.
 //
@@ -58,7 +80,7 @@ impl DeliveryStatus {
 pub struct WebhookDelivery {
     id: Uuid,
     event_id: Uuid,
-    subscription_id: Uuid,
+    target: DeliveryTarget,
     tenant_id: Uuid,
     status: DeliveryStatus,
     attempts: i32,
@@ -73,10 +95,39 @@ impl WebhookDelivery {
     // A fresh delivery is due immediately — the dispatcher picks it up on its very
     // next tick.
     pub fn new(event_id: Uuid, subscription_id: Uuid, tenant_id: Uuid, now: DateTime<Utc>) -> Self {
+        Self::to_target(
+            event_id,
+            DeliveryTarget::Subscription(subscription_id),
+            tenant_id,
+            now,
+        )
+    }
+
+    // A back-channel logout notification to one OAuth client (by internal id).
+    pub fn for_backchannel_logout(
+        event_id: Uuid,
+        client_id: Uuid,
+        tenant_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Self {
+        Self::to_target(
+            event_id,
+            DeliveryTarget::BackchannelLogout(client_id),
+            tenant_id,
+            now,
+        )
+    }
+
+    fn to_target(
+        event_id: Uuid,
+        target: DeliveryTarget,
+        tenant_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Self {
         WebhookDelivery {
             id: Uuid::now_v7(),
             event_id,
-            subscription_id,
+            target,
             tenant_id,
             status: DeliveryStatus::Pending,
             attempts: 0,
@@ -92,7 +143,7 @@ impl WebhookDelivery {
     pub fn reconstruct(
         id: Uuid,
         event_id: Uuid,
-        subscription_id: Uuid,
+        target: DeliveryTarget,
         tenant_id: Uuid,
         status: DeliveryStatus,
         attempts: i32,
@@ -105,7 +156,7 @@ impl WebhookDelivery {
         WebhookDelivery {
             id,
             event_id,
-            subscription_id,
+            target,
             tenant_id,
             status,
             attempts,
@@ -142,6 +193,15 @@ impl WebhookDelivery {
         }
     }
 
+    // Gives up without another attempt: the target no longer exists in a form we
+    // can deliver to (a client whose back-channel logout URI was removed, or that
+    // was deactivated). Kept as `dead` with the reason, like an exhausted retry.
+    pub fn abandon(&mut self, reason: String) {
+        self.status = DeliveryStatus::Dead;
+        self.last_status = None;
+        self.last_error = Some(reason.chars().take(500).collect());
+    }
+
     pub fn is_due(&self, now: DateTime<Utc>) -> bool {
         self.status == DeliveryStatus::Pending && self.next_attempt_at <= now
     }
@@ -152,8 +212,20 @@ impl WebhookDelivery {
     pub fn event_id(&self) -> Uuid {
         self.event_id
     }
-    pub fn subscription_id(&self) -> Uuid {
-        self.subscription_id
+    pub fn target(&self) -> DeliveryTarget {
+        self.target
+    }
+    pub fn subscription_id(&self) -> Option<Uuid> {
+        match self.target {
+            DeliveryTarget::Subscription(id) => Some(id),
+            DeliveryTarget::BackchannelLogout(_) => None,
+        }
+    }
+    pub fn client_id(&self) -> Option<Uuid> {
+        match self.target {
+            DeliveryTarget::BackchannelLogout(id) => Some(id),
+            DeliveryTarget::Subscription(_) => None,
+        }
     }
     pub fn tenant_id(&self) -> Uuid {
         self.tenant_id

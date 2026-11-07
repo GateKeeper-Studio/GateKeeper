@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*) FILTER (WHERE asn = $2) AS \"from_asn!\",\n                          COUNT(*) AS \"total!\"\n                   FROM \"login_events\"\n                   WHERE tenant_id = $1 AND success = true AND asn IS NOT NULL\n                     AND created_at >= $3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "from_asn!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "total!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "c9c7d1d93b4cafd75ab0d462cf545910d395a6de86030a25f74fbfdf79b09309"
+}

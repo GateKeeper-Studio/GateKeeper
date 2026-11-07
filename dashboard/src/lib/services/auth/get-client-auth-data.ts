@@ -27,6 +27,19 @@ export type ClientAuthData = {
 	 * when this is true, so link rendering needs no extra branching.
 	 */
 	externalLoginOnly: boolean;
+	/**
+	 * Offer "Sign in with a passkey" (passwordless login): the client takes email
+	 * sign-in and allows WebAuthn. Only accounts with no password and a confirmed
+	 * passkey can use it; everyone else gets the same answer as a wrong password.
+	 * Optional so an older IdP that doesn't send it simply hides the button.
+	 */
+	passkeyLoginEnabled?: boolean;
+	/**
+	 * Offer "Email me a sign-in link" (magic link login). Any active account with a
+	 * verified email can use it; the link only works in the browser that asked.
+	 * Optional so an older IdP that doesn't send it simply hides the button.
+	 */
+	magicLinkLoginEnabled?: boolean;
 	// Which languages this client's hosted pages offer, and which one text is
 	// resolved against when a locale isn't specified/available. `loginAppearance`
 	// and `customFieldDefinitions` below are already resolved server-side for

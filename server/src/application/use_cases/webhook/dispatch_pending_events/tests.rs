@@ -6,23 +6,32 @@ mod tests {
     use uuid::Uuid;
 
     use crate::{
-        application::use_cases::webhook::dispatch_pending_events::use_case::UseCase,
+        application::{
+            ports::token_signer::TokenType,
+            shared::backchannel_logout::{BACKCHANNEL_LOGOUT_EVENT, LogoutNotice},
+            use_cases::webhook::dispatch_pending_events::use_case::UseCase,
+        },
         domain::entities::{
             domain_event_type::DomainEventType,
+            oauth_client::{ClientType, MfaPolicy, OAuthClient},
             outbox_event::OutboxEvent,
-            webhook_delivery::{DeliveryStatus, MAX_ATTEMPTS, WebhookDelivery},
+            signing_key::{SigningAlgorithm, SigningKey},
+            webhook_delivery::{DeliveryStatus, DeliveryTarget, MAX_ATTEMPTS, WebhookDelivery},
             webhook_subscription::WebhookSubscription,
         },
         testing::{
             fake_webhook_sender::{FakeResponse, FakeWebhookSender},
             in_memory_repositories::{
+                in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
                 in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
+                in_memory_signing_key_repository::InMemorySigningKeyRepository,
                 in_memory_tenant_repository::InMemoryTenantRepository,
                 in_memory_user_repository::InMemoryUserRepository,
                 in_memory_webhook_delivery_repository::InMemoryWebhookDeliveryRepository,
                 in_memory_webhook_subscription_repository::InMemoryWebhookSubscriptionRepository,
             },
             in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
+            oauth_fakes::FakeTokenSigner,
             stub_secret_cipher::StubSecretCipher,
         },
     };
@@ -33,6 +42,9 @@ mod tests {
         subscriptions: Arc<InMemoryWebhookSubscriptionRepository>,
         deliveries: Arc<InMemoryWebhookDeliveryRepository>,
         sender: Arc<FakeWebhookSender>,
+        clients: Arc<InMemoryOAuthClientRepository>,
+        keys: Arc<InMemorySigningKeyRepository>,
+        signer: FakeTokenSigner,
     }
 
     fn subscription(tenant_id: Uuid, event_types: &[&str], is_active: bool) -> WebhookSubscription {
@@ -59,6 +71,8 @@ mod tests {
         let events = Arc::new(InMemoryOutboxEventRepository::new());
         let subscriptions = Arc::new(InMemoryWebhookSubscriptionRepository::new());
         let deliveries = Arc::new(InMemoryWebhookDeliveryRepository::new());
+        let clients = Arc::new(InMemoryOAuthClientRepository::new());
+        let keys = Arc::new(InMemorySigningKeyRepository::new());
         let sender = Arc::new(sender);
 
         let factory = InMemoryUnitOfWorkFactory::new(
@@ -67,12 +81,17 @@ mod tests {
         )
         .with_outbox_event_repository(events.clone())
         .with_webhook_subscription_repository(subscriptions.clone())
-        .with_webhook_delivery_repository(deliveries.clone());
+        .with_webhook_delivery_repository(deliveries.clone())
+        .with_oauth_client_repository(clients.clone())
+        .with_signing_key_repository(keys.clone());
 
+        let signer = FakeTokenSigner::new();
         let use_case = UseCase::new(
             Arc::new(factory),
             sender.clone(),
             Arc::new(StubSecretCipher),
+            Arc::new(signer.clone()),
+            "https://idp.example.com".to_string(),
             100,
         );
 
@@ -82,6 +101,9 @@ mod tests {
             subscriptions,
             deliveries,
             sender,
+            clients,
+            keys,
+            signer,
         }
     }
 
@@ -441,5 +463,201 @@ mod tests {
         let result = ctx.use_case.execute().await.unwrap();
         assert_eq!(result, Default::default());
         assert_eq!(ctx.sender.sent_count(), 0);
+    }
+
+    // ── OIDC Back-Channel Logout ─────────────────────────────────────────────────
+
+    const LOGOUT_URI: &str = "https://rp.example.com/backchannel-logout";
+
+    fn seed_logout_client(ctx: &Ctx, tenant_id: Uuid, uri: Option<&str>) -> OAuthClient {
+        let mut client = OAuthClient::new(
+            tenant_id,
+            Uuid::now_v7(),
+            None,
+            ClientType::Confidential,
+            "Partner App".to_string(),
+            vec!["https://rp.example.com/callback".to_string()],
+            vec![],
+            vec!["openid".to_string()],
+            vec!["authorization_code".to_string()],
+            true,
+            false,
+            vec!["en".to_string()],
+            "en".to_string(),
+            MfaPolicy::default(),
+        );
+        client.set_backchannel_logout(uri.map(str::to_string), false);
+        ctx.clients
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(client.id(), client.clone());
+
+        let key = SigningKey::new(
+            tenant_id,
+            "kid-1".to_string(),
+            SigningAlgorithm::ES256,
+            "{}".to_string(),
+            "secret".to_string(),
+        );
+        ctx.keys.memory.data.lock().unwrap().insert(key.id(), key);
+        client
+    }
+
+    fn logout_event(tenant_id: Uuid, client: &OAuthClient) -> (OutboxEvent, LogoutNotice) {
+        let notice = LogoutNotice {
+            client_id: client.id(),
+            user_id: Uuid::now_v7(),
+            sid: Uuid::now_v7(),
+        };
+        (notice.into_event(tenant_id), notice)
+    }
+
+    #[tokio::test]
+    async fn delivers_a_signed_logout_token_to_the_client_it_names() {
+        let ctx = setup(FakeWebhookSender::new());
+        let tenant_id = Uuid::now_v7();
+        let client = seed_logout_client(&ctx, tenant_id, Some(LOGOUT_URI));
+        let (event, notice) = logout_event(tenant_id, &client);
+        seed_event(&ctx, &event);
+
+        let result = ctx.use_case.execute().await.unwrap();
+
+        assert_eq!(result.deliveries_created, 1);
+        assert_eq!(result.deliveries_succeeded, 1);
+        let sent = ctx.sender.logout_tokens();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].url, LOGOUT_URI);
+
+        let signed = ctx.signer.signed_tokens();
+        assert_eq!(signed.len(), 1);
+        let (typ, claims) = &signed[0];
+        assert_eq!(*typ, TokenType::Logout, "typ: logout+jwt");
+        assert_eq!(claims["iss"], "https://idp.example.com");
+        assert_eq!(
+            claims["aud"],
+            client.client_id().to_string(),
+            "the PUBLIC client id"
+        );
+        assert_eq!(claims["sub"], notice.user_id.to_string());
+        assert_eq!(claims["sid"], notice.sid.to_string());
+        assert!(claims["events"].get(BACKCHANNEL_LOGOUT_EVENT).is_some());
+
+        let stored = stored_deliveries(&ctx);
+        assert_eq!(
+            stored[0].target(),
+            DeliveryTarget::BackchannelLogout(client.id())
+        );
+        assert_eq!(stored[0].status(), DeliveryStatus::Delivered);
+    }
+
+    // A subscription with an empty filter takes "every event" — but a logout
+    // notification is not a webhook event and must never reach it.
+    #[tokio::test]
+    async fn a_logout_notice_never_reaches_a_webhook_subscription() {
+        let ctx = setup(FakeWebhookSender::new());
+        let tenant_id = Uuid::now_v7();
+        seed_subscription(&ctx, &subscription(tenant_id, &[], true));
+        let client = seed_logout_client(&ctx, tenant_id, Some(LOGOUT_URI));
+        seed_event(&ctx, &logout_event(tenant_id, &client).0);
+
+        ctx.use_case.execute().await.unwrap();
+
+        assert_eq!(ctx.sender.sent_count(), 0, "no webhook");
+        assert_eq!(ctx.sender.logout_tokens().len(), 1);
+        assert!(
+            stored_deliveries(&ctx)
+                .iter()
+                .all(|d| d.subscription_id().is_none())
+        );
+    }
+
+    #[tokio::test]
+    async fn a_client_without_a_back_channel_uri_gets_nothing() {
+        let ctx = setup(FakeWebhookSender::new());
+        let tenant_id = Uuid::now_v7();
+        let client = seed_logout_client(&ctx, tenant_id, None);
+        seed_event(&ctx, &logout_event(tenant_id, &client).0);
+
+        let result = ctx.use_case.execute().await.unwrap();
+
+        assert_eq!(
+            result.events_published, 1,
+            "published so it is not re-scanned"
+        );
+        assert_eq!(result.deliveries_created, 0);
+        assert!(ctx.sender.logout_tokens().is_empty());
+    }
+
+    // The logout token lives two minutes, so a retry hours later must carry a new
+    // one — never the token the first attempt sent.
+    #[tokio::test]
+    async fn every_attempt_mints_a_fresh_logout_token() {
+        let ctx = setup(FakeWebhookSender::scripted(
+            vec![FakeResponse::Rejected(400)],
+            FakeResponse::Ok(200),
+        ));
+        let tenant_id = Uuid::now_v7();
+        let client = seed_logout_client(&ctx, tenant_id, Some(LOGOUT_URI));
+        seed_event(&ctx, &logout_event(tenant_id, &client).0);
+
+        ctx.use_case.execute().await.unwrap();
+        assert_eq!(stored_deliveries(&ctx)[0].status(), DeliveryStatus::Pending);
+
+        // Make the backoff elapse, then tick again.
+        {
+            let mut stored = ctx.deliveries.memory.data.lock().unwrap();
+            for delivery in stored.values_mut() {
+                let mut due = delivery.clone();
+                due.record_failure(
+                    Some(400),
+                    "rejected".to_string(),
+                    Utc::now() - Duration::days(1),
+                );
+                *delivery = due;
+            }
+        }
+        ctx.use_case.execute().await.unwrap();
+
+        assert_eq!(
+            stored_deliveries(&ctx)[0].status(),
+            DeliveryStatus::Delivered
+        );
+        let signed = ctx.signer.signed_tokens();
+        assert_eq!(signed.len(), 2, "one token per attempt");
+        assert_ne!(signed[0].1["jti"], signed[1].1["jti"]);
+    }
+
+    // The client removed its URI (or was deactivated) after the notice was fanned
+    // out: nothing to deliver to, so the delivery dies at once instead of retrying.
+    #[tokio::test]
+    async fn a_client_that_no_longer_wants_logouts_abandons_the_delivery() {
+        let ctx = setup(FakeWebhookSender::new());
+        let tenant_id = Uuid::now_v7();
+        let client = seed_logout_client(&ctx, tenant_id, Some(LOGOUT_URI));
+        let (mut event, _) = logout_event(tenant_id, &client);
+        event.mark_published(Utc::now());
+        seed_event(&ctx, &event);
+        let delivery =
+            WebhookDelivery::for_backchannel_logout(event.id(), client.id(), tenant_id, Utc::now());
+        ctx.deliveries
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(delivery.id(), delivery);
+        {
+            let mut clients = ctx.clients.memory.data.lock().unwrap();
+            let stored = clients.get_mut(&client.id()).unwrap();
+            stored.set_backchannel_logout(None, false);
+        }
+
+        ctx.use_case.execute().await.unwrap();
+
+        assert!(ctx.sender.logout_tokens().is_empty());
+        let stored = stored_deliveries(&ctx);
+        assert_eq!(stored[0].status(), DeliveryStatus::Dead);
+        assert!(stored[0].last_error().unwrap().contains("no longer"));
     }
 }

@@ -10,6 +10,7 @@ pub mod risk_engine;
 pub mod secret_cipher;
 pub mod signing_key_cache;
 pub mod signing_key_generator;
+pub mod task_spawner;
 pub mod token_signer;
 pub mod token_verifier;
 pub mod unit_of_work;

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM login_event_labels WHERE tenant_id = $1 AND login_event_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eaf5c7a4f7d90be83ee82c4c464c221cb2b3efdfc04b722102590a18e7dc621d"
+}

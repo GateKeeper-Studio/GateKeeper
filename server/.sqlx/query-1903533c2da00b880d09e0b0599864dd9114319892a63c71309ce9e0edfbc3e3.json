@@ -1,0 +1,378 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only, magic_link_enabled,\n            backchannel_logout_uri, backchannel_logout_session_required,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE tenant_id = $1\n          ORDER BY created_at DESC\n          LIMIT $2 OFFSET $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "client_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "client_secret_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "client_secret_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "client_type",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "client_type"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "name",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "redirect_uris",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "redirect_uris"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "post_logout_redirect_uris",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "post_logout_redirect_uris"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "allowed_scopes",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "allowed_scopes"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "allowed_grant_types",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "allowed_grant_types"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "require_pkce",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "require_pkce"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "require_consent",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "require_consent"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "email_provider_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "email_provider_id"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "tos_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "tos_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "policy_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "policy_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "initiate_login_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "initiate_login_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "allowed_languages",
+        "type_info": "TextArray",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "allowed_languages"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "default_language",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "default_language"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "mfa_required",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "mfa_required"
+          }
+        }
+      },
+      {
+        "ordinal": 19,
+        "name": "mfa_email_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "mfa_email_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 20,
+        "name": "mfa_totp_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "mfa_totp_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 21,
+        "name": "mfa_webauthn_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "mfa_webauthn_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 22,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 23,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 24,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 25,
+        "name": "external_login_only",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "external_login_only"
+          }
+        }
+      },
+      {
+        "ordinal": 26,
+        "name": "magic_link_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "magic_link_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 27,
+        "name": "backchannel_logout_uri",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "backchannel_logout_uri"
+          }
+        }
+      },
+      {
+        "ordinal": 28,
+        "name": "backchannel_logout_session_required",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "backchannel_logout_session_required"
+          }
+        }
+      },
+      {
+        "ordinal": 29,
+        "name": "login_appearance?: sqlx::types::Json<LoginAppearanceRow>",
+        "type_info": "Jsonb",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "login_appearance"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "1903533c2da00b880d09e0b0599864dd9114319892a63c71309ce9e0edfbc3e3"
+}

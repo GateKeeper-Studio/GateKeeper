@@ -19,6 +19,8 @@ use crate::{
 #[derive(Clone, Default)]
 pub struct FakeTokenSigner {
     signed: Arc<Mutex<Vec<serde_json::Value>>>,
+    // The `typ` of each signed token, parallel to `signed`.
+    types: Arc<Mutex<Vec<TokenType>>>,
 }
 
 impl FakeTokenSigner {
@@ -31,6 +33,13 @@ impl FakeTokenSigner {
     pub fn signed_claims(&self) -> Arc<Mutex<Vec<serde_json::Value>>> {
         Arc::clone(&self.signed)
     }
+
+    // Every (typ, claims) pair signed so far, newest last.
+    pub fn signed_tokens(&self) -> Vec<(TokenType, serde_json::Value)> {
+        let types = self.types.lock().unwrap();
+        let signed = self.signed.lock().unwrap();
+        types.iter().copied().zip(signed.iter().cloned()).collect()
+    }
 }
 
 #[async_trait]
@@ -39,9 +48,10 @@ impl TokenSigner for FakeTokenSigner {
         &self,
         key: &SigningKey,
         claims: &serde_json::Value,
-        _token_type: TokenType,
+        token_type: TokenType,
     ) -> Result<String, DomainError> {
         self.signed.lock().unwrap().push(claims.clone());
+        self.types.lock().unwrap().push(token_type);
         let sub = claims.get("sub").and_then(|v| v.as_str()).unwrap_or("");
         Ok(format!("fake.{}.{}", key.kid(), sub))
     }
@@ -50,13 +60,35 @@ impl TokenSigner for FakeTokenSigner {
 // Verifier fake: a token is "valid" only if it was registered ahead of time.
 pub struct FakeTokenVerifier {
     tokens: HashMap<String, VerifiedToken>,
+    // ID tokens accepted as `id_token_hint`, kept apart so an access token can never
+    // pass as a hint (or the reverse), as with the real verifier's `typ` check.
+    id_token_hints: HashMap<String, VerifiedToken>,
 }
 
 impl FakeTokenVerifier {
     pub fn new() -> Self {
         Self {
             tokens: HashMap::new(),
+            id_token_hints: HashMap::new(),
         }
+    }
+
+    // Registers an ID token that verifies as a hint, with exactly these claims.
+    pub fn with_valid_id_token_hint(mut self, token: &str, claims: serde_json::Value) -> Self {
+        let subject = claims
+            .get("sub")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        self.id_token_hints.insert(
+            token.to_string(),
+            VerifiedToken {
+                subject,
+                scopes: vec![],
+                claims,
+            },
+        );
+        self
     }
 
     pub fn with_valid_token(mut self, token: &str, subject: &str, scopes: Vec<String>) -> Self {
@@ -89,5 +121,16 @@ impl TokenVerifier for FakeTokenVerifier {
             .get(token)
             .cloned()
             .ok_or_else(|| DomainError::AccessDenied("invalid_token".to_string()))
+    }
+
+    async fn verify_id_token_hint(
+        &self,
+        token: &str,
+        _keys: &[SigningKey],
+    ) -> Result<VerifiedToken, DomainError> {
+        self.id_token_hints
+            .get(token)
+            .cloned()
+            .ok_or_else(|| DomainError::AccessDenied("invalid id_token_hint".to_string()))
     }
 }

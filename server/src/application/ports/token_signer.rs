@@ -12,6 +12,11 @@ pub enum TokenType {
     Access,
     // `typ: JWT` — the OIDC ID token, for the client only.
     Id,
+    // `typ: logout+jwt` — an OIDC Back-Channel Logout token, POSTed to an RP's
+    // back-channel logout URI. Explicit typing (Back-Channel Logout 1.0 §2.4) is what
+    // stops it from being confused with an ID token by an RP, and the access-token
+    // check refuses it as a bearer credential.
+    Logout,
 }
 
 impl TokenType {
@@ -19,6 +24,7 @@ impl TokenType {
         match self {
             TokenType::Access => "at+jwt",
             TokenType::Id => "JWT",
+            TokenType::Logout => "logout+jwt",
         }
     }
 }

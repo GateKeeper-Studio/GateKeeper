@@ -117,6 +117,31 @@ impl MfaChallengeRepository for InMemoryMfaChallengeRepository {
         Ok(())
     }
 
+    async fn invalidate_active_by_session(
+        &self,
+        auth_session_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+    ) -> Result<(), DomainError> {
+        let now = Utc::now();
+        let stale: Vec<MfaChallenge> = self
+            .visible()
+            .into_iter()
+            .filter(|c| {
+                c.auth_session_id() == Some(auth_session_id)
+                    && c.purpose() == purpose
+                    && c.method() == method
+                    && !c.is_consumed()
+            })
+            .collect();
+        let mut draft = self.memory.draft.lock().unwrap();
+        for mut challenge in stale {
+            challenge.consume(now);
+            draft.insert(challenge.id(), challenge);
+        }
+        Ok(())
+    }
+
     async fn delete_expired(
         &self,
         before: chrono::DateTime<chrono::Utc>,

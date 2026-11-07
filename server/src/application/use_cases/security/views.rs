@@ -137,6 +137,39 @@ fn explain_signal(signal_type: &str, meta: &serde_json::Value) -> String {
         "NEW_DEVICE" => {
             "Login from a device/user-agent not previously seen for this user.".to_string()
         }
+        "STATISTICAL_RISK" => {
+            let features: Vec<String> = meta
+                .get("contributions")
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter(|c| c.get("contribution").and_then(|v| v.as_f64()) > Some(0.0))
+                        .filter_map(|c| c.get("feature").and_then(|v| v.as_str()))
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            format!(
+                "The statistical model {} gave this login a {:.0}% fraud probability (step-up threshold {:.0}%){}. It can require MFA, never block.",
+                meta.get("model_version")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown"),
+                meta.get("probability")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0)
+                    * 100.0,
+                meta.get("threshold")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0)
+                    * 100.0,
+                if features.is_empty() {
+                    String::new()
+                } else {
+                    format!(", driven mostly by {}", features.join(", "))
+                }
+            )
+        }
         other => format!("Signal {other} was detected."),
     }
 }
@@ -252,6 +285,7 @@ pub struct RiskPolicyView {
     pub require_mfa_on_high_risk: bool,
     pub block_on_critical_risk: bool,
     pub temporary_block_minutes: i32,
+    pub scoring_mode: String,
 }
 
 impl From<TenantRiskPolicy> for RiskPolicyView {
@@ -269,6 +303,7 @@ impl From<TenantRiskPolicy> for RiskPolicyView {
             require_mfa_on_high_risk: p.require_mfa_on_high_risk(),
             block_on_critical_risk: p.block_on_critical_risk(),
             temporary_block_minutes: p.temporary_block_minutes(),
+            scoring_mode: p.scoring_mode().as_str().to_string(),
         }
     }
 }
@@ -299,6 +334,29 @@ impl From<SecurityBlock> for SecurityBlockView {
             source: b.source().to_string(),
             expires_at: b.expires_at().to_rfc3339(),
             created_at: b.created_at().to_rfc3339(),
+        }
+    }
+}
+
+// A login event's label (the statistical model's training feedback).
+#[derive(Debug, Serialize)]
+pub struct LoginEventLabelView {
+    pub label: String,
+    // admin | mfa_passed | mfa_failed
+    pub source: String,
+    pub labeled_by: Option<Uuid>,
+    pub note: Option<String>,
+    pub updated_at: String,
+}
+
+impl From<crate::domain::entities::login_event_label::LoginEventLabel> for LoginEventLabelView {
+    fn from(l: crate::domain::entities::login_event_label::LoginEventLabel) -> Self {
+        LoginEventLabelView {
+            label: l.label().as_str().to_string(),
+            source: l.source().as_str().to_string(),
+            labeled_by: l.labeled_by(),
+            note: l.note().map(str::to_string),
+            updated_at: l.updated_at().to_rfc3339(),
         }
     }
 }

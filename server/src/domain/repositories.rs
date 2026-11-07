@@ -16,12 +16,14 @@ pub mod email_template_repository;
 pub mod email_verification_token_repository;
 pub mod external_identity_provider_repository;
 pub mod external_login_flow_repository;
+pub mod magic_link_token_repository;
 pub mod mfa_challenge_repository;
 pub mod mfa_enrollment_repository;
 pub mod oauth_client_repository;
 pub mod password_change_token_repository;
 pub mod password_reset_token_repository;
 pub mod refresh_token_repository;
+pub mod risk_model_repository;
 pub mod signing_key_repository;
 pub mod social_identity_repository;
 
@@ -31,6 +33,7 @@ pub mod audit_event_repository;
 pub mod policy_acceptance_repository;
 
 // Fraud / suspicious-login detection (Risk Engine)
+pub mod login_event_label_repository;
 pub mod login_event_repository;
 pub mod security_block_repository;
 pub mod tenant_risk_policy_repository;

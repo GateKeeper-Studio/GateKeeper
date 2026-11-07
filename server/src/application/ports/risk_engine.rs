@@ -16,7 +16,8 @@ pub struct RiskEvaluationInput {
     pub username_normalized: Option<String>,
     pub ip_address: Option<String>,
     pub user_agent: Option<String>,
-    // The password was correct. Geo/device rules only run when this is true.
+    // The primary factor succeeded (the password was correct, or — for a passwordless
+    // login — the passkey assertion verified). Geo/device rules only run when true.
     pub credentials_valid: bool,
     // Set when the pre-auth check already found an active IP block: the engine records
     // the attempt with a BLOCKED_IP signal + BLOCK_TEMPORARILY decision.
@@ -30,6 +31,9 @@ pub struct RiskEvaluationResult {
     pub level: RiskLevel,
     pub decision: RiskDecision,
     pub signals: Vec<RiskSignal>,
+    // The recorded login_event. A use case that forces step-up MFA keeps it on the
+    // session, so the MFA outcome can label the event (docs/RISK-SCORING.md).
+    pub login_event_id: Option<Uuid>,
 }
 
 // The Risk Engine seam. Injected into the login use case. Implementations persist the

@@ -180,6 +180,31 @@ impl MfaChallengeRepository for DbMfaChallengeRepository {
         Ok(())
     }
 
+    async fn invalidate_active_by_session(
+        &self,
+        auth_session_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+    ) -> Result<(), DomainError> {
+        run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          UPDATE mfa_challenges
+          SET consumed_at = now()
+          WHERE auth_session_id = $1 AND purpose = $2 AND method = $3 AND consumed_at IS NULL
+        "#,
+                auth_session_id,
+                purpose.as_str(),
+                method.as_str()
+            ),
+            execute
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(())
+    }
+
     async fn delete_expired(
         &self,
         before: chrono::DateTime<chrono::Utc>,

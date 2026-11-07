@@ -5,6 +5,7 @@
 	import ErrorAlert from '$lib/components/error-alert.svelte';
 
 	import { listLoginEvents, type LoginEventView } from '$lib/services/admin/security';
+	import SessionsSection from './sessions-section.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { tenantId, userId }: { tenantId: string; userId: string } = $props();
@@ -44,9 +45,11 @@
 	}
 </script>
 
-<div class="mt-4 space-y-1">
+<SessionsSection {tenantId} {userId} />
+
+<div class="mt-8 space-y-1">
 	<h2 class="text-lg font-semibold">{m.users_security_activity_title()}</h2>
-	<p class="text-muted-foreground max-w-2xl text-sm">
+	<p class="max-w-2xl text-sm text-muted-foreground">
 		{m.users_security_activity_description()}
 	</p>
 </div>
@@ -72,7 +75,7 @@
 				<tbody>
 					{#each eventsQuery.data.items as e (e.id)}
 						<tr
-							class="hover:bg-muted/40 cursor-pointer border-t"
+							class="cursor-pointer border-t hover:bg-muted/40"
 							onclick={() =>
 								(window.location.href = `/tenants/${tenantId}/security/login-events/${e.id}`)}
 						>
@@ -94,7 +97,7 @@
 					{/each}
 					{#if eventsQuery.data.items.length === 0}
 						<tr>
-							<td colspan="6" class="text-muted-foreground px-4 py-8 text-center">
+							<td colspan="6" class="px-4 py-8 text-center text-muted-foreground">
 								{m.users_security_no_activity()}
 							</td>
 						</tr>
@@ -114,14 +117,14 @@
 				</span>
 				<div class="flex gap-2">
 					<button
-						class="border-input rounded-md border px-3 py-1 disabled:opacity-50"
+						class="rounded-md border border-input px-3 py-1 disabled:opacity-50"
 						disabled={page <= 1}
 						onclick={() => (page = Math.max(1, page - 1))}
 					>
 						{m.users_action_previous()}
 					</button>
 					<button
-						class="border-input rounded-md border px-3 py-1 disabled:opacity-50"
+						class="rounded-md border border-input px-3 py-1 disabled:opacity-50"
 						disabled={page >= totalPages}
 						onclick={() => (page = Math.min(totalPages, page + 1))}
 					>

@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO risk_models\n                 (id, version, feature_schema, model, metrics, label_counts, trained_from,\n                  trained_to, status, created_at, promoted_at, retired_at)\n               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int4",
+        "Jsonb",
+        "Jsonb",
+        "Jsonb",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7145f965809133d8ea2b5f1c8b60a510b4665c4de49f62f319dba394ce84aed3"
+}
