@@ -3,3 +3,19 @@
 
 /postgres_data
 /server/target
+/server/postgres_data
+
+# Secrets. `.env` files carry real credentials (JWT_SECRET, DATABASE_URL,
+# OAUTH_CLIENT_SECRET, SESSION_SECRET) and must never be committed — only the
+# documented `.env.example` templates are tracked. This rule is repo-wide because
+# `frontends/*/` and `packages/*/` previously relied on their own per-package
+# .gitignore, which does not cover a new directory added without one.
+.env
+.env.*
+!.env.example
+
+# Machine-local cargo configuration. `server/.cargo/config.toml` pins OPENSSL_DIR
+# to a developer-specific absolute path (webauthn-rs links OpenSSL and Fedora ships
+# no -devel package), which cannot work on CI or in a container image. Keep it
+# local; see server/.cargo/config.toml.example.
+.cargo/config.toml
