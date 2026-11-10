@@ -26,7 +26,10 @@ use crate::{
             webhook_sender::WebhookSender,
         },
         services::templated_email_sender::TemplatedEmailSender,
-        services::{default_risk_engine::DefaultRiskEngine, hybrid_risk_engine::HybridRiskEngine},
+        services::{
+            admin_authenticator::AdminAuthenticator, default_risk_engine::DefaultRiskEngine,
+            hybrid_risk_engine::HybridRiskEngine,
+        },
         use_cases::{
             admin_account::{
                 change_password as admin_change_password,
@@ -34,6 +37,7 @@ use crate::{
                 update_profile as admin_update_profile,
             },
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
+            admin_mfa, admin_organization,
             admin_web_session::{
                 end as console_end, resolve as console_resolve, start as console_start,
             },
@@ -104,8 +108,8 @@ use crate::{
                 reorder_tenant_custom_fields, update_tenant_custom_field_by_id,
             },
             tenant_user::{
-                create_tenant_user, delete_tenant_user_by_id, get_tenant_user_by_id,
-                list_tenant_users, update_tenant_user_by_id,
+                create_tenant_user, delete_tenant_user_by_id, get_authentication_methods,
+                get_tenant_user_by_id, list_tenant_users, update_tenant_user_by_id,
                 update_tenant_user_custom_field_values,
             },
             webhook_subscription::{
@@ -116,6 +120,8 @@ use crate::{
         },
     },
     domain::repositories::{
+        admin_invitation_repository::AdminInvitationRepository,
+        admin_mfa_repository::AdminMfaRepository,
         admin_refresh_token_repository::AdminRefreshTokenRepository,
         admin_user_repository::AdminUserRepository,
         admin_web_session_repository::AdminWebSessionRepository,
@@ -156,6 +162,8 @@ use crate::{
         database::{
             audit_logger::DbAuditLogger,
             repositories::{
+                admin_invitation_repository::DbAdminInvitationRepository,
+                admin_mfa_repository::DbAdminMfaRepository,
                 admin_refresh_token_repository::DbAdminRefreshTokenRepository,
                 admin_user_repository::DbAdminUserRepository,
                 admin_web_session_repository::DbAdminWebSessionRepository,
@@ -314,6 +322,21 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
     let password_hasher: Arc<dyn PasswordHasher> =
         Arc::new(Argon2PasswordHasher::new(config.password_hash_concurrency));
 
+    // How platform admins prove who they are: password, per-account lock, second
+    // factor. Shared by both sign-in paths and every step-up on the admin's account.
+    let admin_mfa_repository: Arc<dyn AdminMfaRepository> =
+        Arc::new(DbAdminMfaRepository::new(db_pool.clone()));
+    let admin_invitation_repository: Arc<dyn AdminInvitationRepository> =
+        Arc::new(DbAdminInvitationRepository::new(db_pool.clone()));
+    let admin_authenticator = Arc::new(AdminAuthenticator::new(
+        Arc::clone(&admin_user_repository),
+        Arc::clone(&admin_mfa_repository),
+        Arc::clone(&password_hasher),
+        Arc::clone(&secret_cipher),
+        Arc::clone(&audit_logger),
+        admin_password_pepper.clone(),
+    ));
+
     // Outbound HTTP client for the external identity providers (Google/GitHub)
     // used by the social-login flow.
     let external_provider_client: Arc<dyn ExternalIdentityProviderClient> =
@@ -465,6 +488,13 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 Arc::clone(&user_repository),
                 Arc::clone(&tenant_repository),
             )),
+            get_authentication_methods: Arc::new(
+                get_authentication_methods::use_case::UseCase::new(
+                    Arc::clone(&user_repository),
+                    Arc::clone(&mfa_enrollment_repository),
+                    Arc::clone(&social_identity_repository),
+                ),
+            ),
             update_tenant_user_by_id: Arc::new(update_tenant_user_by_id::use_case::UseCase::new(
                 Arc::clone(&uow_factory),
             )),
@@ -912,9 +942,14 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 config.required_policy_versions.clone(),
             )),
             erase_user: Arc::new(erase_user::use_case::UseCase::new(Arc::clone(&uow_factory))),
-            purge_expired_data: Arc::new(purge_expired_data::use_case::UseCase::new(Arc::clone(
-                &uow_factory,
-            ))),
+            purge_expired_data: Arc::new(
+                purge_expired_data::use_case::UseCase::new(Arc::clone(&uow_factory))
+                    .with_admin_sessions(
+                        Arc::clone(&admin_refresh_token_repository),
+                        Arc::clone(&admin_web_session_repository),
+                        Arc::clone(&admin_invitation_repository),
+                    ),
+            ),
         }),
         security: Arc::new(SecurityUseCases {
             // ── Fraud / suspicious-login detection (Risk Engine) ──────────────────
@@ -947,17 +982,16 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
         }),
         admin: Arc::new(AdminUseCases {
             admin_login: Arc::new(admin_login::use_case::UseCase::new(
-                Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_authenticator),
                 Arc::clone(&admin_refresh_token_repository),
                 Arc::clone(&admin_token_service),
-                admin_password_pepper.clone(),
-                Arc::clone(&password_hasher),
             )),
             admin_refresh: Arc::new(admin_refresh::use_case::UseCase::new(
                 Arc::clone(&admin_user_repository),
                 Arc::clone(&admin_refresh_token_repository),
                 Arc::clone(&admin_token_service),
                 Arc::clone(&audit_logger),
+                Arc::clone(&admin_authenticator),
             )),
             admin_logout: Arc::new(admin_logout::use_case::UseCase::new(Arc::clone(
                 &admin_refresh_token_repository,
@@ -965,28 +999,107 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             get_my_profile: Arc::new(admin_get_profile::use_case::UseCase::new(Arc::clone(
                 &admin_user_repository,
             ))),
-            update_my_profile: Arc::new(admin_update_profile::use_case::UseCase::new(Arc::clone(
-                &admin_user_repository,
-            ))),
+            update_my_profile: Arc::new(admin_update_profile::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_authenticator),
+            )),
             change_my_password: Arc::new(admin_change_password::use_case::UseCase::new(
                 Arc::clone(&admin_user_repository),
-                admin_password_pepper.clone(),
-                Arc::clone(&password_hasher),
+                Arc::clone(&admin_authenticator),
+                Arc::clone(&admin_refresh_token_repository),
+                Arc::clone(&admin_web_session_repository),
             )),
             deactivate_my_account: Arc::new(admin_deactivate_account::use_case::UseCase::new(
                 Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_authenticator),
                 Arc::clone(&admin_refresh_token_repository),
-            )),
-            console_sign_in: Arc::new(console_start::use_case::UseCase::new(
-                Arc::clone(&admin_user_repository),
                 Arc::clone(&admin_web_session_repository),
-                admin_password_pepper.clone(),
-                Arc::clone(&password_hasher),
+            )),
+            get_my_mfa: Arc::new(admin_mfa::get_status::use_case::UseCase::new(Arc::clone(
+                &admin_mfa_repository,
+            ))),
+            start_my_totp: Arc::new(admin_mfa::start_totp::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_mfa_repository),
+                Arc::clone(&admin_authenticator),
+            )),
+            confirm_my_totp: Arc::new(admin_mfa::confirm_totp::use_case::UseCase::new(
+                Arc::clone(&admin_mfa_repository),
+                Arc::clone(&admin_authenticator),
+            )),
+            disable_my_mfa: Arc::new(admin_mfa::disable::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_mfa_repository),
+                Arc::clone(&admin_authenticator),
+            )),
+            regenerate_my_recovery_codes: Arc::new(
+                admin_mfa::regenerate_recovery_codes::use_case::UseCase::new(
+                    Arc::clone(&admin_user_repository),
+                    Arc::clone(&admin_mfa_repository),
+                    Arc::clone(&admin_authenticator),
+                ),
+            ),
+            console_sign_in: Arc::new(console_start::use_case::UseCase::new(
+                Arc::clone(&admin_authenticator),
+                Arc::clone(&admin_web_session_repository),
             )),
             console_resolve: Arc::new(console_resolve::use_case::UseCase::new(
                 Arc::clone(&admin_user_repository),
                 Arc::clone(&admin_web_session_repository),
                 Arc::clone(&admin_token_service),
+                Arc::clone(&admin_authenticator),
+            )),
+            list_admins: Arc::new(admin_organization::list_admins::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+            )),
+            set_admin_active: Arc::new(
+                admin_organization::set_admin_active::use_case::UseCase::new(
+                    Arc::clone(&admin_user_repository),
+                    Arc::clone(&admin_authenticator),
+                    Arc::clone(&admin_refresh_token_repository),
+                    Arc::clone(&admin_web_session_repository),
+                ),
+            ),
+            reset_admin_mfa: Arc::new(admin_organization::reset_admin_mfa::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_mfa_repository),
+                Arc::clone(&admin_authenticator),
+                Arc::clone(&admin_refresh_token_repository),
+                Arc::clone(&admin_web_session_repository),
+            )),
+            invite_admin: Arc::new(admin_organization::invite_admin::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+                Arc::clone(&admin_invitation_repository),
+                Arc::clone(&admin_authenticator),
+            )),
+            list_invitations: Arc::new(
+                admin_organization::list_invitations::use_case::UseCase::new(
+                    Arc::clone(&admin_user_repository),
+                    Arc::clone(&admin_invitation_repository),
+                ),
+            ),
+            revoke_invitation: Arc::new(
+                admin_organization::revoke_invitation::use_case::UseCase::new(
+                    Arc::clone(&admin_user_repository),
+                    Arc::clone(&admin_invitation_repository),
+                ),
+            ),
+            lookup_invitation: Arc::new(
+                admin_organization::lookup_invitation::use_case::UseCase::new(
+                    Arc::clone(&admin_invitation_repository),
+                    Arc::clone(&organization_repository),
+                ),
+            ),
+            accept_invitation: Arc::new(
+                admin_organization::accept_invitation::use_case::UseCase::new(
+                    Arc::clone(&admin_invitation_repository),
+                    Arc::clone(&admin_authenticator),
+                ),
+            ),
+            set_mfa_policy: Arc::new(admin_organization::set_mfa_policy::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+                Arc::clone(&organization_repository),
+                Arc::clone(&admin_authenticator),
             )),
             console_sign_out: Arc::new(console_end::use_case::UseCase::new(Arc::clone(
                 &admin_web_session_repository,

@@ -67,11 +67,31 @@ impl AdminWebSessionRepository for InMemoryAdminWebSessionRepository {
         Ok(())
     }
 
-    async fn delete_by_token_hash(&self, token_hash: &str) -> Result<(), DomainError> {
-        self.sessions
-            .lock()
-            .unwrap()
-            .retain(|s| s.token_hash() != token_hash);
-        Ok(())
+    async fn delete_by_token_hash(&self, token_hash: &str) -> Result<Option<Uuid>, DomainError> {
+        let mut sessions = self.sessions.lock().unwrap();
+        let admin_id = sessions
+            .iter()
+            .find(|s| s.token_hash() == token_hash)
+            .map(|s| s.admin_id());
+        sessions.retain(|s| s.token_hash() != token_hash);
+        Ok(admin_id)
+    }
+
+    async fn delete_all_for_admin(
+        &self,
+        admin_id: Uuid,
+        keep: Option<Uuid>,
+    ) -> Result<u64, DomainError> {
+        let mut sessions = self.sessions.lock().unwrap();
+        let before = sessions.len();
+        sessions.retain(|s| s.admin_id() != admin_id || Some(s.id()) == keep);
+        Ok((before - sessions.len()) as u64)
+    }
+
+    async fn delete_expired(&self, now: DateTime<Utc>) -> Result<u64, DomainError> {
+        let mut sessions = self.sessions.lock().unwrap();
+        let before = sessions.len();
+        sessions.retain(|s| s.expires_at() > now);
+        Ok((before - sessions.len()) as u64)
     }
 }

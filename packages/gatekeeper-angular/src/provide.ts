@@ -11,7 +11,7 @@ import { GATEKEEPER_CONFIG, GateKeeperService } from './gatekeeper.service';
  *
  * ```ts
  * bootstrapApplication(AppComponent, {
- *   providers: [provideGateKeeper({ idpBaseUrl, authUiBaseUrl, tenantId, clientId, redirectUri })]
+ *   providers: [provideGateKeeper({ idpBaseUrl, tenantId, clientId, redirectUri })]
  * });
  * ```
  *

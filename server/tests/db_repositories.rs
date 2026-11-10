@@ -1455,6 +1455,463 @@ async fn admin_console_sessions_round_trip_and_clear_expired_rows(pool: PgPool) 
     );
 }
 
+// ── Platform-admin account security ─────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_account_security_statements_are_atomic_and_conditional(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::{
+                admin_mfa::AdminMfa, admin_refresh_token::AdminRefreshToken, admin_user::AdminUser,
+                admin_web_session::AdminWebSession,
+            },
+            repositories::{
+                admin_mfa_repository::AdminMfaRepository,
+                admin_refresh_token_repository::AdminRefreshTokenRepository,
+                admin_user_repository::AdminUserRepository,
+                admin_web_session_repository::AdminWebSessionRepository,
+            },
+        },
+        infraestructure::database::repositories::{
+            admin_mfa_repository::DbAdminMfaRepository,
+            admin_refresh_token_repository::DbAdminRefreshTokenRepository,
+            admin_user_repository::DbAdminUserRepository,
+            admin_web_session_repository::DbAdminWebSessionRepository,
+        },
+    };
+
+    let organization = Organization::new(format!("org-{}", Uuid::now_v7()), None, true);
+    DbOrganizationRepository::new(pool.clone())
+        .add(&organization)
+        .await
+        .unwrap();
+    let admins = DbAdminUserRepository::new(pool.clone());
+    let new_admin = |email: &str| {
+        AdminUser::new(
+            organization.id(),
+            email.to_string(),
+            "Ada".to_string(),
+            "hash".to_string(),
+            "argon2id".to_string(),
+        )
+    };
+    let me = new_admin(" Me@Example.COM ");
+    let colleague = new_admin("colleague@example.com");
+    admins.create(&me).await.unwrap();
+    admins.create(&colleague).await.unwrap();
+    let now = Utc::now();
+
+    // Emails are stored lowercased; the database refuses anything else.
+    let found = admins
+        .find_by_email("me@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.id(), me.id());
+    assert!(found.can_sign_in());
+    let mixed_case = sqlx::query("UPDATE admin_users SET email = 'Me@example.com' WHERE id = $1")
+        .bind(me.id())
+        .execute(&pool)
+        .await;
+    assert!(mixed_case.is_err(), "the lowercase CHECK holds");
+
+    // Failed sign-ins: counted atomically, the fifth locks and restarts the count.
+    let lock_until = now + Duration::minutes(15);
+    for expected in 1..5 {
+        assert!(
+            !admins
+                .register_failed_sign_in(me.id(), 5, lock_until)
+                .await
+                .unwrap()
+        );
+        let stored = admins.find_by_id(me.id()).await.unwrap().unwrap();
+        assert_eq!(stored.failed_sign_in_count(), expected);
+    }
+    assert!(
+        admins
+            .register_failed_sign_in(me.id(), 5, lock_until)
+            .await
+            .unwrap()
+    );
+    let locked = admins.find_by_id(me.id()).await.unwrap().unwrap();
+    assert!(locked.is_locked(now));
+    assert_eq!(locked.failed_sign_in_count(), 0);
+    admins
+        .record_successful_sign_in(me.id(), now)
+        .await
+        .unwrap();
+    let cleared = admins.find_by_id(me.id()).await.unwrap().unwrap();
+    assert!(!cleared.is_locked(now) && cleared.failed_sign_in_count() == 0);
+
+    // A suspended organization shows on the account.
+    sqlx::query("UPDATE organizations SET is_active = false WHERE id = $1")
+        .bind(organization.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        !admins
+            .find_by_id(me.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .can_sign_in()
+    );
+    sqlx::query("UPDATE organizations SET is_active = true WHERE id = $1")
+        .bind(organization.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Two admins deactivating themselves at the same moment: exactly one succeeds.
+    let (a, b) = tokio::join!(
+        admins.deactivate_unless_last_active(&me, now),
+        admins.deactivate_unless_last_active(&colleague, now),
+    );
+    assert_eq!(
+        [a.unwrap(), b.unwrap()]
+            .iter()
+            .filter(|done| **done)
+            .count(),
+        1,
+        "the organization keeps one active admin"
+    );
+    sqlx::query("UPDATE admin_users SET is_active = true")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Refresh rotation is compare-and-set: the second rotation of one token fails.
+    let tokens = DbAdminRefreshTokenRepository::new(pool.clone());
+    let original = AdminRefreshToken::new(me.id(), "r".repeat(64), now + Duration::days(1));
+    tokens.add(&original).await.unwrap();
+    let mut first = original.clone();
+    let successor = first.rotate("s".repeat(64), now + Duration::days(1), now);
+    let mut second = original.clone();
+    let rival = second.rotate("t".repeat(64), now + Duration::days(1), now);
+    assert!(tokens.rotate(&first, &successor).await.unwrap());
+    assert!(!tokens.rotate(&second, &rival).await.unwrap());
+    assert!(
+        tokens
+            .find_by_token_hash(&"t".repeat(64))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let expired = AdminRefreshToken::new(me.id(), "e".repeat(64), now - Duration::seconds(1));
+    tokens.add(&expired).await.unwrap();
+    assert_eq!(tokens.delete_expired(now).await.unwrap(), 1);
+
+    // Console sessions: end all but the current one; sign-out names the admin.
+    let sessions = DbAdminWebSessionRepository::new(pool.clone());
+    let current = AdminWebSession::new(me.id(), "c".repeat(64), now, Duration::hours(1));
+    let other = AdminWebSession::new(me.id(), "o".repeat(64), now, Duration::hours(1));
+    sessions.add(&current).await.unwrap();
+    sessions.add(&other).await.unwrap();
+    assert_eq!(
+        sessions
+            .delete_all_for_admin(me.id(), Some(current.id()))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sessions
+            .delete_by_token_hash(&"c".repeat(64))
+            .await
+            .unwrap(),
+        Some(me.id())
+    );
+    assert_eq!(
+        sessions
+            .delete_by_token_hash(&"c".repeat(64))
+            .await
+            .unwrap(),
+        None
+    );
+
+    // Second factor: pending until confirmed, never replaced once enabled, each
+    // TOTP step and recovery code accepted once.
+    let factors = DbAdminMfaRepository::new(pool.clone());
+    assert!(
+        factors
+            .save_pending(&AdminMfa::pending(me.id(), "v1:seed-a".into(), now))
+            .await
+            .unwrap()
+    );
+    assert!(
+        factors
+            .save_pending(&AdminMfa::pending(me.id(), "v1:seed-b".into(), now))
+            .await
+            .unwrap()
+    );
+    let hashes = vec!["h1".to_string(), "h2".to_string()];
+    assert!(factors.confirm(me.id(), 10, &hashes, now).await.unwrap());
+    assert!(!factors.confirm(me.id(), 11, &hashes, now).await.unwrap());
+    assert!(
+        !factors
+            .save_pending(&AdminMfa::pending(me.id(), "v1:seed-c".into(), now))
+            .await
+            .unwrap()
+    );
+    let enabled = factors.find(me.id()).await.unwrap().unwrap();
+    assert!(enabled.is_enabled());
+    assert_eq!(enabled.totp_secret_enc(), "v1:seed-b");
+
+    assert!(
+        !factors.record_totp_step(me.id(), 10, now).await.unwrap(),
+        "replay"
+    );
+    assert!(factors.record_totp_step(me.id(), 11, now).await.unwrap());
+    assert!(
+        factors
+            .consume_recovery_code(me.id(), "h1", now)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !factors
+            .consume_recovery_code(me.id(), "h1", now)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        factors
+            .find(me.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .recovery_code_hashes(),
+        ["h2".to_string()]
+    );
+    assert!(
+        factors
+            .replace_recovery_codes(me.id(), &["h3".to_string()], now)
+            .await
+            .unwrap()
+    );
+    factors.delete(me.id()).await.unwrap();
+    assert!(factors.find(me.id()).await.unwrap().is_none());
+    assert!(
+        !factors
+            .replace_recovery_codes(me.id(), &hashes, now)
+            .await
+            .unwrap()
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_invitations_and_the_admin_list(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::{
+                admin_invitation::AdminInvitation, admin_mfa::AdminMfa, admin_user::AdminUser,
+            },
+            errors::DomainError,
+            repositories::{
+                admin_invitation_repository::AdminInvitationRepository,
+                admin_mfa_repository::AdminMfaRepository,
+                admin_user_repository::AdminUserRepository,
+            },
+        },
+        infraestructure::database::repositories::{
+            admin_invitation_repository::DbAdminInvitationRepository,
+            admin_mfa_repository::DbAdminMfaRepository,
+            admin_user_repository::DbAdminUserRepository,
+        },
+    };
+
+    let mut organization = Organization::new(format!("org-{}", Uuid::now_v7()), None, true);
+    let organizations = DbOrganizationRepository::new(pool.clone());
+    organizations.add(&organization).await.unwrap();
+    organization.set_require_admin_mfa(true);
+    organizations.update(&organization).await.unwrap();
+    let stored = organizations
+        .find_by_id(organization.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(stored.require_admin_mfa());
+
+    let admins = DbAdminUserRepository::new(pool.clone());
+    let admin = |email: &str| {
+        AdminUser::new(
+            organization.id(),
+            email.to_string(),
+            "Ada".to_string(),
+            "hash".to_string(),
+            "argon2id".to_string(),
+        )
+    };
+    let me = admin("me@example.com");
+    admins.create(&me).await.unwrap();
+    let loaded = admins.find_by_id(me.id()).await.unwrap().unwrap();
+    assert!(
+        loaded.organization_requires_mfa(),
+        "policy joined onto the account"
+    );
+    let now = Utc::now();
+    admins
+        .record_successful_sign_in(me.id(), now)
+        .await
+        .unwrap();
+    assert!(
+        admins
+            .find_by_id(me.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .last_sign_in_at()
+            .is_some()
+    );
+
+    // The list shows who has a second factor.
+    let factors = DbAdminMfaRepository::new(pool.clone());
+    factors
+        .save_pending(&AdminMfa::pending(me.id(), "v1:seed".into(), now))
+        .await
+        .unwrap();
+    factors.confirm(me.id(), 1, &[], now).await.unwrap();
+
+    // Invitations: re-inviting revokes the open one (the partial unique index allows
+    // only one open invitation per email), and accepting is single-use.
+    let invitations = DbAdminInvitationRepository::new(pool.clone());
+    let invite = |hash: &str| {
+        AdminInvitation::new(
+            organization.id(),
+            "New@Example.com",
+            hash.repeat(64),
+            me.id(),
+            Utc::now(),
+            Duration::hours(72),
+        )
+    };
+    let first = invite("a");
+    invitations.create_replacing_open(&first).await.unwrap();
+    let second = invite("b");
+    invitations.create_replacing_open(&second).await.unwrap();
+    let open = invitations
+        .list_open(organization.id(), Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].id(), second.id());
+    let replaced = invitations
+        .find_by_token_hash(&"a".repeat(64))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(replaced.revoked_at().is_some());
+
+    let newcomer = admin("new@example.com");
+    assert!(
+        !invitations
+            .accept(first.id(), &newcomer, Utc::now())
+            .await
+            .unwrap(),
+        "revoked"
+    );
+    assert!(
+        invitations
+            .accept(second.id(), &newcomer, Utc::now())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !invitations
+            .accept(second.id(), &admin("new@example.com"), Utc::now())
+            .await
+            .unwrap()
+    );
+    assert!(
+        admins
+            .find_by_email("new@example.com")
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    // A taken email rolls the claim back: the invitation stays open.
+    let third = AdminInvitation::new(
+        organization.id(),
+        "me@example.com",
+        "c".repeat(64),
+        me.id(),
+        Utc::now(),
+        Duration::hours(72),
+    );
+    invitations.create_replacing_open(&third).await.unwrap();
+    let clash = invitations
+        .accept(third.id(), &admin("me@example.com"), Utc::now())
+        .await;
+    assert!(matches!(clash, Err(DomainError::Conflict(_))));
+    let still_open = invitations
+        .find_by_token_hash(&"c".repeat(64))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(still_open.is_open(Utc::now()));
+    assert!(
+        invitations
+            .revoke(third.id(), organization.id(), Utc::now())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !invitations
+            .revoke(third.id(), organization.id(), Utc::now())
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        invitations
+            .delete_expired(Utc::now() + Duration::hours(73))
+            .await
+            .unwrap(),
+        3
+    );
+
+    // The admin list, oldest first; deactivate, then reactivate in the organization.
+    let list = admins
+        .list_by_organization(organization.id())
+        .await
+        .unwrap();
+    assert_eq!(
+        list.iter()
+            .map(|a| (a.email.as_str(), a.mfa_enabled))
+            .collect::<Vec<_>>(),
+        [("me@example.com", true), ("new@example.com", false)]
+    );
+    let new_id = list[1].id;
+    let new_admin = admins.find_by_id(new_id).await.unwrap().unwrap();
+    assert!(
+        admins
+            .deactivate_unless_last_active(&new_admin, now)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !admins
+            .reactivate(new_id, Uuid::now_v7(), now)
+            .await
+            .unwrap(),
+        "other org"
+    );
+    assert!(
+        admins
+            .reactivate(new_id, organization.id(), now)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !admins
+            .reactivate(new_id, organization.id(), now)
+            .await
+            .unwrap(),
+        "already active"
+    );
+}
+
 // ── Admin filter screens: custom plans (executor::run_custom_plan!) ─────────────
 
 #[sqlx::test(migrations = "./migrations")]

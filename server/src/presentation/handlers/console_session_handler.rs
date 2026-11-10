@@ -16,7 +16,9 @@ use crate::{
     application::use_cases::admin_web_session::{end, resolve, session_lifetime, start},
     domain::{
         entities::{
-            audit_action::{ADMIN_LOGIN_FAILURE, ADMIN_LOGIN_SUCCESS, ADMIN_LOGOUT},
+            audit_action::{
+                ADMIN_LOGIN_FAILURE, ADMIN_LOGIN_MFA_REQUIRED, ADMIN_LOGIN_SUCCESS, ADMIN_LOGOUT,
+            },
             audit_event::{ActorType, AuditEvent, Outcome},
         },
         errors::DomainError,
@@ -37,9 +39,11 @@ fn no_store(mut response: Response) -> Response {
 
 // POST /session
 //
-// Verifies the admin's password (exactly like `POST /admin/login`) and opens a
-// console session. Registered in the credential router, so it shares the strict
-// per-IP bucket with every other password endpoint. Audited like `/admin/login`.
+// Verifies the admin (exactly like `POST /admin/login`) and opens a console session.
+// Registered in the credential router, so it shares the strict per-IP bucket with
+// every other password endpoint. An admin with a second factor who sends no
+// `mfaCode` gets 401 `{"error":"mfa_required"}`; the console then asks for the code
+// and posts again. Audited like `/admin/login`.
 pub async fn sign_in(
     State(state): State<AppState>,
     ctx: RequestContext,
@@ -51,7 +55,19 @@ pub async fn sign_in(
     }
 
     match state.admin.console_sign_in.execute(command).await {
-        Ok(started) => {
+        Ok(start::response::Outcome::SecondFactorRequired { admin_id }) => {
+            let event = AuditEvent::new(
+                None,
+                ActorType::Admin,
+                Some(admin_id),
+                ADMIN_LOGIN_MFA_REQUIRED,
+                Outcome::Success,
+            )
+            .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
+            let _ = state.audit_logger.record(event).await;
+            no_store(ApiError::Unauthorized("mfa_required".to_string()).into_response())
+        }
+        Ok(start::response::Outcome::Started(started)) => {
             let event = AuditEvent::new(
                 None,
                 ActorType::Admin,
@@ -130,17 +146,27 @@ pub async fn sign_out(
     }
 
     if let Some(session_token) = state.console.read_cookie(&headers) {
-        if let Err(err) = state
+        let admin_id = match state
             .admin
             .console_sign_out
             .execute(end::command::Command { session_token })
             .await
         {
-            return no_store(ApiError::from(err).into_response());
-        }
-        let event = AuditEvent::new(None, ActorType::Admin, None, ADMIN_LOGOUT, Outcome::Success)
+            Ok(admin_id) => admin_id,
+            Err(err) => return no_store(ApiError::from(err).into_response()),
+        };
+        // Only a session that existed is a sign-out worth recording.
+        if admin_id.is_some() {
+            let event = AuditEvent::new(
+                None,
+                ActorType::Admin,
+                admin_id,
+                ADMIN_LOGOUT,
+                Outcome::Success,
+            )
             .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
-        let _ = state.audit_logger.record(event).await;
+            let _ = state.audit_logger.record(event).await;
+        }
     }
 
     let mut response = Json(json!({ "ok": true })).into_response();

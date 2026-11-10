@@ -22,7 +22,7 @@ retention purge, policy acceptance).
 # Build / run (cwd: server/)
 cargo build
 cargo run                      # launches the API (default-run = "web-api") on $PORT (8080)
-cargo run --bin create_admin -- <email> <password> [organization_id]   # bootstrap a platform admin
+cargo run --bin create_admin -- <email> [organization_id]   # bootstrap a platform admin (password: prompt or stdin)
 
 # Tests — unit tests, fully in-memory, NO database at runtime
 cargo test
@@ -54,6 +54,21 @@ schema. A database created before the squash is adopted at startup: if its old
 history is complete, the old rows in `_sqlx_migrations` are replaced by the
 baseline's (`adopt_pre_squash_history`). An older one stops the boot. Add every new
 change as a new migration after the baseline; never edit the baseline.
+
+**Build fails because the database is behind?** The `query!` macros check every query
+against `DATABASE_URL` at compile time, so a database missing the newest migrations
+breaks `cargo build`. Normally run `sqlx migrate run` first. A database still on the
+pre-squash history is the exception: the CLI cannot adopt it (it refuses a history whose
+migrations no longer exist), so do it once with the server itself, built from the
+committed `.sqlx` cache:
+
+```bash
+SQLX_OFFLINE=true cargo run -- --migrate-only   # adopts the old history, applies the rest, exits
+cargo build                                      # back to normal
+```
+
+Such a database then belongs to this code: older branches (before the squash) no longer
+recognize its migration history.
 
 > **Tooling note:** `cargo clippy` is unreliable in this environment (toolchain
 > mismatch). Validate with `cargo check` / `cargo test` instead.
@@ -158,7 +173,11 @@ injects the infra implementation (e.g. `JwtSigningService`, `SmtpEmailSender`,
 - **UI** (only with `UI_DIR`) — `presentation/ui.rs` serves the built dashboard: the
   SPA entry page on an explicit allow-list of paths (`/console/*`, `/auth/*`,
   `/login`, `/terms*`, `/privacy*`, legacy `/dashboard*`, `/docs*`), `/_app/*`
-  assets outside the global rate limiter. Unknown paths get a JSON 404. See
+  assets outside the global rate limiter. Unknown paths get a JSON 404. Each entry
+  page is completed per request with what server rendering used to give: modulepreload
+  tags for the route (from `_app/route-preloads.json`, written by the dashboard build),
+  `data-boot="auth"` on hosted login pages (the HTML skeleton in `app.html`), and a
+  preload of the client-settings request those pages make first. See
   [`docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md`](docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md).
 
 `security_headers` middleware applies `X-Content-Type-Options`, `X-Frame-Options:
@@ -240,6 +259,22 @@ exempt list because their caller comes from the token.
   of work. It enqueues an outbox event per live session; the webhook dispatcher delivers
   a `logout+jwt` per attempt. ID tokens carry `sid` = the refresh-token family id. See
   `docs/FLOWS-OAUTH2-OIDC.md` §8.
+- **Platform admins authenticate only through `AdminAuthenticator`**
+  (`application/services/admin_authenticator.rs`): both sign-in paths (console `/session`,
+  bearer `/admin/login`) and every step-up on `/admin/me*`. It gives one generic failure
+  for unknown / wrong / deactivated / suspended-organization / locked, locks an account
+  for 15 min after 5 consecutive failures, and asks for the second factor (TOTP or a
+  recovery code; `mfa_required` only after a right password). Admin emails are stored
+  lowercased (`admin_user::normalize_email`, DB CHECK). New admin passwords go through
+  `admin_password_policy::check_new_password`. A password change ends every other admin
+  session; deactivation ends all of them. Writes that must not race (TOTP step, recovery
+  code, refresh rotation, last-admin deactivation) are single conditional statements or
+  run under a row lock. An organization can require two-step verification
+  (`require_admin_mfa`): admin tokens then carry `mfa_setup`, and `require_admin` lets such
+  a token reach only the enrollment endpoints (`MFA_SETUP_ALLOWED`); any new admin
+  endpoint is refused for it by default. Admins manage each other under
+  `/admin/organization/*` (list, invite by one-time link, deactivate/reactivate, reset a
+  lost second factor). See `docs/FLOWS-AUTHENTICATION.md` §5.
 - **Passwords** use **Argon2id** through the **`PasswordHasher` port** only
   (`Argon2PasswordHasher`: blocking pool + semaphore, `PASSWORD_HASH_CONCURRENCY`).
   Never call `utils::password_hasher` or `spawn_blocking` from the application layer.

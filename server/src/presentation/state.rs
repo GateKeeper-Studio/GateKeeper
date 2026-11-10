@@ -17,6 +17,7 @@ use crate::{
                 update_profile as admin_update_profile,
             },
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
+            admin_mfa, admin_organization,
             admin_web_session::{
                 end as console_end, resolve as console_resolve, start as console_start,
             },
@@ -87,8 +88,8 @@ use crate::{
                 reorder_tenant_custom_fields, update_tenant_custom_field_by_id,
             },
             tenant_user::{
-                create_tenant_user, delete_tenant_user_by_id, get_tenant_user_by_id,
-                list_tenant_users, update_tenant_user_by_id,
+                create_tenant_user, delete_tenant_user_by_id, get_authentication_methods,
+                get_tenant_user_by_id, list_tenant_users, update_tenant_user_by_id,
                 update_tenant_user_custom_field_values,
             },
             webhook_subscription::{
@@ -122,6 +123,8 @@ pub struct TenantUserUseCases {
     pub create_tenant_user: Arc<create_tenant_user::use_case::UseCase>,
     pub list_tenant_users: Arc<list_tenant_users::use_case::UseCase>,
     pub get_tenant_user_by_id: Arc<get_tenant_user_by_id::use_case::UseCase>,
+    // How a user can sign in (password, passkeys, social accounts, second factors).
+    pub get_authentication_methods: Arc<get_authentication_methods::use_case::UseCase>,
     pub update_tenant_user_by_id: Arc<update_tenant_user_by_id::use_case::UseCase>,
     pub update_tenant_user_custom_field_values:
         Arc<update_tenant_user_custom_field_values::use_case::UseCase>,
@@ -308,6 +311,23 @@ pub struct AdminUseCases {
     pub update_my_profile: Arc<admin_update_profile::use_case::UseCase>,
     pub change_my_password: Arc<admin_change_password::use_case::UseCase>,
     pub deactivate_my_account: Arc<admin_deactivate_account::use_case::UseCase>,
+    // The admin's own second factor (`/admin/me/mfa*`).
+    pub get_my_mfa: Arc<admin_mfa::get_status::use_case::UseCase>,
+    pub start_my_totp: Arc<admin_mfa::start_totp::use_case::UseCase>,
+    pub confirm_my_totp: Arc<admin_mfa::confirm_totp::use_case::UseCase>,
+    pub disable_my_mfa: Arc<admin_mfa::disable::use_case::UseCase>,
+    pub regenerate_my_recovery_codes: Arc<admin_mfa::regenerate_recovery_codes::use_case::UseCase>,
+    // The admins of an organization managing each other (`/admin/organization/*`)
+    // and accepting an invitation (`/admin/invitations/*`).
+    pub list_admins: Arc<admin_organization::list_admins::use_case::UseCase>,
+    pub set_admin_active: Arc<admin_organization::set_admin_active::use_case::UseCase>,
+    pub reset_admin_mfa: Arc<admin_organization::reset_admin_mfa::use_case::UseCase>,
+    pub invite_admin: Arc<admin_organization::invite_admin::use_case::UseCase>,
+    pub list_invitations: Arc<admin_organization::list_invitations::use_case::UseCase>,
+    pub revoke_invitation: Arc<admin_organization::revoke_invitation::use_case::UseCase>,
+    pub lookup_invitation: Arc<admin_organization::lookup_invitation::use_case::UseCase>,
+    pub accept_invitation: Arc<admin_organization::accept_invitation::use_case::UseCase>,
+    pub set_mfa_policy: Arc<admin_organization::set_mfa_policy::use_case::UseCase>,
     // The admin console's cookie session (`/session` and the `/api` bridge).
     pub console_sign_in: Arc<console_start::use_case::UseCase>,
     pub console_resolve: Arc<console_resolve::use_case::UseCase>,

@@ -19,5 +19,9 @@ pub struct Response {
     pub mfa_challenges: u64,
     pub external_login_flows: u64,
     pub security_blocks: u64,
+    // Platform-admin credentials (outside the tenant Unit of Work).
+    pub admin_refresh_tokens: u64,
+    pub admin_console_sessions: u64,
+    pub admin_invitations: u64,
     pub total: u64,
 }

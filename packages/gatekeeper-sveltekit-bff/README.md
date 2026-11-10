@@ -11,7 +11,6 @@ import { createSvelteKitGateKeeperClient } from '@gatekeeper/sveltekit-bff';
 
 export const gatekeeper = createSvelteKitGateKeeperClient({
   idpBaseUrl: process.env.IDP_BASE_URL,
-  authUiBaseUrl: process.env.AUTH_UI_BASE_URL,
   tenantId: process.env.OAUTH_TENANT_ID,
   clientId: process.env.OAUTH_CLIENT_ID,
   clientSecret: process.env.OAUTH_CLIENT_SECRET,

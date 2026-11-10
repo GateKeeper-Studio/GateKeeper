@@ -13,3 +13,10 @@ pub struct Response {
     pub expires_at: DateTime<Utc>,
     pub admin: AdminIdentity,
 }
+
+#[derive(Debug)]
+pub enum Outcome {
+    Started(Response),
+    // The password is right; the console asks for the code and signs in again.
+    SecondFactorRequired { admin_id: Uuid },
+}

@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -93,25 +94,36 @@ impl AdminRefreshTokenRepository for DbAdminRefreshTokenRepository {
         &self,
         old: &AdminRefreshToken,
         new: &AdminRefreshToken,
-    ) -> Result<(), DomainError> {
-        // Stamp the old token as rotated away...
-        run!(
+    ) -> Result<bool, DomainError> {
+        // Compare-and-set: the successor is inserted only if this statement is the
+        // one that moved the old token from live to rotated. A concurrent refresh
+        // with the same token finds it already rotated and inserts nothing.
+        let result = run!(
             self.executor,
             sqlx::query!(
                 r#"
-          UPDATE admin_refresh_tokens
-          SET rotated_at = $2
-          WHERE id = $1
+          WITH claimed AS (
+              UPDATE admin_refresh_tokens
+              SET rotated_at = $2
+              WHERE id = $1 AND rotated_at IS NULL AND revoked_at IS NULL AND expires_at > $2
+              RETURNING admin_id, family_id
+          )
+          INSERT INTO admin_refresh_tokens (id, admin_id, token_hash, family_id,
+            rotated_at, revoked_at, expires_at, created_at)
+          SELECT $3, admin_id, $4, family_id, NULL, NULL, $5, $6
+          FROM claimed
         "#,
                 old.id(),
                 old.rotated_at(),
+                new.id(),
+                new.token_hash(),
+                new.expires_at(),
+                new.created_at(),
             ),
             execute
         )
         .map_err(map_sqlx_error)?;
-
-        // ...and persist its successor on the same executor.
-        self.add(new).await
+        Ok(result.rows_affected() == 1)
     }
 
     async fn revoke_family(&self, family_id: Uuid) -> Result<(), DomainError> {
@@ -130,6 +142,19 @@ impl AdminRefreshTokenRepository for DbAdminRefreshTokenRepository {
         .map_err(map_sqlx_error)?;
 
         Ok(())
+    }
+
+    async fn delete_expired(&self, now: DateTime<Utc>) -> Result<u64, DomainError> {
+        let result = run!(
+            self.executor,
+            sqlx::query!(
+                "DELETE FROM admin_refresh_tokens WHERE expires_at <= $1",
+                now
+            ),
+            execute
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(result.rows_affected())
     }
 
     async fn revoke_all_for_admin(&self, admin_id: Uuid) -> Result<(), DomainError> {

@@ -18,7 +18,6 @@ import { createNextGateKeeper } from '@gatekeeper/nextjs';
 
 export const gatekeeper = createNextGateKeeper({
   idpBaseUrl: process.env.IDP_BASE_URL!,
-  authUiBaseUrl: process.env.AUTH_UI_BASE_URL!,
   tenantId: process.env.OAUTH_TENANT_ID!,
   clientId: process.env.OAUTH_CLIENT_ID!,
   clientSecret: process.env.OAUTH_CLIENT_SECRET!,

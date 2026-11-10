@@ -5,8 +5,13 @@
 export interface GateKeeperSpaConfig {
   /** Identity Provider base URL, e.g. http://localhost:8080 (token + userinfo). */
   idpBaseUrl: string;
-  /** Hosted login UI base URL, e.g. http://localhost:5173 (where the browser signs in). */
-  authUiBaseUrl: string;
+  /**
+   * Where the hosted login UI lives (the browser signs in at
+   * `{authUiBaseUrl}/auth/{clientId}/sign-in`). Defaults to `idpBaseUrl`: the
+   * identity provider serves its own login UI. Set it only when the login UI is
+   * hosted on another origin.
+   */
+  authUiBaseUrl?: string;
   /** Tenant the public client belongs to. */
   tenantId: string;
   /** This app's registered public client id. */

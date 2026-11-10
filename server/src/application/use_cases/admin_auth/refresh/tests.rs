@@ -61,10 +61,11 @@ mod tests {
         refresh_repo.tokens.lock().unwrap().push(stored);
 
         let use_case = UseCase::new(
-            admin_repo,
+            admin_repo.clone(),
             refresh_repo.clone(),
             Arc::new(FakeAdminTokenIssuer::new()),
             Arc::new(audit.clone()),
+            crate::testing::admin_fixture::authenticator_for(admin_repo),
         );
 
         Ctx {

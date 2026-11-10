@@ -386,27 +386,134 @@ rather than redeemed.
 
 ## 5. Platform-admin authentication
 
-Admins are global (organization-scoped, not tenant-scoped) and use **HS256** tokens
-(15-minute TTL, `typ: "admin"`, `kid` header) signed with `ADMIN_TOKEN_SIGNING_KEY`
-(`AdminTokenService`). The key rotates without logging admins out: the previous key in
-`ADMIN_TOKEN_PREVIOUS_SIGNING_KEY` keeps verifying for one token lifetime. These endpoints live
-**outside** the admin guard (they're how an admin *gets* a token):
+Platform admins belong to an organization (not a tenant) and administer every tenant
+of it. They sign in two ways, both through one `AdminAuthenticator`
+(`application/services/admin_authenticator.rs`), so the rules below hold for both:
 
 | Endpoint | Use case | Purpose |
 |---|---|---|
-| `POST /admin/login` | `admin_login` | Verify admin password (Argon2 + `ADMIN_PASSWORD_PEPPER`; an unknown admin pays a dummy verification so timing does not reveal it) → issue access token + refresh token |
-| `POST /admin/refresh` | `admin_refresh` | Rotate the refresh token → new access token |
-| `POST /admin/logout` | `admin_logout` | Revoke the refresh-token family (server-side sign-out) |
+| `POST /session` (+ `GET`, `DELETE`) | `admin_web_session::{start,resolve,end}` | **The console.** Opens an httpOnly cookie session; `/api/*` turns it into a per-request admin token. See [`SERVING-THE-DASHBOARD-FROM-THE-SERVER.md`](SERVING-THE-DASHBOARD-FROM-THE-SERVER.md) |
+| `POST /admin/login` | `admin_login` | **API clients.** Access token + refresh token |
+| `POST /admin/refresh` | `admin_refresh` | Rotate the refresh token (compare-and-set: of two concurrent refreshes with one token, one wins) → new access token |
+| `POST /admin/logout` | `admin_logout` | Revoke the refresh-token family |
 
-Bootstrap the first admin from the CLI:
+Access tokens are **HS256** (15-minute TTL, `typ: "admin"`, `kid` header) signed with
+`ADMIN_TOKEN_SIGNING_KEY` (`AdminTokenService`); the previous key in
+`ADMIN_TOKEN_PREVIOUS_SIGNING_KEY` keeps verifying for one token lifetime, so the key
+rotates without signing anyone out.
+
+### Sign-in rules
+
+- **Generic failures.** Unknown email, wrong password, deactivated account, suspended
+  organization and locked account all answer `401 {"error":"invalid credentials"}`, and
+  each costs one Argon2 verification (a dummy one when there is no usable account), so
+  neither the answer nor its timing reveals which admin emails exist or their state.
+- **Emails are case-insensitive.** Stored trimmed and lowercased (a database CHECK holds
+  it); lookups normalize the same way.
+- **Per-account lock.** 5 consecutive failures (wrong password or wrong code, at sign-in
+  or at a step-up) lock the account for 15 minutes, then the count restarts; a successful
+  sign-in clears it. This is what stops a password spray spread over many IPs, which the
+  per-IP rate limit (the strict credential bucket) cannot see. Audited as
+  `admin.account.locked`.
+- **Suspended organization.** `organizations.is_active = false` stops its admins at
+  sign-in, refresh and on the next console request. Only the system can change it; the
+  console's own admins cannot (`PUT /admin/me/organization` refuses it).
+- **Second factor.** An admin with two-step verification on who sends the right password
+  without a code gets `401 {"error":"mfa_required"}` (audited `admin.login.mfa_required`)
+  and repeats the request with `mfaCode` (console) / `mfa_code` (API): a 6-digit TOTP code
+  or a recovery code. A wrong code is `401 {"error":"invalid_mfa_code"}` and counts toward
+  the lock. `mfa_required` is only ever returned for a right password. Nothing is stored
+  between the two requests.
+
+### Two-step verification (`/admin/me/mfa*`)
+
+| Endpoint | Needs | Effect |
+|---|---|---|
+| `GET /admin/me/mfa` | — | `{totpEnabled, enabledAt, recoveryCodesRemaining}` |
+| `POST /admin/me/mfa/totp` | `current_password` | New seed (sealed with `SecretPurpose::AdminTotpSeed`, bound to the admin id), pending until confirmed; returns the seed and `otpauth://` URL once. Refused while a factor is on |
+| `POST /admin/me/mfa/totp/confirm` | `code` | Turns it on; returns 10 recovery codes once (`XXXXX-XXXXX`, 50 bits each, stored as SHA-256) |
+| `POST /admin/me/mfa/recovery-codes` | `current_password` | Replaces every recovery code |
+| `DELETE /admin/me/mfa` | `current_password` + `code` | Turns it off (a never-confirmed enrollment needs only the password) |
+
+TOTP is RFC 6238 (SHA-1, 30 s, 6 digits, ±1 step). The last accepted step is stored and
+the write is conditional, so a code cannot be replayed, not even by two concurrent
+requests; a recovery code is removed from the array in the same conditional statement.
+Responses carrying a seed or codes are `Cache-Control: no-store`. An unreadable seed
+(lost encryption key) still lets the admin in with a recovery code;
+`repair_encrypted_secrets --apply` deletes the factor so they can enroll again.
+
+### The admin's own account (`/admin/me*`)
+
+- **Password change** needs the current password and a new one that meets the admin
+  policy (12–128 characters, not the email, not the current one;
+  `application/shared/admin_password_policy.rs`). It then **ends every other session**:
+  every refresh-token family and every console session except the one making the request.
+- **Email change** needs `current_password` (it is the sign-in identifier); a name-only
+  change does not.
+- **Deactivation** (`DELETE /admin/me`) needs `current_password`, ends every session, and
+  is refused for the last active admin of the organization. The check runs under a lock on
+  the organization row, so two admins deactivating themselves at the same moment cannot
+  leave it with none. Another admin of the organization can reactivate it (below).
+
+### Requiring two-step verification (`PUT /admin/organization/mfa-policy`)
+
+`organizations.require_admin_mfa` makes the second factor mandatory for every admin of
+the organization. Turning it on needs `current_password` and two-step verification on the
+acting admin's own account; both directions are audited
+(`organization.admin_mfa_policy.updated`).
+
+An admin without a second factor in such an organization still signs in, but every token
+minted for them (`/admin/login`, `/admin/refresh`, each console request) carries
+`mfa_setup: true`, and `require_admin` then answers everything except
+`GET /admin/me/profile`, `GET /admin/me/organization`, `GET /admin/me/mfa`,
+`POST /admin/me/mfa/totp` and `POST /admin/me/mfa/totp/confirm` with
+`403 {"error":"mfa_setup_required"}`. The flag is recomputed on every console request,
+so turning the policy on restricts open sessions at once and enrolling lifts the
+restriction at once (a bearer token keeps its flag until it expires, ≤ 15 min).
+`GET /session` reports it as `mfaSetupRequired`; the console then shows only
+`/login/two-step`. The check costs a query only in organizations that require it.
+
+### Managing the organization's admins (`/admin/organization/*`)
+
+All admins of an organization are equal (there are no admin roles). Each action is
+authorized as the caller's own organization (`Actor::authorize_organization`), needs the
+acting admin's `current_password` where it changes anything about an account, and is
+audited with the colleague as the resource.
+
+| Endpoint | Effect |
+|---|---|
+| `GET /admin/organization/admins` | Every admin: status, two-step on/off, locked, last sign-in |
+| `POST /admin/organization/admins/{id}/deactivate` | Deactivates a colleague and ends all their sessions; refused for yourself (use `DELETE /admin/me`) and for the last active admin |
+| `POST /admin/organization/admins/{id}/reactivate` | Reactivates a colleague (also clears any sign-in lock) |
+| `DELETE /admin/organization/admins/{id}/mfa` | Recovery for a colleague who lost their authenticator and recovery codes: removes the factor and ends their sessions |
+| `GET /admin/organization/invitations` | Open invitations |
+| `POST /admin/organization/invitations` | `{email, current_password}` → a one-time link `<origin>/login/invite#<token>`, shown once (256-bit token, only its SHA-256 stored, 72 h). Re-inviting an email replaces its open link; an email that is already an admin is a 409 |
+| `DELETE /admin/organization/invitations/{id}` | Withdraws an invitation |
+
+The link is handed over out of band (there is no platform-level email sender). Its token
+is in the URL fragment, which browsers never send to a server, so it stays out of access
+logs; the invitation page removes it from the address bar on load. The invitee then uses
+two public endpoints in the strict credential rate-limit bucket:
+`POST /admin/invitations/lookup {token}` (which email and organization; any unusable link
+is the same 404) and `POST /admin/invitations/accept {token, name, password}`. Accepting
+claims the invitation and creates the admin in one transaction, so a link creates at most
+one admin; the password policy applies, and the new admin signs in normally.
+
+### Bootstrapping an admin
 
 ```bash
-cargo run --bin create_admin -- <email> <password> [organization_id]
+cargo run --bin create_admin -- <email> [organization_id]          # prompts for the password twice
+printf '%s\n' "$PASSWORD" | cargo run --bin create_admin -- <email>  # or reads it from stdin
 ```
 
-It hashes with the same `ADMIN_PASSWORD_PEPPER` (legacy: `JWT_SECRET`) the running API verifies against, and
-attaches the admin to the given organization (or a find-or-created "Default
-Organization").
+The password is never taken from the command line (shell history, `ps`); the old
+`<email> <password> [organization_id]` form still works with a warning. It must meet the
+admin password policy. The hash uses the same `ADMIN_PASSWORD_PEPPER` (legacy:
+`JWT_SECRET`) the running API verifies against, and the admin is attached to the given
+organization (or a find-or-created "Default Organization").
+
+Expired admin refresh tokens, console sessions and invitations are removed by the
+retention purge.
 
 ---
 

@@ -8,6 +8,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
 	import ErrorAlert from '$lib/components/error-alert.svelte';
 	import LoadingSpinner from '$lib/components/loading-spinner.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -16,6 +18,7 @@
 	import { getMyProfile, deactivateMyAccount } from '$lib/services/admin/account';
 	import AccountForm from './account-form.svelte';
 	import PasswordForm from './password-form.svelte';
+	import MfaCard from './mfa-card.svelte';
 
 	// Fires only when this section is first viewed — the settings shell renders the
 	// active section lazily, so no request runs on dialog open or for unviewed sections.
@@ -33,10 +36,18 @@
 	// ---- deactivation -------------------------------------------------------------
 	let deactivateOpen = $state(false);
 	let deactivating = $state(false);
+	let deactivatePassword = $state('');
+	let deactivateError = $state('');
 
 	async function confirmDeactivate() {
+		if (deactivatePassword.length === 0) {
+			deactivateError = m.settings_account_deactivate_password_required();
+			return;
+		}
+		deactivateError = '';
 		deactivating = true;
-		const [err] = await deactivateMyAccount();
+		const [err] = await deactivateMyAccount(deactivatePassword);
+		deactivatePassword = '';
 
 		if (err) {
 			deactivating = false;
@@ -99,6 +110,8 @@
 		</Card.Content>
 	</Card.Root>
 
+	<MfaCard />
+
 	<Card.Root class="mt-6 max-w-[640px]">
 		<Card.Header>
 			<Card.Title>{m.settings_account_metadata_title()}</Card.Title>
@@ -148,6 +161,18 @@
 				{m.settings_account_deactivate_confirm_description()}
 			</Dialog.Description>
 		</Dialog.Header>
+		<div class="space-y-2">
+			<Label for="deactivate-password">{m.settings_account_deactivate_password_label()}</Label>
+			<Input
+				id="deactivate-password"
+				type="password"
+				autocomplete="current-password"
+				bind:value={deactivatePassword}
+			/>
+			{#if deactivateError}
+				<p class="text-sm font-medium text-destructive">{deactivateError}</p>
+			{/if}
+		</div>
 		<Dialog.Footer>
 			<Button variant="outline" disabled={deactivating} onclick={() => (deactivateOpen = false)}>
 				{m.settings_account_deactivate_cancel()}

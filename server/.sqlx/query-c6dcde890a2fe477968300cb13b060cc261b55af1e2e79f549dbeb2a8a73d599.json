@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE admin_mfa\n          SET recovery_code_hashes = array_remove(recovery_code_hashes, $2), updated_at = $3\n          WHERE admin_id = $1\n            AND totp_confirmed_at IS NOT NULL\n            AND $2 = ANY(recovery_code_hashes)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c6dcde890a2fe477968300cb13b060cc261b55af1e2e79f549dbeb2a8a73d599"
+}

@@ -5,6 +5,7 @@ use chrono::Utc;
 use crate::{
     application::{
         ports::admin_token_issuer::AdminTokenIssuer,
+        services::admin_authenticator::AdminAuthenticator,
         use_cases::admin_web_session::{
             identity::AdminIdentity,
             idle_timeout,
@@ -27,13 +28,14 @@ use crate::{
 // The session stores no token, so there is nothing to refresh and nothing to steal
 // from the database: each call mints a new short-lived admin access token, the same
 // HS256 token `/admin/login` issues, which `require_admin` then verifies as usual.
-// The admin account is re-read every time, so deactivating an admin ends their
-// console sessions on the next request (a bearer token stays valid until it
-// expires).
+// The admin account is re-read every time, so deactivating an admin, or suspending
+// their organization, ends their console sessions on the next request (a bearer
+// token stays valid until it expires).
 pub struct UseCase {
     admin_repository: Arc<dyn AdminUserRepository>,
     session_repository: Arc<dyn AdminWebSessionRepository>,
     token_issuer: Arc<dyn AdminTokenIssuer>,
+    authenticator: Arc<AdminAuthenticator>,
 }
 
 impl UseCase {
@@ -41,11 +43,13 @@ impl UseCase {
         admin_repository: Arc<dyn AdminUserRepository>,
         session_repository: Arc<dyn AdminWebSessionRepository>,
         token_issuer: Arc<dyn AdminTokenIssuer>,
+        authenticator: Arc<AdminAuthenticator>,
     ) -> Self {
         Self {
             admin_repository,
             session_repository,
             token_issuer,
+            authenticator,
         }
     }
 
@@ -68,7 +72,7 @@ impl UseCase {
         }
 
         let admin = match self.admin_repository.find_by_id(session.admin_id()).await? {
-            Some(admin) if admin.is_active() => admin,
+            Some(admin) if admin.can_sign_in() => admin,
             _ => {
                 self.session_repository
                     .delete_by_token_hash(&token_hash)
@@ -77,11 +81,15 @@ impl UseCase {
             }
         };
 
+        // Re-evaluated on every request, so turning the organization's requirement on
+        // restricts existing sessions at once, and enrolling lifts it at once.
+        let setup_required = self.authenticator.mfa_setup_required(&admin).await?;
         let issued = self.token_issuer.issue(
             admin.id(),
             admin.email(),
             admin.name(),
             admin.organization_id(),
+            setup_required,
         )?;
 
         if session.needs_touch(now, touch_granularity()) {
@@ -89,7 +97,8 @@ impl UseCase {
         }
 
         Ok(Response {
-            admin: AdminIdentity::of(&admin),
+            session_id: session.id(),
+            admin: AdminIdentity::of(&admin).with_mfa_setup_required(setup_required),
             access_token: issued.token,
         })
     }

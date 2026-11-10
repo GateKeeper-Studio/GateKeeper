@@ -4,8 +4,8 @@ A Vue 3 (Vite) single-page app that signs in against the Rust Identity Provider 
 this repo using **Authorization Code + PKCE**, via the `@gatekeeper/vue` plugin.
 
 - Generates `code_verifier` / `code_challenge` (S256), `state`, and `nonce` in the browser.
-- Redirects to the hosted login UI, then exchanges the returned code at `/oauth/token`
-  **without a client secret**.
+- Redirects to the identity provider's hosted login UI, then exchanges the returned
+  code at `/oauth/token` **without a client secret**.
 - Stores tokens in `sessionStorage`, refreshes via `grant_type=refresh_token`, and
   calls `/oauth/userinfo`.
 
@@ -21,6 +21,11 @@ protection). Tokens live in the browser (XSS-exposed) — prefer a BFF (`sveltek
 ```bash
 ./scripts/register-public-client.sh <tenant_id> [admin_bearer_token]
 ```
+
+Without `admin_bearer_token` the script signs you in as a platform admin (email,
+password, and a two-step code if your account has one) through `POST /admin/login`.
+You can also create the client by hand in the console at
+`http://localhost:8080/console` (tenant → OAuth clients → New).
 
 Creates `client_type: "public"`, no secret, `require_pkce: true`, redirect
 `http://localhost:5176/`, and prints the values for `.env`.
@@ -41,7 +46,7 @@ npm run dev               # http://localhost:5176
 | Variable | Purpose |
 | --- | --- |
 | `VITE_GATEKEEPER_IDP_BASE_URL` | Identity Provider base URL (token + userinfo). |
-| `VITE_GATEKEEPER_AUTH_UI_BASE_URL` | Hosted login UI base URL. |
+| `VITE_GATEKEEPER_AUTH_UI_BASE_URL` | Optional. Only for a login UI on another origin; by default the identity provider serves it. |
 | `VITE_GATEKEEPER_TENANT_ID` | Tenant the client belongs to. |
 | `VITE_GATEKEEPER_CLIENT_ID` | This app's public client id. |
 | `VITE_GATEKEEPER_REDIRECT_URI` | Must exactly match the registered redirect_uri. |

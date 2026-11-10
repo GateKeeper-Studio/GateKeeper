@@ -9,6 +9,8 @@
 
 	import { getMyOrganization } from '$lib/services/admin/organizations';
 	import OrganizationForm from './organization-form.svelte';
+	import OrganizationAdminsCard from './organization-admins-card.svelte';
+	import OrganizationMfaPolicyCard from './organization-mfa-policy-card.svelte';
 
 	// Fires only when this section is first viewed (see AccountSection for the rationale).
 	const organizationQuery = createQuery(() => ({
@@ -55,6 +57,10 @@
 			<OrganizationForm {organization} />
 		</Card.Content>
 	</Card.Root>
+
+	<OrganizationAdminsCard />
+
+	<OrganizationMfaPolicyCard required={organization.requireAdminMfa} />
 
 	<Card.Root class="mt-6 max-w-[640px]">
 		<Card.Header>

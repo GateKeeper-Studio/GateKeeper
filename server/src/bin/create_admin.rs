@@ -2,21 +2,37 @@
 
 // CLI: create a platform-admin account.
 //
-//   cargo run --bin create_admin -- <email> <password> [organization_id]
+//   cargo run --bin create_admin -- <email> [organization_id]
 //
-// Hashes the password with Argon2id using the admin password pepper (ADMIN_PASSWORD_PEPPER, legacy JWT_SECRET) — the
-// SAME pepper the running API uses to verify admin logins — and inserts a row into
-// `admin_users`. This is how the first admin is bootstrapped (and how more are added
-// later). Requires DATABASE_URL + ADMIN_PASSWORD_PEPPER (or JWT_SECRET) in the environment / .env.
+// The password is read from the terminal (asked twice, not echoed) or, when stdin
+// is not a terminal, from the first line of stdin:
 //
-// Every admin belongs to an organization. Pass an organization_id as the third
-// argument to attach the admin to it; if omitted, a "Default Organization" is
-// found or created and used.
+//   printf '%s\n' "$ADMIN_PASSWORD" | cargo run --bin create_admin -- ops@acme.com
+//
+// It is never taken from the command line, where it would land in the shell history
+// and be visible to every user in `ps`. (The old `<email> <password> [org]` form is
+// still accepted, with a warning.) The password must meet the admin password policy
+// (12-128 characters).
+//
+// Hashes the password with Argon2id using the admin password pepper
+// (ADMIN_PASSWORD_PEPPER, legacy JWT_SECRET), the SAME pepper the running API uses
+// to verify admin sign-ins, and inserts a row into `admin_users`. This is how the
+// first admin is bootstrapped, and how more are added later. Requires DATABASE_URL
+// and ADMIN_PASSWORD_PEPPER (or JWT_SECRET) in the environment or .env.
+//
+// Every admin belongs to an organization. Pass an organization_id to attach the
+// admin to it; if omitted, a "Default Organization" is found or created and used.
+
+use std::io::{BufRead, IsTerminal};
 
 use uuid::Uuid;
 use web_api::{
+    application::shared::admin_password_policy::check_new_password,
     domain::{
-        entities::{admin_user::AdminUser, organization::Organization},
+        entities::{
+            admin_user::{AdminUser, normalize_email},
+            organization::Organization,
+        },
         repositories::{
             admin_user_repository::AdminUserRepository,
             organization_repository::OrganizationRepository,
@@ -36,14 +52,50 @@ use web_api::{
 };
 
 const DEFAULT_ORG_NAME: &str = "Default Organization";
+const USAGE: &str =
+    "usage: create_admin <email> [organization_id]   (password from the terminal or stdin)";
+
+fn fail(message: &str, code: i32) -> ! {
+    eprintln!("error: {message}");
+    std::process::exit(code);
+}
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let (Some(email), Some(password)) = (args.get(1), args.get(2)) else {
-        eprintln!("usage: create_admin <email> <password> [organization_id]");
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let Some(raw_email) = args.first() else {
+        eprintln!("{USAGE}");
         std::process::exit(2);
     };
+    let email = normalize_email(raw_email);
+    if email.len() > 128 || !email.contains('@') || email.starts_with('@') || email.ends_with('@') {
+        fail("the email address is not valid", 2);
+    }
+
+    // `<email> [org]`, or the legacy `<email> <password> [org]`: a second argument
+    // that is not a UUID is the old positional password.
+    let (inline_password, org_arg) = match args.get(1) {
+        Some(second) if Uuid::parse_str(second).is_err() => {
+            eprintln!(
+                "warning: passing the password as an argument exposes it in the shell history \
+                 and to other users via `ps`; omit it to be prompted, or pipe it on stdin"
+            );
+            (Some(second.clone()), args.get(2))
+        }
+        other => (None, other),
+    };
+    if args.len() > 3 {
+        eprintln!("{USAGE}");
+        std::process::exit(2);
+    }
+
+    let password = match inline_password {
+        Some(password) => password,
+        None => read_password(),
+    };
+    if let Err(e) = check_new_password(&password, &email) {
+        fail(&e.to_string(), 2);
+    }
 
     // AppConfig loads .env (dotenvy) and validates the environment.
     let config = AppConfig::from_env();
@@ -52,35 +104,27 @@ async fn main() {
     let repository = DbAdminUserRepository::new(pool);
 
     // Resolve the organization: explicit id, or find-or-create the default org.
-    let organization_id = match args.get(3) {
+    let organization_id = match org_arg {
         Some(raw) => {
-            let id = Uuid::parse_str(raw).unwrap_or_else(|_| {
-                eprintln!("error: organization_id must be a valid UUID");
-                std::process::exit(2);
-            });
+            let id = Uuid::parse_str(raw)
+                .unwrap_or_else(|_| fail("organization_id must be a valid UUID", 2));
             match org_repository.find_by_id(id).await {
                 Ok(Some(_)) => id,
-                Ok(None) => {
-                    eprintln!("error: organization {id} not found");
-                    std::process::exit(1);
-                }
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    std::process::exit(1);
-                }
+                Ok(None) => fail(&format!("organization {id} not found"), 1),
+                Err(e) => fail(&e.to_string(), 1),
             }
         }
         None => find_or_create_default_org(&org_repository).await,
     };
 
     let password_hash =
-        hash_password(password, &config.admin_password_pepper).expect("failed to hash password");
+        hash_password(&password, &config.admin_password_pepper).expect("failed to hash password");
     let admin = AdminUser::new(
         organization_id,
-        email.to_string(),
+        email.clone(),
         // Seed a display name from the email local part; the admin can change it later
         // from the account page.
-        name_from_email(email),
+        name_from_email(&email),
         password_hash,
         "argon2id".to_string(),
     );
@@ -91,10 +135,28 @@ async fn main() {
             eprintln!("# created platform admin {email} in organization {organization_id}");
             println!("{admin_id}");
         }
-        Err(e) => {
-            eprintln!("error: {e}");
-            std::process::exit(1);
+        Err(e) => fail(&e.to_string(), 1),
+    }
+}
+
+// From the terminal without echo (asked twice), or the first line of piped stdin.
+fn read_password() -> String {
+    if std::io::stdin().is_terminal() {
+        let first = rpassword::prompt_password("Password for the new admin: ")
+            .unwrap_or_else(|e| fail(&format!("cannot read the password: {e}"), 1));
+        let second = rpassword::prompt_password("Repeat the password: ")
+            .unwrap_or_else(|e| fail(&format!("cannot read the password: {e}"), 1));
+        if first != second {
+            fail("the passwords do not match", 2);
         }
+        first
+    } else {
+        let mut line = String::new();
+        std::io::stdin()
+            .lock()
+            .read_line(&mut line)
+            .unwrap_or_else(|e| fail(&format!("cannot read the password from stdin: {e}"), 1));
+        line.trim_end_matches(['\r', '\n']).to_string()
     }
 }
 
@@ -141,8 +203,7 @@ async fn find_or_create_default_org(repo: &DbOrganizationRepository) -> Uuid {
     );
     let id = org.id();
     if let Err(e) = repo.add(&org).await {
-        eprintln!("error creating default organization: {e}");
-        std::process::exit(1);
+        fail(&format!("cannot create the default organization: {e}"), 1);
     }
     id
 }

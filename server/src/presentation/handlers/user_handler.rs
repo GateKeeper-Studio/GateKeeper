@@ -10,8 +10,9 @@ use validator::Validate;
 
 use crate::{
     application::use_cases::tenant_user::{
-        create_tenant_user, delete_tenant_user_by_id, get_tenant_user_by_id, list_tenant_users,
-        update_tenant_user_by_id, update_tenant_user_custom_field_values,
+        create_tenant_user, delete_tenant_user_by_id, get_authentication_methods,
+        get_tenant_user_by_id, list_tenant_users, update_tenant_user_by_id,
+        update_tenant_user_custom_field_values,
     },
     domain::entities::audit_action::{
         USER_CREATED, USER_CUSTOM_FIELDS_UPDATED, USER_DELETED, USER_PROFILE_UPDATED,
@@ -100,6 +101,24 @@ pub async fn get_tenant_user_by_id(
     let query = get_tenant_user_by_id::query::Query { tenant_id, user_id };
     let response = state.users.get_tenant_user_by_id.execute(query).await?;
 
+    Ok((StatusCode::OK, Json(response)))
+}
+
+// GET /tenants/:tenant_id/users/:user_id/authentication-methods
+//
+// How the user can sign in: password, passkey-only sign-in, email links, linked
+// social accounts and second factors. No secret is included.
+pub async fn get_tenant_user_authentication_methods(
+    State(state): State<AppState>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Path((_, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let query = get_authentication_methods::query::Query { tenant_id, user_id };
+    let response = state
+        .users
+        .get_authentication_methods
+        .execute(query)
+        .await?;
     Ok((StatusCode::OK, Json(response)))
 }
 

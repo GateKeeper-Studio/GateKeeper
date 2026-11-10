@@ -16,12 +16,26 @@ type LoginResponse = { admin: AdminIdentity };
  * tokens into localStorage, where any injected script could read them — and the
  * refresh token in particular turned a single XSS into indefinite account access.
  */
-export async function adminLogin(email: string, password: string): Promise<Result<LoginResponse>> {
+// Error values the server uses for the second step of sign-in.
+export const MFA_REQUIRED = 'mfa_required';
+export const INVALID_MFA_CODE = 'invalid_mfa_code';
+
+/**
+ * An admin with two-step verification gets `401 {error: "mfa_required"}` for a right
+ * password without a code (never for a wrong password), and signs in by posting the
+ * same email and password again with `mfaCode`: a code from the authenticator app or
+ * a recovery code.
+ */
+export async function adminLogin(
+	email: string,
+	password: string,
+	mfaCode?: string
+): Promise<Result<LoginResponse>> {
 	try {
 		const res = await fetch('/session', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ email, password }),
+			body: JSON.stringify({ email, password, mfaCode: mfaCode || undefined }),
 			credentials: 'same-origin'
 		});
 

@@ -29,6 +29,13 @@ npm run build:watch         # rebuilds build/ on every save (~15-20 s)
 cd ../server && cargo run   # serves http://localhost:8080/console
 ```
 
+`npm run build` (and every watch rebuild) also writes `build/_app/route-preloads.json`
+(`scripts/route-preloads.mjs`): the modules each route needs. The server turns it into
+`<link rel="modulepreload">` tags on the page, so a route's modules load in parallel
+instead of one import wave at a time. `app.html` paints a skeleton (a sign-in card on
+hosted login pages) before any JavaScript runs; `routes/+layout.svelte` removes it once
+the app is on screen.
+
 Save a file, wait for `[build:watch] build/ updated`, refresh the browser. Each rebuild is a
 fresh `vite build` into a temporary directory, swapped into `build/` only when it
 succeeded (`scripts/build-watch.mjs`), and the server picks the new build up by itself; it
@@ -54,6 +61,17 @@ The browser never holds an identity-provider token.
   check and rate limit as `/admin/login`), opens a console session and returns the admin's
   display identity plus an `HttpOnly; SameSite=Strict` cookie (`__Host-gk_admin`, `Secure`,
   over HTTPS). The session row holds only the hash of the cookie value.
+- Two-step verification: when the admin has an authenticator app, `/session` answers
+  `401 {"error":"mfa_required"}` to a right password without a code, and the sign-in page
+  asks for the code (or a recovery code) and posts the same credentials again with
+  `mfaCode`. Admins turn it on in Settings → Account (QR code rendered in the browser by
+  `qrcode`; the seed and recovery codes are shown once and dropped when the dialog closes).
+  Changing the sign-in email, deactivating, and every two-step change ask for the current
+  password.
+- Settings → Organization lists the organization's admins (invite by one-time link,
+  deactivate/reactivate, reset a lost second factor) and can require two-step
+  verification of everyone. An admin who must still set it up is sent to `/login/two-step`
+  by the console guard. The invitation link opens `/login/invite#<token>`.
 - Admin API calls go to `/api/<admin path>` (client: `src/lib/services/base/admin-api.ts`).
   The server checks that the request is same-origin, resolves the cookie, mints a
   short-lived admin access token and hands the request to its unchanged admin API. There

@@ -103,17 +103,48 @@ impl AdminWebSessionRepository for DbAdminWebSessionRepository {
         Ok(())
     }
 
-    async fn delete_by_token_hash(&self, token_hash: &str) -> Result<(), DomainError> {
-        run!(
+    async fn delete_by_token_hash(&self, token_hash: &str) -> Result<Option<Uuid>, DomainError> {
+        let row = run!(
             self.executor,
             sqlx::query!(
-                "DELETE FROM admin_web_sessions WHERE token_hash = $1",
+                "DELETE FROM admin_web_sessions WHERE token_hash = $1 RETURNING admin_id",
                 token_hash
+            ),
+            fetch_optional
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(row.map(|r| r.admin_id))
+    }
+
+    async fn delete_all_for_admin(
+        &self,
+        admin_id: Uuid,
+        keep: Option<Uuid>,
+    ) -> Result<u64, DomainError> {
+        let result = run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          DELETE FROM admin_web_sessions
+          WHERE admin_id = $1 AND ($2::uuid IS NULL OR id <> $2)
+        "#,
+                admin_id,
+                keep,
             ),
             execute
         )
         .map_err(map_sqlx_error)?;
-        Ok(())
+        Ok(result.rows_affected())
+    }
+
+    async fn delete_expired(&self, now: DateTime<Utc>) -> Result<u64, DomainError> {
+        let result = run!(
+            self.executor,
+            sqlx::query!("DELETE FROM admin_web_sessions WHERE expires_at <= $1", now),
+            execute
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(result.rows_affected())
     }
 }
 

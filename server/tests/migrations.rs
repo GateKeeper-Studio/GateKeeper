@@ -54,10 +54,15 @@ async fn a_fresh_database_is_created_by_the_baseline_alone(pool: PgPool) {
         adopt_pre_squash_history(&pool).await,
         Ok(Adoption::NotNeeded)
     );
-    MIGRATOR.run(&pool).await.unwrap();
-
-    assert_eq!(history(&pool).await[0], BASELINE_VERSION);
+    MIGRATOR.run_to(BASELINE_VERSION, &pool).await.unwrap();
+    assert_eq!(history(&pool).await, [BASELINE_VERSION]);
     assert_eq!(table_count(&pool).await, 42);
+
+    // Every later migration applies on top (new tables: `admin_mfa`,
+    // `admin_invitations`).
+    MIGRATOR.run(&pool).await.unwrap();
+    assert_eq!(history(&pool).await[0], BASELINE_VERSION);
+    assert_eq!(table_count(&pool).await, 44);
     // The append-only audit trigger came with it.
     let triggers: i64 = sqlx::query_scalar(
         "SELECT count(*) FROM pg_trigger WHERE tgname = 'audit_events_append_only'",

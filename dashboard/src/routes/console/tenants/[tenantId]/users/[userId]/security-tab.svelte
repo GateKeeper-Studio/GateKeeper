@@ -6,6 +6,7 @@
 
 	import { listLoginEvents, type LoginEventView } from '$lib/services/admin/security';
 	import SessionsSection from './sessions-section.svelte';
+	import AuthenticationMethodsSection from './authentication-methods-section.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { tenantId, userId }: { tenantId: string; userId: string } = $props();
@@ -45,7 +46,11 @@
 	}
 </script>
 
-<SessionsSection {tenantId} {userId} />
+<AuthenticationMethodsSection {tenantId} {userId} />
+
+<div class="mt-8">
+	<SessionsSection {tenantId} {userId} />
+</div>
 
 <div class="mt-8 space-y-1">
 	<h2 class="text-lg font-semibold">{m.users_security_activity_title()}</h2>

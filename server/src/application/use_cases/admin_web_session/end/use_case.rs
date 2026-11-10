@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use uuid::Uuid;
+
 use crate::{
     application::use_cases::admin_web_session::end::command::Command,
     domain::{
@@ -22,7 +24,8 @@ impl UseCase {
         Self { session_repository }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
+    // Returns the admin the session belonged to, if any, for the audit log.
+    pub async fn execute(&self, command: Command) -> Result<Option<Uuid>, DomainError> {
         self.session_repository
             .delete_by_token_hash(&sha256_hex(&command.session_token))
             .await

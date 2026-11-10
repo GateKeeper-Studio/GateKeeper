@@ -133,6 +133,7 @@ tower_governor = { version = "0.8", default-features = false, features = ["axum"
 # bind address, timeouts and TLS termination as everything else.
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.17", default-features = false }
+rpassword = "7"
 
 [features]
 # Repository tests against a real Postgres (tests/db_*.rs). Off by default so

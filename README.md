@@ -13,7 +13,7 @@ frameworks, and one example app for each SDK.
 | Path | What it is | README |
 |---|---|---|
 | [`server/`](server/) | The identity provider: OAuth 2.1 / OIDC endpoints, admin API, MFA, webhooks. Rust (Axum, SQLx, PostgreSQL). | [server/README.md](server/README.md) |
-| [`dashboard/`](dashboard/) | Admin dashboard **and** the hosted login UI that users sign in on. SvelteKit, runs as a backend-for-frontend. | [dashboard/README.md](dashboard/README.md) |
+| [`dashboard/`](dashboard/) | Admin console **and** the hosted login UI that users sign in on. A static SvelteKit app that the server serves; Node only builds it. | [dashboard/README.md](dashboard/README.md) |
 | [`website/`](website/) | Public landing page and documentation. SvelteKit. | [website/README.md](website/README.md) |
 | [`packages/`](packages/) | `@gatekeeper/*` client SDKs: two framework-agnostic cores plus React, Vue, Angular, AngularJS, SvelteKit, Next.js and Remix bindings. | [packages/README.md](packages/README.md) |
 | [`frontends/`](frontends/) | Example apps, one per SDK (public SPAs and confidential BFFs). | [frontends/README.md](frontends/README.md) |
@@ -21,54 +21,54 @@ frameworks, and one example app for each SDK.
 ## How the pieces fit
 
 ```
-                 ┌──────────────────────────┐
-  browser ──────▶│ dashboard (5173)         │  admin UI + hosted login pages
-                 │ SvelteKit BFF            │──┐
-                 └──────────────────────────┘  │  server-to-server
-                                               ▼
-  your app ─────────────────────────────▶ ┌──────────────────────────┐
-  (SDK from packages/,                     │ server (8080)            │◀── PostgreSQL
-   e.g. frontends/react)                   │ OAuth 2.1 / OIDC IdP     │
-                                           │ admin API · /me API      │──▶ webhooks, SMTP
-                                           └──────────────────────────┘
+                                           ┌───────────────────────────────┐
+  browser ───── /console, /auth/* ───────▶ │ server (8080)                 │◀── PostgreSQL
+  (admin console, hosted login UI)         │ OAuth 2.1 / OIDC IdP          │
+                                           │ admin API · /me API           │──▶ webhooks, SMTP
+  your app ──── /oauth/*, /me ───────────▶ │ serves dashboard/build        │
+  (SDK from packages/,                     │   (UI_DIR) on the same origin │
+   e.g. frontends/react)                   └───────────────────────────────┘
                                              metrics on :9090 (internal)
 ```
 
 - An application signs a user in with the **Authorization Code flow + PKCE**. The
-  browser goes to the hosted login UI (dashboard), and the app exchanges the code for
-  tokens at `server`.
+  browser goes to the hosted login UI at `{server}/auth/{client_id}/sign-in`, and the app
+  exchanges the code for tokens at the same server.
 - **Public clients** (SPAs) hold tokens in the browser and have no client secret.
   **Confidential clients** (BFFs) keep the tokens on their server and authenticate with
   a client secret.
-- The dashboard never gives a token to the browser: it keeps the admin's tokens on its
-  own server behind an httpOnly cookie.
+- The admin console never gives a token to the browser: it signs in with an httpOnly
+  session cookie, and the server turns it into a short-lived token per request.
 
 ## Quick start (local development)
 
 Requirements: Rust 1.96 (pinned in `server/rust-toolchain.toml`), Node.js 22+ (the
-dashboard uses Vite 8), Docker.
+dashboard uses Vite 8), Docker, and `sqlx-cli` (`cargo install sqlx-cli`).
+
+There is one server to run: the identity provider serves the API, the admin console
+and the hosted login UI on `http://localhost:8080`. The dashboard is a static app it
+serves from `UI_DIR`; Node is only needed to build it.
 
 ```bash
 # 1. Database
 docker compose -f server/docker-compose.yml up -d gatekeeper-db-rust
 
-# 2. Identity provider (http://localhost:8080)
-cd server
-cp .env.example .env            # APP_ENV=development enables local defaults
-set -a && source .env && set +a
-cargo run                       # applies migrations on startup
-cargo run --bin create_admin -- admin@example.com 'a-strong-password'
-cd ..
+# 2. Build the dashboard (admin console + hosted login UI)
+(cd dashboard && npm install && npm run build)
 
-# 3. Dashboard + hosted login UI (http://localhost:5173)
-cd dashboard
-cp .env.example .env
-npm install
-npm run dev
+# 3. Identity provider (http://localhost:8080)
+cd server
+cp .env.example .env            # APP_ENV=development enables local defaults; UI_DIR=../dashboard/build
+set -a && source .env && set +a
+sqlx migrate run                # the build checks every SQL query against this schema
+cargo run                       # serves the API, /console and /auth/* (also migrates at startup)
+cargo run --bin create_admin -- admin@example.com   # asks for the password (12+ characters)
 ```
 
-Sign in to the dashboard with the admin you created, create a tenant and an OAuth
-client, then run one of the [example apps](frontends/README.md) against it.
+Sign in at `http://localhost:8080/console` with the admin you created, create a tenant
+and an OAuth client, then run one of the [example apps](frontends/README.md) against it.
+During dashboard work, `npm run build:watch` in `dashboard/` rebuilds on save and the
+server picks the new build up without a restart.
 
 ## Tokens and scopes
 

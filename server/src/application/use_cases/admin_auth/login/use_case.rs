@@ -2,88 +2,77 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 
-use crate::application::ports::password_hasher::PasswordHasher;
-use crate::application::shared::{
-    admin_credentials::verify_admin_credentials, token_policy::REFRESH_TOKEN_TTL_DAYS,
-};
 use crate::{
     application::{
         ports::admin_token_issuer::AdminTokenIssuer,
-        use_cases::admin_auth::login::{command::Command, response::Response},
+        services::admin_authenticator::{AdminAuthenticator, AdminSignIn},
+        shared::token_policy::REFRESH_TOKEN_TTL_DAYS,
+        use_cases::admin_auth::login::{
+            command::Command,
+            response::{Outcome, Response},
+        },
     },
     domain::{
-        entities::admin_refresh_token::AdminRefreshToken,
-        errors::DomainError,
-        repositories::{
-            admin_refresh_token_repository::AdminRefreshTokenRepository,
-            admin_user_repository::AdminUserRepository,
-        },
+        entities::admin_refresh_token::AdminRefreshToken, errors::DomainError,
+        repositories::admin_refresh_token_repository::AdminRefreshTokenRepository,
     },
     utils::oauth_crypto::{generate_opaque_token, sha256_hex},
 };
 
-// How long an admin refresh token stays valid. The access token is short-lived;
-// the refresh token lets the dashboard renew it silently for up to this window
-// before the operator must sign in again.
-
-// Verify an admin's email + password and, on success, mint an admin access token
-// plus an opaque refresh token (stored hashed, starting its own rotation family).
-// Failures return a single generic error (`AuthenticationError`) so the response
-// cannot distinguish "unknown email" from "wrong password" from "deactivated
-// account" — no user enumeration.
+// Bearer-token sign-in for API clients (`POST /admin/login`). Verifies the admin
+// through `AdminAuthenticator` (generic failures, per-account lock, second factor)
+// and, on success, mints an admin access token plus an opaque refresh token (stored
+// hashed, starting its own rotation family). The console does not use this: it
+// signs in with a cookie session (`admin_web_session::start`).
 //
-// BRUTE-FORCE PROTECTION: this endpoint is covered by the strict per-IP rate-limit
-// bucket in `routes.rs` (10 burst, then one attempt every 2s), NOT by the adaptive
-// risk engine that guards tenant logins.
-//
-// The risk engine is tenant-scoped by construction — `RiskEvaluationInput.tenant_id`
-// is non-null and both `login_events` and `security_blocks` carry a NOT NULL foreign
-// key to `tenants` — while a platform admin belongs to an organization and has no
-// tenant. Extending it here means either a reserved sentinel tenant row or making
-// `tenant_id` nullable across those tables, their repositories and every velocity
-// query. That is a real change, not a wiring change, so it is tracked separately
-// rather than bolted on here.
+// BRUTE-FORCE PROTECTION: the strict per-IP rate-limit bucket in `routes.rs`, plus
+// the per-account lock in the authenticator. The adaptive risk engine is not
+// involved: it is tenant-scoped by construction (`login_events` and
+// `security_blocks` carry a NOT NULL tenant), and a platform admin has no tenant.
 pub struct UseCase {
-    admin_repository: Arc<dyn AdminUserRepository>,
+    authenticator: Arc<AdminAuthenticator>,
     refresh_token_repository: Arc<dyn AdminRefreshTokenRepository>,
     token_issuer: Arc<dyn AdminTokenIssuer>,
-    // Server-wide Argon2 pepper, matching what `create_admin` hashed with.
-    password_pepper: String,
-    password_hasher: Arc<dyn PasswordHasher>,
 }
 
 impl UseCase {
     pub fn new(
-        admin_repository: Arc<dyn AdminUserRepository>,
+        authenticator: Arc<AdminAuthenticator>,
         refresh_token_repository: Arc<dyn AdminRefreshTokenRepository>,
         token_issuer: Arc<dyn AdminTokenIssuer>,
-        password_pepper: String,
-        password_hasher: Arc<dyn PasswordHasher>,
     ) -> Self {
         Self {
-            admin_repository,
+            authenticator,
             refresh_token_repository,
             token_issuer,
-            password_pepper,
-            password_hasher,
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<Response, DomainError> {
-        let admin = verify_admin_credentials(
-            self.admin_repository.as_ref(),
-            self.password_hasher.as_ref(),
-            &self.password_pepper,
-            &command.email,
-            &command.password,
-        )
-        .await?;
+    pub async fn execute(&self, command: Command) -> Result<Outcome, DomainError> {
+        let admin = match self
+            .authenticator
+            .sign_in(
+                &command.email,
+                &command.password,
+                command.mfa_code.as_deref(),
+            )
+            .await?
+        {
+            AdminSignIn::Authenticated(admin) => admin,
+            AdminSignIn::SecondFactorRequired(admin) => {
+                return Ok(Outcome::SecondFactorRequired {
+                    admin_id: admin.id(),
+                });
+            }
+        };
 
+        let setup_required = self.authenticator.mfa_setup_required(&admin).await?;
         let issued = self.token_issuer.issue(
             admin.id(),
             admin.email(),
             admin.name(),
             admin.organization_id(),
+            setup_required,
         )?;
 
         // Mint and persist an opaque refresh token (hashed) opening a new family.
@@ -95,11 +84,14 @@ impl UseCase {
         );
         self.refresh_token_repository.add(&refresh_token).await?;
 
-        Ok(Response {
-            access_token: issued.token,
-            token_type: "Bearer".to_string(),
-            expires_in: issued.expires_in,
-            refresh_token: raw_refresh,
+        Ok(Outcome::SignedIn {
+            admin_id: admin.id(),
+            response: Response {
+                access_token: issued.token,
+                token_type: "Bearer".to_string(),
+                expires_in: issued.expires_in,
+                refresh_token: raw_refresh,
+            },
         })
     }
 }

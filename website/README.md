@@ -10,8 +10,9 @@ npm install
 npm run dev
 ```
 
-The development server uses `http://localhost:5174`; run the dashboard separately on
-`http://localhost:5173`.
+The development server uses `http://localhost:5174`. Its sign-in links go to the
+dashboard, which the identity provider serves at `http://localhost:8080`
+(`PUBLIC_DASHBOARD_BASE_URL`).
 
 ## Validation
 

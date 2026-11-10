@@ -185,7 +185,9 @@ pub struct GeoIpConfig {
 }
 
 const DEFAULT_ISSUER: &str = "http://localhost:8080";
-const DEFAULT_AUTH_UI_BASE_URL: &str = "http://localhost:5173";
+// The server serves its own login UI (UI_DIR), so in development the login UI is on
+// the issuer's origin. Only the dashboard's hot-reload mode (`npm run dev`) differs.
+const DEFAULT_AUTH_UI_BASE_URL: &str = "http://localhost:8080";
 const DEFAULT_METRICS_PORT: u16 = 9090;
 
 impl AppConfig {
@@ -576,7 +578,7 @@ fn production_config_problems(get: &dyn Fn(&str) -> Option<String>) -> Vec<Strin
     }
 
     // WebAuthn needs an explicit origin; it otherwise inherits AUTH_UI_BASE_URL and
-    // ultimately http://localhost:5173, which silently breaks every passkey ceremony.
+    // ultimately the localhost default, which silently breaks every passkey ceremony.
     if missing("WEBAUTHN_RP_ORIGIN") && missing("AUTH_UI_BASE_URL") {
         problems.push(
             "WEBAUTHN_RP_ORIGIN (or AUTH_UI_BASE_URL) must be set — the WebAuthn relying-party \

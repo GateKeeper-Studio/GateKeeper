@@ -1,5 +1,6 @@
 pub mod admin_auth_handler;
 pub mod admin_me_handler;
+pub mod admin_organization_handler;
 pub mod audit_handler;
 pub mod authentication_handler;
 pub mod compliance_handler;

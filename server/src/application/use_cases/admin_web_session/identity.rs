@@ -14,6 +14,9 @@ pub struct AdminIdentity {
     pub name: String,
     // 1–2 letter avatar fallback derived from `name`.
     pub initials: String,
+    // The organization requires two-step verification and this admin has not set it
+    // up: the console shows only the enrollment screen until they do.
+    pub mfa_setup_required: bool,
 }
 
 impl AdminIdentity {
@@ -28,7 +31,13 @@ impl AdminIdentity {
             organization_id: admin.organization_id().to_string(),
             initials: initials_from_name(&name),
             name,
+            mfa_setup_required: false,
         }
+    }
+
+    pub fn with_mfa_setup_required(mut self, required: bool) -> Self {
+        self.mfa_setup_required = required;
+        self
     }
 }
 

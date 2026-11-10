@@ -77,6 +77,20 @@ impl SocialIdentityRepository for InMemorySocialIdentityRepository {
         Ok(())
     }
 
+    async fn find_by_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<SocialIdentity>, DomainError> {
+        let mut found: Vec<_> = self
+            .snapshot()
+            .into_iter()
+            .filter(|i| i.user_id() == user_id && i.tenant_id() == tenant_id)
+            .collect();
+        found.sort_by_key(|i| i.created_at());
+        Ok(found)
+    }
+
     async fn find_providers_for_users(
         &self,
         user_ids: &[Uuid],

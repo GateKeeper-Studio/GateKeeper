@@ -3,7 +3,9 @@ use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use crate::{
     application::use_cases::admin_auth::{login, logout, refresh},
     domain::entities::{
-        audit_action::{ADMIN_LOGIN_FAILURE, ADMIN_LOGIN_SUCCESS, ADMIN_LOGOUT},
+        audit_action::{
+            ADMIN_LOGIN_FAILURE, ADMIN_LOGIN_MFA_REQUIRED, ADMIN_LOGIN_SUCCESS, ADMIN_LOGOUT,
+        },
         audit_event::{ActorType, AuditEvent, Outcome},
     },
     presentation::{
@@ -15,41 +17,53 @@ use crate::{
 
 // POST /admin/login
 //
-// Platform-admin sign-in. Verifies the admin's email + password and returns a
-// short-lived HS256 bearer token the dashboard stores and replays on every admin
-// API call. Public route (no middleware): this is how an admin obtains a token in
-// the first place. Both success and failure are audited (brute-force visibility).
+// Platform-admin sign-in for API clients. Verifies the email + password (and the
+// second factor, `mfa_code`, when the admin has one) and returns a short-lived
+// HS256 bearer token plus a refresh token. Public route under the strict per-IP
+// rate limit. An admin with a second factor who sends no code gets
+// 401 `{"error":"mfa_required"}` and repeats the request with `mfa_code`.
+// Success, failure and the code prompt are all audited (brute-force visibility).
 pub async fn login(
     State(state): State<AppState>,
     ctx: RequestContext,
     AppJson(payload): AppJson<login::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    // Don't store the submitted email in metadata on failure (PII minimization); the
-    // IP/User-Agent in the request context is enough for brute-force detection.
+    // Failures are not attributed to an account and do not store the submitted
+    // email (PII minimization); the IP and User-Agent are enough to see an attack.
+    let audit = |action: &'static str, actor: Option<uuid::Uuid>, outcome: Outcome| {
+        AuditEvent::new(None, ActorType::Admin, actor, action, outcome)
+            .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone())
+    };
 
     match state.admin.admin_login.execute(payload).await {
-        Ok(response) => {
-            let event = AuditEvent::new(
-                None,
-                ActorType::Admin,
-                None,
-                ADMIN_LOGIN_SUCCESS,
-                Outcome::Success,
+        Ok(login::response::Outcome::SignedIn { admin_id, response }) => {
+            let _ = state
+                .audit_logger
+                .record(audit(ADMIN_LOGIN_SUCCESS, Some(admin_id), Outcome::Success))
+                .await;
+            Ok((
+                StatusCode::OK,
+                [(axum::http::header::CACHE_CONTROL, "no-store")],
+                Json(response),
             )
-            .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
-            let _ = state.audit_logger.record(event).await;
-            Ok((StatusCode::OK, Json(response)))
+                .into_response())
+        }
+        Ok(login::response::Outcome::SecondFactorRequired { admin_id }) => {
+            let _ = state
+                .audit_logger
+                .record(audit(
+                    ADMIN_LOGIN_MFA_REQUIRED,
+                    Some(admin_id),
+                    Outcome::Success,
+                ))
+                .await;
+            Err(ApiError::Unauthorized("mfa_required".to_string()))
         }
         Err(err) => {
-            let event = AuditEvent::new(
-                None,
-                ActorType::Admin,
-                None,
-                ADMIN_LOGIN_FAILURE,
-                Outcome::Failure,
-            )
-            .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
-            let _ = state.audit_logger.record(event).await;
+            let _ = state
+                .audit_logger
+                .record(audit(ADMIN_LOGIN_FAILURE, None, Outcome::Failure))
+                .await;
             Err(err.into())
         }
     }
@@ -79,10 +93,16 @@ pub async fn logout(
     ctx: RequestContext,
     AppJson(payload): AppJson<logout::command::Command>,
 ) -> Result<impl IntoResponse, ApiError> {
-    state.admin.admin_logout.execute(payload).await?;
+    let admin_id = state.admin.admin_logout.execute(payload).await?;
 
-    let event = AuditEvent::new(None, ActorType::Admin, None, ADMIN_LOGOUT, Outcome::Success)
-        .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
+    let event = AuditEvent::new(
+        None,
+        ActorType::Admin,
+        admin_id,
+        ADMIN_LOGOUT,
+        Outcome::Success,
+    )
+    .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
     let _ = state.audit_logger.record(event).await;
 
     Ok(StatusCode::NO_CONTENT)

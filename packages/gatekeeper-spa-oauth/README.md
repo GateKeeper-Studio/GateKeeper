@@ -23,7 +23,6 @@ import { createGateKeeperSpaClient } from '@gatekeeper/spa-oauth';
 
 const gatekeeper = createGateKeeperSpaClient({
   idpBaseUrl: 'http://localhost:8080',
-  authUiBaseUrl: 'http://localhost:5173',
   tenantId: '<tenant-uuid>',
   clientId: '<public-client-id>',
   redirectUri: 'http://localhost:5175/',
@@ -51,7 +50,7 @@ gatekeeper.signOut();
 | Option | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `idpBaseUrl` | yes | — | IdP base URL (token + userinfo). |
-| `authUiBaseUrl` | yes | — | Hosted login UI base URL. |
+| `authUiBaseUrl` | no | `idpBaseUrl` | Where the hosted login UI lives. The identity provider serves it, so set this only when it runs on another origin. |
 | `tenantId` | yes | — | Tenant the public client belongs to. |
 | `clientId` | yes | — | Registered **public** client id. |
 | `redirectUri` | yes | `${location.origin}/` | Must exactly match a registered redirect_uri. |

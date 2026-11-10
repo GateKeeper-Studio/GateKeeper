@@ -9,14 +9,17 @@ export type OrganizationView = {
 	name: string;
 	description: string | null;
 	isActive: boolean;
+	/** Every admin must use two-step verification. */
+	requireAdminMfa: boolean;
 	createdAt: string;
 	updatedAt: string | null;
 };
 
+// Whether the organization is active is not editable here: suspending it would stop
+// every one of its admins from signing in, so the server refuses it from the console.
 export type OrganizationInput = {
 	name: string;
 	description: string | null;
-	isActive: boolean;
 };
 
 // GET /admin/me/organization — the signed-in admin's own organization.
@@ -38,8 +41,7 @@ export async function updateMyOrganization(
 	try {
 		const data = await api.put<OrganizationView>('/admin/me/organization', {
 			name: input.name,
-			description: input.description,
-			is_active: input.isActive
+			description: input.description
 		});
 		return [data, null];
 	} catch (error) {

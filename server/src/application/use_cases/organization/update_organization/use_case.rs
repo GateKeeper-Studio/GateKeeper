@@ -35,7 +35,19 @@ impl UseCase {
                 ))
             })?;
 
-        organization.update(command.name, command.description, command.is_active);
+        let is_active = match command.is_active {
+            Some(requested) if requested != organization.is_active() => {
+                if !matches!(actor, Actor::System) {
+                    return Err(DomainError::AccessDenied(
+                        "an organization cannot be suspended or reactivated by its own admins"
+                            .to_string(),
+                    ));
+                }
+                requested
+            }
+            _ => organization.is_active(),
+        };
+        organization.update(command.name, command.description, is_active);
 
         uow.organization_repository().update(&organization).await?;
         uow.commit().await?;

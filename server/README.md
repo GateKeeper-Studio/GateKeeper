@@ -26,11 +26,17 @@ docker compose up -d gatekeeper-db-rust      # PostgreSQL on localhost:5432
 cp .env.example .env                         # APP_ENV=development: local defaults
 set -a && source .env && set +a
 cargo run                                    # API on :8080, metrics on :9090
-cargo run --bin create_admin -- admin@example.com 'a-strong-password'
+cargo run --bin create_admin -- admin@example.com   # asks for the password (12+ characters)
 ```
 
 The server applies pending migrations at startup. Check it with
 `curl localhost:8080/ready` and `curl localhost:8080/.well-known/openid-configuration`.
+
+The build checks every SQL query against `DATABASE_URL`, so the database must already
+have the newest migrations: run `sqlx migrate run` before building. A database created
+before the migrations were squashed cannot be migrated by the CLI; migrate it once with
+`SQLX_OFFLINE=true cargo run -- --migrate-only` (builds from the committed `.sqlx`
+cache), then build as usual.
 
 ## Commands
 
@@ -38,7 +44,7 @@ The server applies pending migrations at startup. Check it with
 |---|---|
 | `cargo run` | Start the API (`PORT`, default 8080). |
 | `cargo run -- --migrate-only` | Deploy job: apply migrations, re-seal secrets, exit. |
-| `cargo run --bin create_admin -- <email> <password> [organization_id]` | Create a platform admin. |
+| `cargo run --bin create_admin -- <email> [organization_id]` | Create a platform admin (password from the prompt or stdin). |
 | `cargo run --bin repair_encrypted_secrets [-- --apply \| --reseal]` | Report or repair secrets that the current key cannot read. |
 | `cargo test` | Unit tests (in-memory, no database at run time). |
 | `cargo test --features db-tests` | Repository tests against a real PostgreSQL (needs `CREATEDB`). |

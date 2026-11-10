@@ -120,3 +120,40 @@ export async function deleteTenantUser(tenantId: string, userId: string): Promis
 		return [error as ApiError];
 	}
 }
+
+// How a user can sign in, as the IdP reports it to an administrator. Account-level
+// facts: whether an app offers a method is that OAuth client's own setting. No
+// secret is included (no password hash, TOTP seed or passkey key).
+export type UserAuthenticationMethods = {
+	emailVerified: boolean;
+	password: { set: boolean; mustChange: boolean; changedAt: string | null };
+	/** No password, a verified email and at least one passkey: signs in with the passkey alone. */
+	passkeySignIn: boolean;
+	/** A sign-in link by email can reach this account (its email is verified). */
+	magicLink: boolean;
+	socialAccounts: { provider: string; email: string | null; linkedAt: string }[];
+	secondFactors: {
+		/** "email" | "totp" | "webauthn"; null lets the login flow choose. */
+		preferredMethod: string | null;
+		emailCode: boolean;
+		authenticatorApp: { confirmed: boolean; enrolledAt: string; lastUsedAt: string | null } | null;
+		passkeys: { id: string; name: string | null; createdAt: string; lastUsedAt: string | null }[];
+	};
+};
+
+// GET /tenants/:tenantId/users/:userId/authentication-methods
+export async function getUserAuthenticationMethods(
+	tenantId: string,
+	userId: string,
+	fetchFn: typeof fetch = fetch
+): Promise<Result<UserAuthenticationMethods>> {
+	try {
+		const data = await api.get<UserAuthenticationMethods>(
+			`/tenants/${tenantId}/users/${userId}/authentication-methods`,
+			fetchFn
+		);
+		return [data, null];
+	} catch (error) {
+		return [null, error as ApiError];
+	}
+}

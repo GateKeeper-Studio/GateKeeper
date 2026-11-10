@@ -21,5 +21,9 @@ export const load: LayoutLoad = async ({ fetch, url }) => {
 		redirect(302, `/login${next}`);
 	}
 
+	// The organization requires two-step verification and this admin has none yet:
+	// the server refuses everything but enrollment, so go straight there.
+	if (admin.mfaSetupRequired) redirect(302, '/login/two-step');
+
 	return { admin };
 };

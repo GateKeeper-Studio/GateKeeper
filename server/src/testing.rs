@@ -1,3 +1,4 @@
+pub mod admin_fixture;
 pub mod fake_admin_token_issuer;
 pub mod fake_audit_logger;
 pub mod fake_email_renderer;

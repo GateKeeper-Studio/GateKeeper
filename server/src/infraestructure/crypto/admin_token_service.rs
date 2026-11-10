@@ -37,6 +37,10 @@ struct Claims {
     name: String,
     org: String,
     roles: Vec<String>,
+    // Present (true) only while the admin must set up two-step verification; such a
+    // token opens nothing but the enrollment endpoints.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    mfa_setup: bool,
     typ: String,
     iat: i64,
     exp: i64,
@@ -97,6 +101,7 @@ impl AdminTokenIssuer for AdminTokenService {
         email: &str,
         name: &str,
         organization_id: Uuid,
+        mfa_setup_required: bool,
     ) -> Result<IssuedAdminToken, DomainError> {
         let now = Utc::now().timestamp();
         let claims = Claims {
@@ -106,6 +111,7 @@ impl AdminTokenIssuer for AdminTokenService {
             name: name.to_string(),
             org: organization_id.to_string(),
             roles: vec!["admin".to_string()],
+            mfa_setup: mfa_setup_required,
             typ: ADMIN_TOKEN_TYPE.to_string(),
             iat: now,
             exp: now + TOKEN_TTL_SECONDS,
@@ -159,6 +165,7 @@ impl AdminTokenIssuer for AdminTokenService {
             email: decoded.claims.email,
             name: decoded.claims.name,
             organization_id,
+            mfa_setup_required: decoded.claims.mfa_setup,
         })
     }
 }
@@ -174,13 +181,14 @@ mod tests {
         let org = Uuid::now_v7();
 
         let issued = svc
-            .issue(id, "admin@example.com", "Ada Admin", org)
+            .issue(id, "admin@example.com", "Ada Admin", org, false)
             .unwrap();
         let claims = svc.verify(&issued.token).unwrap();
 
         assert_eq!(claims.admin_id, id);
         assert_eq!(claims.email, "admin@example.com");
         assert_eq!(claims.name, "Ada Admin");
+        assert!(!claims.mfa_setup_required);
         assert_eq!(claims.organization_id, org);
         assert!(issued.expires_in > 0);
     }
@@ -196,6 +204,7 @@ mod tests {
                 "admin@example.com",
                 "Ada Admin",
                 Uuid::now_v7(),
+                false,
             )
             .unwrap();
 
@@ -212,6 +221,7 @@ mod tests {
                 "admin@example.com",
                 "Ada Admin",
                 Uuid::now_v7(),
+                false,
             )
             .unwrap();
 
@@ -224,6 +234,7 @@ mod tests {
             "admin@example.com",
             "Ada Admin",
             Uuid::now_v7(),
+            false,
         )
         .unwrap()
         .token
@@ -261,6 +272,7 @@ mod tests {
             name: String::new(),
             org: Uuid::now_v7().to_string(),
             roles: vec!["admin".to_string()],
+            mfa_setup: false,
             typ: "refresh".to_string(),
             iat: now,
             exp: now + 60,
@@ -281,5 +293,27 @@ mod tests {
         let kid = key_id("super-secret-value");
         assert_eq!(kid.len(), 16);
         assert!(!kid.contains("super"));
+    }
+
+    #[test]
+    fn the_setup_required_flag_round_trips_and_is_absent_otherwise() {
+        let svc = AdminTokenService::new(
+            "a-test-signing-key-of-sufficient-length",
+            None,
+            "https://issuer.test".to_string(),
+        );
+        let restricted = svc
+            .issue(Uuid::now_v7(), "a@x.com", "A", Uuid::now_v7(), true)
+            .unwrap();
+        assert!(svc.verify(&restricted.token).unwrap().mfa_setup_required);
+
+        let normal = svc
+            .issue(Uuid::now_v7(), "a@x.com", "A", Uuid::now_v7(), false)
+            .unwrap();
+        let payload = normal.token.split('.').nth(1).unwrap();
+        let json =
+            base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, payload)
+                .unwrap();
+        assert!(!String::from_utf8(json).unwrap().contains("mfa_setup"));
     }
 }

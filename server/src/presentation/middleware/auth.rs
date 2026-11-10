@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{ConnectInfo, FromRequestParts, RawPathParams, Request, State},
-    http::{HeaderMap, StatusCode, header, request::Parts},
+    http::{HeaderMap, Method, StatusCode, header, request::Parts},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -58,6 +58,9 @@ pub struct AuthPrincipal {
     // organization action is scoped to it, so an admin can only ever manage its own
     // organization. `None` for end-user tokens and the synthetic `system()` principal.
     pub organization_id: Option<Uuid>,
+    // A platform admin whose organization requires two-step verification and who has
+    // not set it up: `require_admin` lets it reach only the enrollment endpoints.
+    pub mfa_setup_required: bool,
 }
 
 impl AuthPrincipal {
@@ -283,6 +286,7 @@ fn try_admin_token(token: &str, admin_issuer: &dyn AdminTokenIssuer) -> Option<A
         scopes: Vec::new(),
         is_platform_admin: true,
         organization_id: Some(claims.organization_id),
+        mfa_setup_required: claims.mfa_setup_required,
     })
 }
 
@@ -394,6 +398,7 @@ impl Authenticator {
             // A tenant-issued (asymmetric) token is pinned to its own tenant.
             is_platform_admin: false,
             organization_id: None,
+            mfa_setup_required: false,
         })
     }
 }
@@ -468,6 +473,23 @@ fn account_denial(principal: &AuthPrincipal) -> Option<Response> {
     None
 }
 
+// What an admin who must still set up two-step verification may call: read who they
+// are, and enroll. Everything else answers 403 `mfa_setup_required`. Paths are as the
+// admin router sees them, also when it is nested under `/api`.
+const MFA_SETUP_ALLOWED: &[(Method, &str)] = &[
+    (Method::GET, "/admin/me/profile"),
+    (Method::GET, "/admin/me/organization"),
+    (Method::GET, "/admin/me/mfa"),
+    (Method::POST, "/admin/me/mfa/totp"),
+    (Method::POST, "/admin/me/mfa/totp/confirm"),
+];
+
+fn mfa_setup_allows(method: &Method, path: &str) -> bool {
+    MFA_SETUP_ALLOWED
+        .iter()
+        .any(|(m, p)| m == method && *p == path.trim_end_matches('/'))
+}
+
 // Middleware: require a valid token, an admin role and (for tenant tokens) the
 // `admin` scope. Inserts `AuthPrincipal` into the request extensions for
 // downstream handlers + audit. Every denial is audited.
@@ -512,6 +534,17 @@ pub async fn require_admin(
         .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
         let _ = state.audit_logger.record(event).await;
         return denied;
+    }
+
+    if principal.mfa_setup_required && !mfa_setup_allows(request.method(), request.uri().path()) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "mfa_setup_required",
+                "error_description": "your organization requires two-step verification; set it up first",
+            })),
+        )
+            .into_response();
     }
 
     request.extensions_mut().insert(principal);
@@ -715,6 +748,7 @@ mod tests {
             scopes: vec![],
             is_platform_admin: false,
             organization_id: None,
+            mfa_setup_required: false,
         }
     }
 
@@ -934,5 +968,22 @@ mod tests {
         let ctx = RequestContext::from_request(&headers, Some(peer), &TrustedProxies::default());
         assert_eq!(ctx.ip_address.as_deref(), Some("203.0.113.5"));
         assert_eq!(ctx.user_agent.as_deref(), Some("curl/8"));
+    }
+
+    #[test]
+    fn an_admin_who_must_set_up_two_step_reaches_only_enrollment() {
+        assert!(mfa_setup_allows(&Method::GET, "/admin/me/mfa"));
+        assert!(mfa_setup_allows(
+            &Method::POST,
+            "/admin/me/mfa/totp/confirm"
+        ));
+        assert!(mfa_setup_allows(&Method::GET, "/admin/me/profile/"));
+        assert!(!mfa_setup_allows(&Method::PUT, "/admin/me/profile"));
+        assert!(!mfa_setup_allows(&Method::DELETE, "/admin/me/mfa"));
+        assert!(!mfa_setup_allows(&Method::GET, "/tenants"));
+        assert!(!mfa_setup_allows(
+            &Method::GET,
+            "/admin/organization/admins"
+        ));
     }
 }

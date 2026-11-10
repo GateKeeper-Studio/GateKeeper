@@ -8,6 +8,10 @@ pub mod admin_user;
 pub mod admin_refresh_token;
 // Browser sessions of the admin console when the server serves the dashboard.
 pub mod admin_web_session;
+// A platform admin's second factor (TOTP seed + recovery codes).
+pub mod admin_mfa;
+// An invitation for a colleague to become an admin of the organization.
+pub mod admin_invitation;
 
 pub mod custom_field_definition;
 pub mod group;

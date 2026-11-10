@@ -27,7 +27,10 @@ use axum::{Router, routing::post};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 
 use crate::presentation::{
-    handlers::{admin_auth_handler, authentication_handler, console_session_handler, mfa_handler},
+    handlers::{
+        admin_auth_handler, admin_organization_handler, authentication_handler,
+        console_session_handler, mfa_handler,
+    },
     middleware::client_ip::ClientIpKeyExtractor,
     routes::AppState,
 };
@@ -65,6 +68,16 @@ pub(super) fn router() -> Router<AppState> {
         // authenticates via the refresh token itself, so it sits OUTSIDE the admin
         // layer — and a guessable opaque token is worth rate-limiting too.
         .route("/admin/refresh", post(admin_auth_handler::refresh))
+        // An admin invitation link: look it up, then accept it with a new password.
+        // The link token is the credential, so both sit in this bucket.
+        .route(
+            "/admin/invitations/lookup",
+            post(admin_organization_handler::lookup_invitation),
+        )
+        .route(
+            "/admin/invitations/accept",
+            post(admin_organization_handler::accept_invitation),
+        )
         // ── Self-service authentication (registration + email confirmation) ───────
         .route(
             "/authentication/register",

@@ -16,6 +16,16 @@ pub trait AdminWebSessionRepository: Send + Sync {
         token_hash: &str,
     ) -> Result<Option<AdminWebSession>, DomainError>;
     async fn touch(&self, id: Uuid, at: DateTime<Utc>) -> Result<(), DomainError>;
-    // Idempotent: deleting an unknown hash is not an error.
-    async fn delete_by_token_hash(&self, token_hash: &str) -> Result<(), DomainError>;
+    // Idempotent: deleting an unknown hash is not an error. Returns the admin the
+    // session belonged to, if there was one, for the audit log.
+    async fn delete_by_token_hash(&self, token_hash: &str) -> Result<Option<Uuid>, DomainError>;
+    // Ends every console session of an admin, except `keep` (the session making the
+    // request, when there is one). Used after a password change and on deactivation.
+    async fn delete_all_for_admin(
+        &self,
+        admin_id: Uuid,
+        keep: Option<Uuid>,
+    ) -> Result<u64, DomainError>;
+    // Retention: hard-deletes sessions past their absolute lifetime.
+    async fn delete_expired(&self, now: DateTime<Utc>) -> Result<u64, DomainError>;
 }

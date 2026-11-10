@@ -4,8 +4,8 @@ An Angular (standalone-API) single-page app that signs in against the Rust Ident
 Provider in this repo using **Authorization Code + PKCE**, via `@gatekeeper/angular`.
 
 - Generates `code_verifier` / `code_challenge` (S256), `state`, and `nonce` in the browser.
-- Redirects to the hosted login UI, then exchanges the returned code at `/oauth/token`
-  **without a client secret**.
+- Redirects to the identity provider's hosted login UI, then exchanges the returned
+  code at `/oauth/token` **without a client secret**.
 - Stores tokens in `sessionStorage`, refreshes via `grant_type=refresh_token`, and
   calls `/oauth/userinfo`.
 
@@ -24,6 +24,11 @@ protection). Tokens live in the browser (XSS-exposed) — prefer a BFF (`sveltek
 ```bash
 ./scripts/register-public-client.sh <tenant_id> [admin_bearer_token]
 ```
+
+Without `admin_bearer_token` the script signs you in as a platform admin (email,
+password, and a two-step code if your account has one) through `POST /admin/login`.
+You can also create the client by hand in the console at
+`http://localhost:8080/console` (tenant → OAuth clients → New).
 
 Creates `client_type: "public"`, no secret, `require_pkce: true`, redirect
 `http://localhost:5177/`. Paste the printed `tenantId`/`clientId` into

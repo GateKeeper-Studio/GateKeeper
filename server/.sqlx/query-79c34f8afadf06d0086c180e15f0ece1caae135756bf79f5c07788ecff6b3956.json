@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE admin_mfa\n          SET recovery_code_hashes = $2, updated_at = $3\n          WHERE admin_id = $1 AND totp_confirmed_at IS NOT NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "TextArray",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "79c34f8afadf06d0086c180e15f0ece1caae135756bf79f5c07788ecff6b3956"
+}

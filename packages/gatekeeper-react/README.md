@@ -23,7 +23,6 @@ import { App } from './App';
 // between renders (the provider builds its client from it).
 const config: GateKeeperSpaConfig = {
   idpBaseUrl: 'http://localhost:8080',
-  authUiBaseUrl: 'http://localhost:5173',
   tenantId: import.meta.env.VITE_GATEKEEPER_TENANT_ID,
   clientId: import.meta.env.VITE_GATEKEEPER_CLIENT_ID,
   redirectUri: 'http://localhost:5175/'

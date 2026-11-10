@@ -16,6 +16,18 @@
 // and the entry page (with the CSP derived from it) is re-read whenever its file
 // changes. So `npm run build:watch` in the dashboard plus a browser refresh is the
 // whole UI development loop; no Node server is involved.
+//
+// First paint. The build is one `index.html` for every route, which on its own names
+// only the router's entry modules: the browser would discover a page's ~50 modules an
+// import wave at a time, a round trip per wave, with nothing on screen. So for each
+// request the entry page is completed with what server rendering used to provide
+// (`with_route_hints`):
+//   - `<link rel="modulepreload">` for every module the route needs, from the
+//     `_app/route-preloads.json` the dashboard build writes, so they load in parallel;
+//   - on hosted login pages, `data-boot="auth"`, which shows the sign-in skeleton
+//     that `app.html` paints before any JavaScript runs;
+//   - on hosted login pages, a preload of the client settings the page fetches first,
+//     so that request runs alongside the modules instead of after them.
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
@@ -26,12 +38,13 @@ use axum::{
     Router,
     body::{Body, Bytes},
     extract::Request,
-    http::{HeaderValue, StatusCode, Uri, header},
+    http::{HeaderMap, HeaderValue, StatusCode, Uri, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::get,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -39,6 +52,9 @@ use tower_http::services::{ServeDir, ServeFile};
 const SPA_ROUTES: &[&str] = &[
     "/",
     "/login",
+    // Accepting an admin invitation, and the two-step setup an organization can
+    // require before the console opens.
+    "/login/{*rest}",
     "/console",
     "/console/{*rest}",
     "/auth/{*rest}",
@@ -72,6 +88,186 @@ struct EntryPage {
     // iframe (`/auth/{client}/sign-in?preview=1`); only that page may be framed,
     // and only by this origin.
     csp_preview: HeaderValue,
+    // Per-route preload hints, read with the page (a rebuild changes both).
+    hints: Arc<RouteHints>,
+}
+
+// `_app/route-preloads.json`, written by `dashboard/scripts/route-preloads.mjs`.
+#[derive(Deserialize, Default)]
+struct RoutePreloadsFile {
+    #[serde(default)]
+    routes: Vec<RoutePreloadEntry>,
+    i18n: Option<I18nSettings>,
+}
+
+#[derive(Deserialize)]
+struct RoutePreloadEntry {
+    pattern: String,
+    #[serde(default)]
+    js: Vec<String>,
+    #[serde(default)]
+    css: Vec<String>,
+}
+
+// How the dashboard picks the locale a page renders in: its cookie, else the base
+// locale (the paraglide strategy `["cookie", "globalVariable", "baseLocale"]`).
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct I18nSettings {
+    locales: Vec<String>,
+    base_locale: String,
+    cookie_name: String,
+}
+
+#[derive(Default)]
+struct RouteHints {
+    // In the build's route order (most specific first), like SvelteKit's router.
+    routes: Vec<RouteHint>,
+    i18n: Option<I18nSettings>,
+}
+
+struct RouteHint {
+    segments: Vec<Segment>,
+    // The ready-made `<link>` tags for this route.
+    tags: String,
+}
+
+#[derive(Debug, PartialEq)]
+enum Segment {
+    Literal(String),
+    Param,
+    Rest,
+}
+
+// A SvelteKit route id as path segments: `(group)` segments do not appear in URLs,
+// `[...rest]` matches any number of segments, `[param]` exactly one.
+fn route_segments(pattern: &str) -> Vec<Segment> {
+    pattern
+        .split('/')
+        .filter(|s| !s.is_empty() && !(s.starts_with('(') && s.ends_with(')')))
+        .map(|s| {
+            if s.starts_with("[...") {
+                Segment::Rest
+            } else if s.starts_with('[') {
+                Segment::Param
+            } else {
+                Segment::Literal(s.to_string())
+            }
+        })
+        .collect()
+}
+
+fn route_matches(pattern: &[Segment], path: &[&str]) -> bool {
+    match (pattern.first(), path.first()) {
+        (None, None) => true,
+        (Some(Segment::Rest), _) => {
+            (0..=path.len()).any(|skip| route_matches(&pattern[1..], &path[skip..]))
+        }
+        (Some(Segment::Param), Some(_)) => route_matches(&pattern[1..], &path[1..]),
+        (Some(Segment::Literal(lit)), Some(seg)) if lit == seg => {
+            route_matches(&pattern[1..], &path[1..])
+        }
+        _ => false,
+    }
+}
+
+impl RouteHints {
+    // `html` is the entry page: modules it already preloads are not repeated.
+    fn read(root: &Path, html: &str) -> Self {
+        let path = root.join("_app").join("route-preloads.json");
+        let file: RoutePreloadsFile = match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+                tracing::warn!(
+                    "{}: unreadable ({e}); pages load without preload hints",
+                    path.display()
+                );
+                RoutePreloadsFile::default()
+            }),
+            // An older build without the file: no hints, nothing else changes.
+            Err(_) => RoutePreloadsFile::default(),
+        };
+        let routes = file
+            .routes
+            .into_iter()
+            .map(|route| {
+                let mut tags = String::new();
+                for href in route
+                    .js
+                    .iter()
+                    .filter(|href| safe_href(href) && !html.contains(href.as_str()))
+                {
+                    tags.push_str(&format!(r#"<link rel="modulepreload" href="{href}">"#));
+                }
+                for href in route
+                    .css
+                    .iter()
+                    .filter(|href| safe_href(href) && !html.contains(href.as_str()))
+                {
+                    tags.push_str(&format!(r#"<link rel="preload" as="style" href="{href}">"#));
+                }
+                RouteHint {
+                    segments: route_segments(&route.pattern),
+                    tags,
+                }
+            })
+            .collect();
+        Self {
+            routes,
+            i18n: file.i18n,
+        }
+    }
+
+    fn for_path(&self, path: &str) -> Option<&RouteHint> {
+        let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        self.routes
+            .iter()
+            .find(|route| route_matches(&route.segments, &segments))
+    }
+
+    // The locale the page will render in, as the dashboard decides it.
+    fn locale(&self, headers: &HeaderMap) -> Option<String> {
+        let i18n = self.i18n.as_ref()?;
+        let from_cookie = headers
+            .get_all(header::COOKIE)
+            .iter()
+            .filter_map(|v| v.to_str().ok())
+            .flat_map(|v| v.split(';'))
+            .filter_map(|pair| pair.trim().split_once('='))
+            .find(|(name, _)| *name == i18n.cookie_name)
+            .and_then(|(_, value)| {
+                i18n.locales
+                    .iter()
+                    .find(|locale| locale.eq_ignore_ascii_case(value.trim()))
+            });
+        Some(from_cookie.unwrap_or(&i18n.base_locale).clone())
+    }
+}
+
+// Only build-relative asset paths are turned into tags (the file is ours, but it is
+// read from disk; nothing in it should be able to break out of an attribute).
+fn safe_href(href: &str) -> bool {
+    href.starts_with("/_app/")
+        && href
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/._-".contains(&b))
+}
+
+// A client id as it may appear in the preloaded URL.
+fn safe_client_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+// The request a hosted login page makes first (`getClientAuthData` in the dashboard),
+// for `/auth/{client_id}/...`. Must stay byte-identical to the URL the page builds,
+// or the browser fetches it a second time.
+fn client_auth_data_url(path: &str, locale: &str) -> Option<String> {
+    let client_id = path.strip_prefix("/auth/")?.split('/').next()?;
+    safe_client_id(client_id)
+        .then(|| format!("/v1/auth/client/{client_id}/auth-data?locale={locale}"))
 }
 
 fn stamp_of(path: &Path) -> Option<(SystemTime, u64)> {
@@ -86,13 +282,48 @@ impl EntryPage {
         // A file still being written changes under us; remember no stamp then, so the
         // next request reads it again.
         let stamp = before.filter(|b| stamp_of(path).as_ref() == Some(b));
-        let hashes = inline_script_hashes(&String::from_utf8_lossy(&html));
+        let text = String::from_utf8_lossy(&html);
+        let hashes = inline_script_hashes(&text);
+        let root = path.parent().unwrap_or(Path::new("."));
+        let hints = Arc::new(RouteHints::read(root, &text));
         Ok(Self {
             stamp,
             html: Bytes::from(html),
             csp: content_security_policy(&hashes, "'none'"),
             csp_preview: content_security_policy(&hashes, "'self'"),
+            hints,
         })
+    }
+
+    // The entry page completed for one request (see the module comment). Only adds
+    // `<link>` tags and an attribute: the inline scripts, and so the CSP hashes, are
+    // untouched.
+    fn with_route_hints(&self, path: &str, headers: &HeaderMap) -> Bytes {
+        let auth_page = path.starts_with("/auth/");
+        let route_tags = self.hints.for_path(path).map(|route| route.tags.as_str());
+        let data_tag = auth_page
+            .then(|| self.hints.locale(headers))
+            .flatten()
+            .and_then(|locale| client_auth_data_url(path, &locale))
+            .map(|url| format!(r#"<link rel="preload" as="fetch" href="{url}" crossorigin>"#));
+        if route_tags.is_none_or(str::is_empty) && data_tag.is_none() && !auth_page {
+            return self.html.clone();
+        }
+
+        let html = String::from_utf8_lossy(&self.html);
+        let mut out = String::with_capacity(html.len() + 4096);
+        let (head, rest) = html.split_at(html.find("</head>").unwrap_or(html.len()));
+        if auth_page {
+            out.push_str(&head.replacen("<html", r#"<html data-boot="auth""#, 1));
+        } else {
+            out.push_str(head);
+        }
+        if let Some(tag) = &data_tag {
+            out.push_str(tag);
+        }
+        out.push_str(route_tags.unwrap_or_default());
+        out.push_str(rest);
+        Bytes::from(out)
     }
 }
 
@@ -136,14 +367,15 @@ impl UiAssets {
         }
     }
 
-    fn entry_page(&self, uri: &Uri) -> Response {
+    fn entry_page(&self, uri: &Uri, request_headers: &HeaderMap) -> Response {
         let preview = uri.path().starts_with("/auth/")
             && uri
                 .query()
                 .is_some_and(|q| q.split('&').any(|pair| pair == "preview=1"));
 
         let entry = self.current_entry();
-        let mut response = Response::new(Body::from(entry.html));
+        let html = entry.with_route_hints(uri.path(), request_headers);
+        let mut response = Response::new(Body::from(html));
         let headers = response.headers_mut();
         headers.insert(
             header::CONTENT_TYPE,
@@ -254,9 +486,9 @@ pub fn router<S: Clone + Send + Sync + 'static>(assets: Arc<UiAssets>) -> Router
         let assets = Arc::clone(&assets);
         router = router.route(
             path,
-            get(move |uri: Uri| {
+            get(move |uri: Uri, headers: HeaderMap| {
                 let assets = Arc::clone(&assets);
-                async move { assets.entry_page(&uri).into_response() }
+                async move { assets.entry_page(&uri, &headers).into_response() }
             }),
         );
     }
@@ -341,6 +573,8 @@ mod tests {
         for path in [
             "/",
             "/login",
+            "/login/invite",
+            "/login/two-step",
             "/console",
             "/console/tenants/abc/users",
             "/auth/my-client/sign-in?state=x",
@@ -356,7 +590,9 @@ mod tests {
             let expected = STANDARD.encode(Sha256::digest(b"boot()"));
             assert!(csp.contains(&format!("'sha256-{expected}'")), "{csp}");
             let body = to_bytes(response.into_body(), 1 << 16).await.unwrap();
-            assert!(body.starts_with(b"<html>"));
+            // Hosted login pages also carry `data-boot="auth"` (the skeleton).
+            assert!(body.starts_with(b"<html"), "{path}");
+            assert!(body.ends_with(b"</html>"), "{path}");
         }
 
         // API paths and unknown paths are not the SPA's: no route here, so the
@@ -453,5 +689,97 @@ mod tests {
                 "{path}: {status}"
             );
         }
+    }
+
+    #[test]
+    fn route_ids_match_like_the_sveltekit_router() {
+        let sign_in = route_segments("/auth/[clientId]/sign-in");
+        assert!(route_matches(&sign_in, &["auth", "abc", "sign-in"]));
+        assert!(!route_matches(&sign_in, &["auth", "abc", "sign-up"]));
+        assert!(!route_matches(&sign_in, &["auth", "abc"]));
+
+        let rest = route_segments("/(app)/console/[...path]");
+        assert_eq!(rest, [Segment::Literal("console".into()), Segment::Rest]);
+        assert!(route_matches(&rest, &["console"]));
+        assert!(route_matches(&rest, &["console", "tenants", "x", "users"]));
+        assert!(!route_matches(&rest, &["login"]));
+    }
+
+    fn build_with_hints() -> PathBuf {
+        let root = fake_build();
+        std::fs::write(
+            root.join("index.html"),
+            r#"<html lang="en"><head><script>boot()</script><link href="/_app/immutable/entry/start.js" rel="modulepreload"></head><body></body></html>"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("_app/route-preloads.json"),
+            r#"{"routes":[
+                {"pattern":"/auth/[clientId]/sign-in","js":["/_app/immutable/entry/start.js","/_app/immutable/nodes/13.js","/_app/x\"><script>"],"css":["/_app/immutable/assets/13.css"]},
+                {"pattern":"/console","js":["/_app/immutable/nodes/20.js"],"css":[]}
+               ],
+               "i18n":{"locales":["en","es","pt-br"],"baseLocale":"en","cookieName":"PARAGLIDE_LOCALE"}}"#,
+        )
+        .unwrap();
+        root
+    }
+
+    async fn page_html(router: &Router, uri: &str, cookie: Option<&str>) -> (String, String) {
+        let mut request = Request::get(uri);
+        if let Some(cookie) = cookie {
+            request = request.header(header::COOKIE, cookie);
+        }
+        let response = router
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let csp = header(&response, header::CONTENT_SECURITY_POLICY).to_string();
+        let body = to_bytes(response.into_body(), 1 << 16).await.unwrap();
+        (String::from_utf8(body.to_vec()).unwrap(), csp)
+    }
+
+    #[tokio::test]
+    async fn the_entry_page_names_what_the_route_needs_before_any_script_runs() {
+        let router: Router = router(Arc::new(UiAssets::load(&build_with_hints()).unwrap()));
+
+        let (html, csp) = page_html(
+            &router,
+            "/auth/client-1/sign-in?state=s",
+            Some("theme=x; PARAGLIDE_LOCALE=PT-BR"),
+        )
+        .await;
+        assert!(
+            html.starts_with(r#"<html data-boot="auth" lang="en">"#),
+            "{html}"
+        );
+        assert!(html.contains(r#"<link rel="modulepreload" href="/_app/immutable/nodes/13.js">"#));
+        assert!(
+            html.contains(
+                r#"<link rel="preload" as="style" href="/_app/immutable/assets/13.css">"#
+            )
+        );
+        // The client settings the page fetches first, in the locale it will render in.
+        assert!(html.contains(
+            r#"<link rel="preload" as="fetch" href="/v1/auth/client/client-1/auth-data?locale=pt-br" crossorigin>"#
+        ));
+        // Not repeated when the page already preloads it; nothing unsafe is emitted.
+        assert_eq!(html.matches("/_app/immutable/entry/start.js").count(), 1);
+        assert!(!html.contains("<script>\""), "{html}");
+        // The hints are links only: the CSP still names the one inline script.
+        let expected = STANDARD.encode(Sha256::digest(b"boot()"));
+        assert!(csp.contains(&format!("'sha256-{expected}'")), "{csp}");
+
+        // No locale cookie: the base locale. An odd client id: no data hint.
+        let (html, _) = page_html(&router, "/auth/client-1/sign-in", None).await;
+        assert!(html.contains("auth-data?locale=en"));
+        let (html, _) = page_html(&router, "/auth/a%22b/sign-in", None).await;
+        assert!(!html.contains("auth-data"));
+
+        // The console gets its own modules, and no login skeleton.
+        let (html, _) = page_html(&router, "/console", None).await;
+        assert!(html.contains("/_app/immutable/nodes/20.js"));
+        assert!(!html.contains("data-boot"));
+        assert!(!html.contains("nodes/13.js"));
     }
 }

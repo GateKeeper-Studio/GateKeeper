@@ -8,7 +8,7 @@
 // SvelteKit it can stamp the page and its chunks with different versions, and
 // rolldown's watch mode fails after a few rebuilds.
 import { existsSync, renameSync, rmSync, watch } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 
 const OUT = 'build';
 const NEXT = '.build-next';
@@ -48,6 +48,16 @@ function build() {
 		building = null;
 		const seconds = ((Date.now() - started) / 1000).toFixed(1);
 		if (code === 0 && existsSync(`${NEXT}/index.html`)) {
+			// The per-route preload list (scripts/route-preloads.mjs). Only an
+			// optimization: without it the server serves the page without the hints.
+			try {
+				execFileSync(process.execPath, ['scripts/route-preloads.mjs'], {
+					stdio: ['ignore', 'ignore', 'inherit'],
+					env: { ...process.env, UI_BUILD_OUT: NEXT }
+				});
+			} catch {
+				console.log('[build:watch] route preload list not written; pages load without it');
+			}
 			rmSync(PREV, { recursive: true, force: true });
 			if (existsSync(OUT)) renameSync(OUT, PREV);
 			renameSync(NEXT, OUT);

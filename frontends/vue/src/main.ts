@@ -10,7 +10,9 @@ createApp(App)
     createGateKeeper({
       config: {
         idpBaseUrl: env.VITE_GATEKEEPER_IDP_BASE_URL || 'http://localhost:8080',
-        authUiBaseUrl: env.VITE_GATEKEEPER_AUTH_UI_BASE_URL || 'http://localhost:5173',
+        // Optional: the identity provider serves its own login UI. Set only when the
+        // login UI runs on another origin.
+        authUiBaseUrl: env.VITE_GATEKEEPER_AUTH_UI_BASE_URL || undefined,
         tenantId: env.VITE_GATEKEEPER_TENANT_ID || '',
         clientId: env.VITE_GATEKEEPER_CLIENT_ID || '',
         redirectUri: env.VITE_GATEKEEPER_REDIRECT_URI || `${window.location.origin}/`,

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { ModeWatcher } from 'mode-watcher';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
@@ -10,6 +11,10 @@
 	let { children } = $props();
 
 	const queryClient = new QueryClient();
+
+	// The boot shell (app.html) covers the page until the app is on screen. The root
+	// layout mounts last, after the first page and any splash of its own.
+	onMount(() => document.getElementById('gk-boot')?.remove());
 
 	// There is no server render to stamp the locale into <html>, so set it here.
 	$effect(() => {

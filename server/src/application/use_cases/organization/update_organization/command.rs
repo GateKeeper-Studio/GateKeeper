@@ -12,5 +12,10 @@ pub struct Command {
     pub name: String,
 
     pub description: Option<String>,
-    pub is_active: bool,
+
+    // Suspending an organization stops every one of its admins from signing in, so
+    // its own admins cannot do it (they would lock themselves out with no way back).
+    // Only the system may change it; omitted keeps the current value.
+    #[serde(default)]
+    pub is_active: Option<bool>,
 }

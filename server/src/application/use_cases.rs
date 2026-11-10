@@ -1,5 +1,7 @@
 pub mod admin_account;
 pub mod admin_auth;
+pub mod admin_mfa;
+pub mod admin_organization;
 pub mod admin_web_session;
 pub mod authentication;
 pub mod compliance;

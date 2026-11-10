@@ -1,3 +1,5 @@
+pub mod in_memory_admin_invitation_repository;
+pub mod in_memory_admin_mfa_repository;
 pub mod in_memory_admin_refresh_token_repository;
 pub mod in_memory_admin_user_repository;
 pub mod in_memory_admin_web_session_repository;

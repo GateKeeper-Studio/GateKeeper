@@ -36,7 +36,7 @@ impl OrganizationRepository for DbOrganizationRepository {
             self.executor,
             sqlx::query!(
                 r#"
-        SELECT id, name, description, is_active, created_at, updated_at
+        SELECT id, name, description, is_active, require_admin_mfa, created_at, updated_at
         FROM organizations
         WHERE id = $1
         "#,
@@ -55,6 +55,7 @@ impl OrganizationRepository for DbOrganizationRepository {
                 r.created_at,
                 r.updated_at,
             )
+            .with_admin_mfa_required(r.require_admin_mfa)
         }))
     }
 
@@ -64,7 +65,7 @@ impl OrganizationRepository for DbOrganizationRepository {
             sqlx::query!(
                 r#"
         SELECT id as "id!", name as "name!", description,
-          is_active as "is_active!",
+          is_active as "is_active!", require_admin_mfa as "require_admin_mfa!",
           created_at as "created_at!", updated_at
         FROM organizations
         ORDER BY created_at DESC
@@ -88,6 +89,7 @@ impl OrganizationRepository for DbOrganizationRepository {
                     r.created_at,
                     r.updated_at,
                 )
+                .with_admin_mfa_required(r.require_admin_mfa)
             })
             .collect())
     }
@@ -138,13 +140,14 @@ impl OrganizationRepository for DbOrganizationRepository {
             sqlx::query!(
                 r#"
         INSERT INTO organizations
-          (id, name, description, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+          (id, name, description, is_active, require_admin_mfa, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         "#,
                 organization.id(),
                 organization.name(),
                 organization.description(),
                 organization.is_active(),
+                organization.require_admin_mfa(),
                 organization.created_at(),
                 organization.updated_at()
             ),
@@ -161,14 +164,16 @@ impl OrganizationRepository for DbOrganizationRepository {
             sqlx::query!(
                 r#"
         UPDATE organizations
-        SET name = $1, description = $2, is_active = $3, updated_at = $4
+        SET name = $1, description = $2, is_active = $3, updated_at = $4,
+            require_admin_mfa = $6
         WHERE id = $5
         "#,
                 organization.name(),
                 organization.description(),
                 organization.is_active(),
                 organization.updated_at(),
-                organization.id()
+                organization.id(),
+                organization.require_admin_mfa()
             ),
             execute
         )

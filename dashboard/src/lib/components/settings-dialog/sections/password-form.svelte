@@ -9,8 +9,10 @@
 
 	import { changeMyPassword } from '$lib/services/admin/account';
 
-	// Keep in sync with the server's `new_password` length validation.
-	const MIN_LENGTH = 8;
+	// Keep in sync with the server's admin password policy
+	// (`application/shared/admin_password_policy.rs`).
+	const MIN_LENGTH = 12;
+	const MAX_LENGTH = 128;
 
 	let currentPassword = $state('');
 	let newPassword = $state('');
@@ -32,8 +34,14 @@
 			error = m.settings_password_current_required();
 			return;
 		}
-		if (newPassword.length < MIN_LENGTH) {
+		// Counted in characters, like the server.
+		const length = [...newPassword].length;
+		if (length < MIN_LENGTH) {
 			error = m.settings_password_min_length({ minLength: MIN_LENGTH });
+			return;
+		}
+		if (length > MAX_LENGTH) {
+			error = m.settings_password_max_length({ maxLength: MAX_LENGTH });
 			return;
 		}
 		if (newPassword !== confirmPassword) {
@@ -70,6 +78,7 @@
 	<div class="space-y-2">
 		<Label for="new-password">{m.settings_password_new_label()}</Label>
 		<Input id="new-password" type="password" autocomplete="new-password" bind:value={newPassword} />
+		<p class="text-xs text-muted-foreground">{m.settings_password_sessions_note()}</p>
 	</div>
 
 	<div class="space-y-2">

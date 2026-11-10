@@ -1,3 +1,5 @@
+pub mod admin_invitation_repository;
+pub mod admin_mfa_repository;
 pub mod admin_refresh_token_repository;
 pub mod admin_user_repository;
 pub mod admin_web_session_repository;

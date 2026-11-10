@@ -58,5 +58,8 @@ export const adminApi = {
 	put: <T>(path: string, body?: unknown, fetchFn: FetchFn = fetch) =>
 		request<T>('PUT', path, body, fetchFn),
 	delete: <T>(path: string, fetchFn: FetchFn = fetch) =>
-		request<T>('DELETE', path, undefined, fetchFn)
+		request<T>('DELETE', path, undefined, fetchFn),
+	// DELETE with a JSON body, for step-up actions that carry the current password.
+	deleteWith: <T>(path: string, body: unknown, fetchFn: FetchFn = fetch) =>
+		request<T>('DELETE', path, body, fetchFn)
 };

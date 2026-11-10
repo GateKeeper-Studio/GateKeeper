@@ -29,6 +29,29 @@ restart is needed, and no Node server runs; Node is only the Svelte compiler.
 For hot reload, `npm run dev` also still works: Vite runs on :5173, and the server needs
 `AUTH_UI_BASE_URL=http://localhost:5173`.
 
+**First paint without a Node server.** A static SPA starts as an empty page: the
+browser discovers a route's ~50 modules one import wave at a time, then fetches its
+data, with nothing on screen (measured on a hosted sign-in page, slow 4G: blank for
+2.4 s). Three things replace what SvelteKit's server rendering provided:
+
+1. `app.html` paints a skeleton with the HTML: a sign-in card on hosted login pages
+   (the server marks them `data-boot="auth"`), a spinner elsewhere, in the saved
+   light/dark mode (a small inline script, CSP-hashed like the bootstrap). The root
+   layout removes it when the app has mounted.
+2. The dashboard build writes `_app/route-preloads.json` (route → modules + CSS), and
+   `ui.rs` adds `<link rel="modulepreload">` tags for the requested route, so all its
+   modules are requested at once.
+3. On `/auth/{client}/…`, `ui.rs` also preloads `/v1/auth/client/{client}/auth-data`
+   in the locale the page will render in (the `PARAGLIDE_LOCALE` cookie, else the base
+   locale), so the client settings arrive alongside the modules (1.1 s instead of 2.3 s
+   on slow 4G).
+
+Over plain HTTP/1.1 (local development) the browser still runs only 6 requests at a
+time, so the time until the form is interactive barely changes there; behind an HTTP/2
+reverse proxy all modules share one connection and the preloads take effect. SvelteKit
+2.62 overrides custom chunk grouping in the client build, so merging the many small
+chunks is not an option without fighting the framework.
+
 **Switching back to master.** This branch also squashed the migrations into one
 baseline (`20261110000000_initial_schema.sql`; see `server/CLAUDE.md`). On first boot it
 adopts an existing database by rewriting its migration history to the baseline.
@@ -181,7 +204,7 @@ Everything else is already static: about 1,450 files, 20 MB in `build/client` in
 
 ### Login UI settings and OAuth endpoints
 
-- **`AUTH_UI_BASE_URL`** (default `http://localhost:5173`) is used in two places:
+- **`AUTH_UI_BASE_URL`** (default `http://localhost:5173` before this change; now `http://localhost:8080`, the server's own origin) is used in two places:
   - the password-reset and magic-link emails;
   - the default **WebAuthn RP origin and RP ID** (`resolve_webauthn`, `config.rs:348`).
 - **`/oauth/authorize`** returns JSON. It only validates the request; the SPA renders the screen.
@@ -381,6 +404,7 @@ The existing retention purge deletes expired rows.
 
 - **`POST /session`**, in the **credential router**, so the strict per-IP bucket applies as it does to `/admin/login` today.
   - Takes `{email, password}` and calls the admin login use case in-process: same audit, same generic 401, same 429.
+  - (Since then: `mfaCode` too, for an admin with two-step verification. Both paths share `AdminAuthenticator`; see `FLOWS-AUTHENTICATION.md` §5.)
   - Stores the row, sets the cookie, and returns `{admin}` with `Cache-Control: no-store`.
 - **`GET /session`** returns `{admin}`, or 401. It serves the client-side guard and the sidebar identity.
 - **`DELETE /session`** revokes the refresh family through the admin logout use case, deletes the row and clears the cookie.

@@ -47,6 +47,7 @@ mod tests {
             admins.clone(),
             sessions.clone(),
             Arc::new(FakeAdminTokenIssuer::new()),
+            crate::testing::admin_fixture::authenticator_for(admins.clone()),
         );
         Ctx {
             use_case,

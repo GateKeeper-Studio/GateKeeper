@@ -28,6 +28,13 @@ use crate::{
 const SECURE_COOKIE: &str = "__Host-gk_admin";
 const DEV_COOKIE: &str = "gk_admin";
 
+// The console session a bridged `/api` request runs under (its row id, never the
+// cookie value). Placed in the request extensions by `console_api_bridge`, so a
+// handler that ends the admin's other sessions can keep this one. Absent on bearer
+// requests.
+#[derive(Debug, Clone, Copy)]
+pub struct ConsoleSessionId(pub uuid::Uuid);
+
 // How the console session behaves on this deployment.
 #[derive(Debug, Clone)]
 pub struct ConsoleSettings {
@@ -161,8 +168,8 @@ pub async fn console_api_bridge(
         .console_resolve
         .execute(resolve::query::Query { session_token })
         .await;
-    let access_token = match resolved {
-        Ok(resolved) => resolved.access_token,
+    let (access_token, session_id) = match resolved {
+        Ok(resolved) => (resolved.access_token, resolved.session_id),
         Err(DomainError::AuthenticationError(_)) => {
             let mut response =
                 ApiError::Unauthorized("session expired".to_string()).into_response();
@@ -179,6 +186,9 @@ pub async fn console_api_bridge(
     request.headers_mut().insert(header::AUTHORIZATION, bearer);
     // The cookie has done its job; the admin handlers never need it.
     request.headers_mut().remove(header::COOKIE);
+    request
+        .extensions_mut()
+        .insert(ConsoleSessionId(session_id));
 
     let mut response = next.run(request).await;
     response
