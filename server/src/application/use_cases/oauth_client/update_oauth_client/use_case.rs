@@ -124,6 +124,7 @@ impl UseCase {
             command.is_active,
         );
         client.set_magic_link_enabled(command.magic_link_enabled);
+        client.set_qr_login_enabled(command.qr_login_enabled);
         client.set_backchannel_logout(
             backchannel_logout_uri,
             command.backchannel_logout_session_required,

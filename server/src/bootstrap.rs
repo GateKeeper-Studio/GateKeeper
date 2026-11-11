@@ -88,6 +88,7 @@ use crate::{
                 rotate_oauth_client_secret, update_oauth_client,
             },
             organization::{get_organization_by_id, update_organization},
+            qr_login,
             role::{
                 assign_role_users, create_role, delete_role_by_id, get_role_by_id, list_role_users,
                 list_roles, list_user_roles, unassign_role_user, update_role_by_id,
@@ -768,6 +769,25 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 Arc::clone(&tenant_repository),
                 Arc::clone(&password_hasher),
             )),
+        }),
+        qr_login: Arc::new(QrLoginUseCases {
+            start: Arc::new(qr_login::start::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&risk_engine),
+                Arc::clone(&geoip),
+            )),
+            poll: Arc::new(qr_login::poll::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&templated_email),
+                Arc::clone(&webauthn),
+                Arc::clone(&risk_engine),
+            )),
+            scan: Arc::new(qr_login::scan::use_case::UseCase::new(Arc::clone(
+                &uow_factory,
+            ))),
+            decide: Arc::new(qr_login::decide::use_case::UseCase::new(Arc::clone(
+                &uow_factory,
+            ))),
         }),
         mfa: Arc::new(MfaUseCases {
             send_mfa_email_otp: Arc::new(send_email_otp::use_case::UseCase::new(

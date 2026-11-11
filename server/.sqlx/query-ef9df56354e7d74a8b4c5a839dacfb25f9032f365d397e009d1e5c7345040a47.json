@@ -1,0 +1,244 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT id, tenant_id, client_id, auth_session_id, token_hash, status, claim_hash,\n                 scanned_by_user_id, approved_user_id, approver_mfa_verified, approved_via,\n                 requester_ip, requester_user_agent, requester_location,\n                 scanned_at, decided_at, completed_at, expires_at, created_at\n          FROM qr_login_requests\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "tenant_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "client_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "client_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "auth_session_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "auth_session_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "token_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "token_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "status",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "claim_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "claim_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "scanned_by_user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "scanned_by_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "approved_user_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "approved_user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "approver_mfa_verified",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "approver_mfa_verified"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "approved_via",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "approved_via"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "requester_ip",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "requester_ip"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "requester_user_agent",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "requester_user_agent"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "requester_location",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "requester_location"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "scanned_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "scanned_at"
+          }
+        }
+      },
+      {
+        "ordinal": 15,
+        "name": "decided_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "decided_at"
+          }
+        }
+      },
+      {
+        "ordinal": 16,
+        "name": "completed_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "completed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 17,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 18,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "qr_login_requests",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "ef9df56354e7d74a8b4c5a839dacfb25f9032f365d397e009d1e5c7345040a47"
+}

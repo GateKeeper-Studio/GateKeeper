@@ -15,6 +15,7 @@
 	import { buildOidcParams } from '$lib/utils/form';
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { authorizeApi } from '$lib/services/auth/authorize';
+	import { approveQrSignIn, isQrApproval } from '$lib/utils/qr-approval';
 	import { startWebAuthnMfaApi } from '$lib/services/auth/start-webauthn-mfa';
 	import { verifyWebAuthnMfaApi } from '$lib/services/auth/verify-webauthn-mfa';
 	import { EMfaType } from '$lib/services/auth/login';
@@ -157,6 +158,17 @@
 		}
 
 		sessionStorage.removeItem(`webauthn_options_${currentMfaId}`);
+
+		// Signed in to approve a QR code: the session approves the other device instead
+		// of becoming a code here.
+		if (isQrApproval(searchParams)) {
+			const approval = await approveQrSignIn(clientId, verifyData.sessionCode);
+			if (approval.kind === 'error') {
+				error = approval.message || m.auth_generic_error();
+				isLoading = false;
+			}
+			return;
+		}
 
 		const [authorizeData, authorizeErr] = await authorizeApi({
 			email: email.trim(),

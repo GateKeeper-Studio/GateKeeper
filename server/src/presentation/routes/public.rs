@@ -13,7 +13,7 @@ use crate::presentation::{
         admin_auth_handler, authentication_handler, console_session_handler,
         legal_document_handler, oauth_authorize_handler, oauth_discovery_handler,
         oauth_logout_handler, oauth_provider_auth_handler, oauth_token_handler,
-        oauth_userinfo_handler,
+        oauth_userinfo_handler, qr_login_handler,
     },
     routes::AppState,
 };
@@ -41,6 +41,9 @@ pub(super) fn router() -> Router<AppState> {
             "/v1/auth/session/refresh",
             post(authentication_handler::refresh_session),
         )
+        // QR code sign-in: the browser showing a code polls for the decision. Its
+        // session code (256 bits) is the credential; see credential.rs for the rest.
+        .route("/v1/auth/qr-login/status", post(qr_login_handler::status))
         // Public auth-flow config the login SPA fetches to render its screens.
         .route(
             "/v1/auth/client/{client_id}/auth-data",

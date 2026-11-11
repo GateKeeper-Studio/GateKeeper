@@ -14,6 +14,7 @@
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { changePasswordApi } from '$lib/services/auth/change-password';
 	import { authorizeApi } from '$lib/services/auth/authorize';
+	import { approveQrSignIn, isQrApproval } from '$lib/utils/qr-approval';
 	import {
 		SessionClock,
 		clearSession,
@@ -111,6 +112,14 @@
 			console.error(err);
 			toast.error(err.message);
 			isLoading = false;
+			return;
+		}
+
+		// Signed in to approve a QR code: the session approves the other device instead
+		// of becoming a code here.
+		if (isQrApproval(searchParams)) {
+			const approval = await approveQrSignIn(clientId, currentSessionCode());
+			if (approval.kind === 'error') showError(approval.message || m.auth_generic_error());
 			return;
 		}
 

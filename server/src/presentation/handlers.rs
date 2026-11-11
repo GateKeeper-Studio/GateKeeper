@@ -19,6 +19,7 @@ pub mod oauth_logout_handler;
 pub mod oauth_provider_auth_handler;
 pub mod oauth_token_handler;
 pub mod oauth_userinfo_handler;
+pub mod qr_login_handler;
 pub mod role_handler;
 pub mod security_handler;
 pub mod session_handler;

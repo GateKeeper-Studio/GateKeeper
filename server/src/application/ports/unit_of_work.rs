@@ -25,6 +25,7 @@ use crate::domain::{
         password_change_token_repository::PasswordChangeTokenRepository,
         password_reset_token_repository::PasswordResetTokenRepository,
         policy_acceptance_repository::PolicyAcceptanceRepository,
+        qr_login_request_repository::QrLoginRequestRepository,
         refresh_token_repository::RefreshTokenRepository, role_repository::RoleRepository,
         security_block_repository::SecurityBlockRepository,
         signing_key_repository::SigningKeyRepository,
@@ -57,6 +58,7 @@ pub trait UnitOfWork: Send + Sync {
     fn mfa_challenge_repository(&self) -> Arc<dyn MfaChallengeRepository>;
     fn password_reset_token_repository(&self) -> Arc<dyn PasswordResetTokenRepository>;
     fn magic_link_token_repository(&self) -> Arc<dyn MagicLinkTokenRepository>;
+    fn qr_login_request_repository(&self) -> Arc<dyn QrLoginRequestRepository>;
     fn password_change_token_repository(&self) -> Arc<dyn PasswordChangeTokenRepository>;
     fn email_provider_repository(&self) -> Arc<dyn EmailProviderRepository>;
     // External (social) identity providers + their sign-in artifacts: per-client

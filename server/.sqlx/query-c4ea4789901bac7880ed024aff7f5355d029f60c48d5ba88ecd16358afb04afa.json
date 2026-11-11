@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE qr_login_requests\n          SET status = 'denied', decided_at = $4\n          WHERE id = $1 AND status = 'scanned' AND claim_hash = $2 AND expires_at > $4\n            AND (scanned_by_user_id IS NULL OR scanned_by_user_id = $3)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c4ea4789901bac7880ed024aff7f5355d029f60c48d5ba88ecd16358afb04afa"
+}

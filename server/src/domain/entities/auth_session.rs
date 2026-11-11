@@ -17,11 +17,17 @@ use crate::domain::entities::mfa_method::MfaMethod;
 //   link from this same browser binds and authenticates the user. The mailbox is then
 //   the primary factor, so an email code cannot be the second one — it would prove
 //   the same mailbox twice. TOTP and WebAuthn can.
+// * `QrCode`: QR code sign-in. The session is opened by the browser that shows the
+//   code, with NO user bound; another device scans the code and approves, and the
+//   approving user is then bound when this browser polls (`complete_qr_login`). The
+//   approval is possession of a device the user signed in on; any second factor can
+//   follow it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PrimaryFactor {
     Password,
     Passkey,
     MagicLink,
+    QrCode,
 }
 
 impl PrimaryFactor {
@@ -31,6 +37,7 @@ impl PrimaryFactor {
             PrimaryFactor::Password => "password",
             PrimaryFactor::Passkey => "passkey",
             PrimaryFactor::MagicLink => "magic_link",
+            PrimaryFactor::QrCode => "qr_code",
         }
     }
 
@@ -40,6 +47,7 @@ impl PrimaryFactor {
         match value {
             "password" => PrimaryFactor::Password,
             "magic_link" => PrimaryFactor::MagicLink,
+            "qr_code" => PrimaryFactor::QrCode,
             _ => PrimaryFactor::Passkey,
         }
     }
@@ -235,6 +243,19 @@ impl AuthSession {
         self.primary_factor == PrimaryFactor::MagicLink && self.user_id.is_none()
     }
 
+    // QR code sign-in: like a magic-link session, it freezes the OAuth request and
+    // binds NO user. An approved scan binds the approving user (`authenticate`).
+    pub fn await_qr_approval(&mut self) {
+        self.user_id = None;
+        self.authenticated_at = None;
+        self.primary_factor = PrimaryFactor::QrCode;
+    }
+
+    // A QR-code session whose code has not been approved yet.
+    pub fn is_awaiting_qr_approval(&self) -> bool {
+        self.primary_factor == PrimaryFactor::QrCode && self.user_id.is_none()
+    }
+
     // Flag that this session may not be spent until a second factor succeeds.
     pub fn require_mfa(&mut self) {
         self.mfa_required = true;
@@ -247,6 +268,7 @@ impl AuthSession {
             PrimaryFactor::Password => true,
             PrimaryFactor::Passkey => *method == MfaMethod::Webauthn,
             PrimaryFactor::MagicLink => *method != MfaMethod::Email,
+            PrimaryFactor::QrCode => true,
         }
     }
 
@@ -274,6 +296,7 @@ impl AuthSession {
                 PrimaryFactor::MagicLink => {
                     self.mfa_method.as_deref() != Some(MfaMethod::Email.as_str())
                 }
+                PrimaryFactor::QrCode => true,
             };
         required && !satisfied
     }
@@ -480,6 +503,29 @@ mod tests {
     }
 
     #[test]
+    fn a_qr_session_binds_nobody_until_approved_then_takes_any_second_factor() {
+        let mut s = session();
+        s.await_qr_approval();
+        assert!(s.is_awaiting_qr_approval());
+        assert!(!s.is_authenticated());
+        assert!(
+            !s.is_mfa_pending(),
+            "nothing is pending: there is no user yet"
+        );
+
+        s.authenticate(Uuid::now_v7(), Utc::now());
+        assert!(!s.is_awaiting_qr_approval());
+        assert_eq!(s.primary_factor(), PrimaryFactor::QrCode);
+        for method in [MfaMethod::Email, MfaMethod::Totp, MfaMethod::Webauthn] {
+            assert!(s.accepts_mfa_method(&method));
+        }
+        s.require_mfa();
+        assert!(s.is_mfa_pending());
+        s.verify_mfa(&MfaMethod::Email, Utc::now());
+        assert!(!s.is_mfa_pending());
+    }
+
+    #[test]
     fn primary_factor_round_trips_and_fails_closed() {
         assert_eq!(PrimaryFactor::from_db("password"), PrimaryFactor::Password);
         assert_eq!(PrimaryFactor::from_db("passkey"), PrimaryFactor::Passkey);
@@ -488,10 +534,12 @@ mod tests {
             PrimaryFactor::MagicLink
         );
         assert_eq!(PrimaryFactor::from_db("garbage"), PrimaryFactor::Passkey);
+        assert_eq!(PrimaryFactor::from_db("qr_code"), PrimaryFactor::QrCode);
         for f in [
             PrimaryFactor::Password,
             PrimaryFactor::Passkey,
             PrimaryFactor::MagicLink,
+            PrimaryFactor::QrCode,
         ] {
             assert_eq!(PrimaryFactor::from_db(f.as_str()), f);
         }

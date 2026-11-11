@@ -25,6 +25,7 @@ pub mod mfa_enrollment_repository;
 pub mod oauth_client_repository;
 pub mod password_change_token_repository;
 pub mod password_reset_token_repository;
+pub mod qr_login_request_repository;
 pub mod refresh_token_repository;
 pub mod risk_model_repository;
 pub mod signing_key_repository;

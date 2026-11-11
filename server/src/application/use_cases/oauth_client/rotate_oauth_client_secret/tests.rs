@@ -74,6 +74,7 @@ mod tests {
             login_appearance: None,
             external_login_only: false,
             magic_link_enabled: false,
+            qr_login_enabled: false,
             backchannel_logout_uri: None,
             backchannel_logout_session_required: false,
             allowed_languages: vec!["en".to_string()],

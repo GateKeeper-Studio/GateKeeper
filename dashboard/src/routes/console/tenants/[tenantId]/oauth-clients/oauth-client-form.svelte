@@ -75,6 +75,7 @@
 	let requireConsent = $state(client?.require_consent ?? true);
 	let externalLoginOnly = $state(client?.external_login_only ?? false);
 	let magicLinkEnabled = $state(client?.magic_link_enabled ?? false);
+	let qrLoginEnabled = $state(client?.qr_login_enabled ?? false);
 	let mfaRequired = $state(client?.mfa_required ?? false);
 	let mfaEmailEnabled = $state(client?.mfa_email_enabled ?? true);
 	let mfaTotpEnabled = $state(client?.mfa_totp_enabled ?? true);
@@ -158,6 +159,7 @@
 			requireConsent,
 			externalLoginOnly,
 			magicLinkEnabled,
+			qrLoginEnabled,
 			mfaRequired,
 			mfaEmailEnabled,
 			mfaTotpEnabled,
@@ -517,6 +519,18 @@
 				{m.oauth_clients_form_magic_link_label()}
 				<span class="text-muted-foreground">
 					{m.oauth_clients_form_magic_link_description()}
+				</span>
+			</span>
+		</label>
+
+		<!-- QR code sign-in: the phone approving a sign-in signs in with this client's
+		     own methods, which an external-login-only client does not offer here. -->
+		<label class="flex items-start gap-2 text-sm">
+			<Checkbox bind:checked={qrLoginEnabled} disabled={externalLoginOnly} class="mt-0.5" />
+			<span>
+				{m.oauth_clients_form_qr_login_label()}
+				<span class="text-muted-foreground">
+					{m.oauth_clients_form_qr_login_description()}
 				</span>
 			</span>
 		</label>

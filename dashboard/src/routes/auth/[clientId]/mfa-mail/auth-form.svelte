@@ -15,6 +15,7 @@
 	import { formSchema } from './schema';
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { authorizeApi } from '$lib/services/auth/authorize';
+	import { approveQrSignIn, isQrApproval } from '$lib/utils/qr-approval';
 	import { sendEmailMfaApi } from '$lib/services/auth/send-email-mfa';
 	import { verifyEmailMfaApi } from '$lib/services/auth/verify-email-mfa';
 	import { EMfaType } from '$lib/services/auth/login';
@@ -152,6 +153,14 @@
 			urlParams.set('user_id', userId);
 
 			await goto(resolve(`/auth/[clientId]/update-password?${urlParams.toString()}`, { clientId }));
+			return;
+		}
+
+		// Signed in to approve a QR code: the session approves the other device instead
+		// of becoming a code here.
+		if (isQrApproval(searchParams)) {
+			const approval = await approveQrSignIn(clientId, verifyMfaData.sessionCode);
+			if (approval.kind === 'error') showError(approval.message || m.auth_generic_error());
 			return;
 		}
 

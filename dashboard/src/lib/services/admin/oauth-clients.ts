@@ -31,6 +31,8 @@ export type OAuthClientView = {
 	external_login_only: boolean;
 	// Magic link login ("email me a sign-in link") is switched on for this client.
 	magic_link_enabled: boolean;
+	// QR code sign-in (approve this browser from another device) is switched on.
+	qr_login_enabled: boolean;
 	// OIDC Back-Channel Logout: where the IdP POSTs a signed logout_token when one of
 	// this client's sessions ends. null = the client is not notified.
 	backchannel_logout_uri: string | null;
@@ -83,6 +85,7 @@ export type CreateOAuthClientInput = {
 	// provider — the IdP rejects the update otherwise, so users can never be locked out.
 	externalLoginOnly: boolean;
 	magicLinkEnabled: boolean;
+	qrLoginEnabled: boolean;
 	backchannelLogoutUri: string | null;
 	backchannelLogoutSessionRequired: boolean;
 	allowedLanguages: string[];
@@ -117,6 +120,7 @@ export type UpdateOAuthClientInput = {
 	// provider — the IdP rejects the update otherwise, so users can never be locked out.
 	externalLoginOnly: boolean;
 	magicLinkEnabled: boolean;
+	qrLoginEnabled: boolean;
 	backchannelLogoutUri: string | null;
 	backchannelLogoutSessionRequired: boolean;
 	allowedLanguages: string[];
@@ -148,6 +152,7 @@ export async function createOAuthClient(
 			login_appearance: input.loginAppearance,
 			external_login_only: input.externalLoginOnly,
 			magic_link_enabled: input.magicLinkEnabled,
+			qr_login_enabled: input.qrLoginEnabled,
 			backchannel_logout_uri: input.backchannelLogoutUri,
 			backchannel_logout_session_required: input.backchannelLogoutSessionRequired,
 			allowed_languages: input.allowedLanguages,
@@ -185,6 +190,7 @@ export async function updateOAuthClient(
 			login_appearance: input.loginAppearance,
 			external_login_only: input.externalLoginOnly,
 			magic_link_enabled: input.magicLinkEnabled,
+			qr_login_enabled: input.qrLoginEnabled,
 			backchannel_logout_uri: input.backchannelLogoutUri,
 			backchannel_logout_session_required: input.backchannelLogoutSessionRequired,
 			allowed_languages: input.allowedLanguages,

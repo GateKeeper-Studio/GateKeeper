@@ -29,7 +29,7 @@ use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use crate::presentation::{
     handlers::{
         admin_auth_handler, admin_organization_handler, authentication_handler,
-        console_session_handler, mfa_handler,
+        console_session_handler, mfa_handler, qr_login_handler,
     },
     middleware::client_ip::ClientIpKeyExtractor,
     routes::AppState,
@@ -117,6 +117,24 @@ pub(super) fn router() -> Router<AppState> {
         .route(
             "/v1/auth/magic-link/redeem",
             post(authentication_handler::redeem_magic_link),
+        )
+        // QR code sign-in. Asking for a code opens a session, so it is bounded like
+        // the other sign-in starts; the scanning device presents the code's token,
+        // then its claim code, and both are credentials. The browser's polling sits
+        // in the public router: it authenticates with its session code, and a poll
+        // every two seconds would exhaust this bucket.
+        .route("/v1/auth/qr-login", post(qr_login_handler::start))
+        .route(
+            "/v1/auth/qr-login/scan",
+            post(qr_login_handler::scan_on_hosted_page),
+        )
+        .route(
+            "/v1/auth/qr-login/approve",
+            post(qr_login_handler::approve_on_hosted_page),
+        )
+        .route(
+            "/v1/auth/qr-login/deny",
+            post(qr_login_handler::deny_on_hosted_page),
         )
         .route(
             "/v1/auth/verify-mfa/email/send",

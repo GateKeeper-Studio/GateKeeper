@@ -270,6 +270,111 @@ the link is redeemed: same session, same MFA gate, same `authorize`.
   reads `primary_factor = 'magic_link'` as `passkey` (it fails closed), so such a
   sign-in cannot complete there.
 
+### QR code sign-in (approve from another device)
+
+On clients where an admin turns it on (`oauth_clients.qr_login_enabled`, off by
+default; never on an external-login-only client), the hosted sign-in page offers
+"Sign in with a QR code", like a game launcher's "scan with the mobile app". The browser
+that wants to sign in shows a code; another device scans it, shows the user which
+browser is asking, and approves or denies. From the approval on it is the same flow as
+a password login: same session, same risk scoring, same MFA gate, same `authorize`.
+
+Two kinds of device can approve:
+
+- **The hosted approval page.** A phone camera opens the code's URL,
+  `{public origin}/auth/{client_id}/qr-approve#{requestId}.{token}`. The user signs in
+  there with this client's own methods (password, passkey; magic links and providers
+  are hidden because they leave the page), and that completed sign-in is the approval.
+- **An app the user is already signed in to** — the "scan with the app" case. With an
+  access token carrying the `account` scope, it calls `POST /me/qr-login/scan` with the
+  two values from the URL fragment, shows what is asking, then `POST
+  /me/qr-login/approve` (or `/deny`) with the claim code the scan returned.
+
+```
+  Browser (sign-in page)                Provider                    Phone / app
+     │ 1. POST /v1/auth/qr-login { …frozen request }
+     │                                    │ start: client offers it? request valid? IP gate
+     │                                    │ · AuthSession primary_factor = qr_code, NO user
+     │  ← 201 { url, sessionCode, … }     │ · qr_login_requests row (token hash), 2 min
+     │◀───────────────────────────────────│
+     │ draws the QR code; polls every 2 s │
+     │ 2. POST /v1/auth/qr-login/status { requestId, sessionCode } → pending
+     │                                    │                            │ 3. camera opens the URL
+     │                                    │  POST …/qr-login/scan      │    (or the app scans)
+     │                                    │◀── { requestId, token } ───│
+     │                                    │ · first scan claims it: pending → scanned,
+     │                                    │   claim code (hash), 10 min to decide
+     │                                    │── { claimCode, app, device, location } ──▶│
+     │ … → scanned                        │                            │ 4. user checks it,
+     │                                    │                            │    signs in (hosted page)
+     │                                    │  POST …/qr-login/approve   │
+     │                                    │◀── { claimCode, sessionCode | token } ───│
+     │                                    │ · scanned → approved (user, via, mfa passed?)
+     │                                    │ · the phone's session is burned (proof only)
+     │ 5. status → approved               │
+     │                                    │ · approved → completed (exactly once)
+     │                                    │ · bind user, risk-score THIS browser, rotate the
+     │  ← { login-shaped response, email }│   code, MFA gate, forced change, audit the LOGIN
+     │◀───────────────────────────────────│
+     │ 6. MFA page or authorize → redirect to the RP (continueAfterLogin)
+```
+
+- **It can only ever sign in the browser that asked.** The browser's half is its login
+  session: only that page holds the session code it polls with, and the completed
+  sign-in spends the authorization request frozen in it, with the RP's own PKCE
+  verifier. The approving device never gets a code; on the hosted page its own sign-in
+  (with a random, discarded PKCE challenge) is burned when it approves.
+- **Two secrets, both hashed.** The QR token (256 bits, in the code) only lets the first
+  device that presents it claim the request: `pending → scanned` is one conditional
+  `UPDATE`, so a second scan of the same code — someone photographing the screen — is
+  refused. The claim code (256 bits) goes to that device only, and deciding needs it. A
+  claim made by an app also names the app's user: only that user can decide. Every
+  status change is a single conditional statement (`QrLoginRequestRepository`), so two
+  devices, or a deny racing an approve, cannot both win, and the browser collects an
+  approval once.
+- **Short-lived.** A code can be scanned for 2 minutes; the browser shows a new one by
+  itself while the page is in view (up to five in a row). After a scan the user has 10
+  minutes to decide (time to sign in on the phone), never past the browser's session,
+  which lives for the scan, the decision and one more minute.
+- **The secret is in the fragment**, so it stays out of server, proxy and `Referer`
+  logs; the approval page removes it from the address bar and sets
+  `referrer: no-referrer`.
+- **What the approver is shown.** The app's name, the asking browser (parsed from its
+  User-Agent, e.g. "Chrome · Windows"), its approximate location (GeoIP, when
+  configured) and when it asked. Not its IP address: the scanner may not be the person
+  who asked. Audit rows keep both sides' request context.
+- **Second factor.** QR approval is the primary factor (`primary_factor = qr_code`; any
+  second factor can follow it). If the approving sign-in on the hosted page passed a
+  second factor, the browser is not asked for another one (`approver_mfa_verified`).
+  Otherwise — an app's approval, or a hosted sign-in that needed none — the client's
+  MFA policy and a risk-forced step-up apply to the browser exactly as after a
+  password. An access token proves the user signed in once, not that they just passed
+  a second factor.
+- **Risk is scored for the browser.** The completing poll evaluates the risk engine with
+  the browser's own IP and User-Agent; `BLOCK_TEMPORARILY` refuses the sign-in and
+  burns its session. Asking for a code goes through the same pre-authentication IP
+  gate as a password login.
+- **Audit.** `user.login.qr_approved` / `user.login.qr_denied` when the device decides
+  (`metadata.via` = `hosted_page` | `signed_in_app`, plus the requester's location and
+  IP), then `user.login.success` / `user.login.failure` with `metadata.method =
+  "qr_code"` when the browser completes, in the same transaction.
+- **Rate limits.** Asking for a code, scanning and deciding are in the strict credential
+  bucket. The browser's polling is on the global one: it authenticates with its session
+  code, and a poll every two seconds would exhaust the strict bucket.
+- **Limits — the phishing model.** Like every "scan to sign in" scheme, it can be relayed:
+  a phishing site can show a victim the QR code of the attacker's own browser, and a
+  victim who approves it signs the attacker in. What stands in the way is what the
+  approver is shown (which app, which browser, where — the location is what gives a
+  relay away, when GeoIP is configured), the explicit warning on the approval screen,
+  the 2-minute code, and risk scoring of the completing browser. It is not
+  phishing-resistant the way a passkey is: browsers already offer a QR code for
+  passkeys stored on a phone ("use a phone or tablet", the WebAuthn hybrid transport),
+  and that flow checks over Bluetooth that the phone is physically near the computer.
+  For high-assurance tenants prefer passkeys, or keep this off.
+- **Rolling deploys** — upgrade every replica before enabling the flag: an older binary
+  reads `primary_factor = 'qr_code'` as `passkey` (it fails closed), so such a sign-in
+  cannot complete there.
+
 ### External-provider-only clients (`external_login_only`)
 
 A client can be configured to authenticate **only** through its external identity
@@ -560,8 +665,9 @@ cannot pick its own IP.
 
 | Credential | TTL | Storage |
 |---|---|---|
-| Auth session (`session_code`) | 10 min (15 min while waiting for a magic link) | hash only |
+| Auth session (`session_code`) | 10 min (15 min while waiting for a magic link, 13 for a QR approval) | hash only |
 | Magic sign-in link | 15 min | hash only, single-use, same browser only |
+| QR sign-in code / claim code | 2 min to scan / 10 min to decide | hash only, first scan claims it |
 | Email OTP (MFA) | 10 min | hash only |
 | WebAuthn challenge | 5 min | opaque state |
 | Authorization code | 60 s | hash only, single-use |

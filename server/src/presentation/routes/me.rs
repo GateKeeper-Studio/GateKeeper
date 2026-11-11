@@ -7,7 +7,9 @@ use axum::{
 };
 
 use crate::presentation::{
-    handlers::{compliance_handler, mfa_handler, security_handler, session_handler},
+    handlers::{
+        compliance_handler, mfa_handler, qr_login_handler, security_handler, session_handler,
+    },
     routes::AppState,
 };
 
@@ -66,6 +68,15 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
             "/me/sessions/{session_id}",
             axum::routing::delete(session_handler::revoke_my_session),
         )
+        // ── QR code sign-in: this app approves the sign-in of another browser ──────
+        // (the "scan to sign in" a signed-in mobile app offers). The token's user
+        // must be the one who scanned; see qr_login::decide.
+        .route("/me/qr-login/scan", post(qr_login_handler::scan_in_app))
+        .route(
+            "/me/qr-login/approve",
+            post(qr_login_handler::approve_in_app),
+        )
+        .route("/me/qr-login/deny", post(qr_login_handler::deny_in_app))
         // ── Self-service sign-in activity (own recent login locations) ─────────────
         .route(
             "/me/security/login-events",

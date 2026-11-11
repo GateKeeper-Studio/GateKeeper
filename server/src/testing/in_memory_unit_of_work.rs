@@ -32,6 +32,7 @@ use crate::{
             password_change_token_repository::PasswordChangeTokenRepository,
             password_reset_token_repository::PasswordResetTokenRepository,
             policy_acceptance_repository::PolicyAcceptanceRepository,
+            qr_login_request_repository::QrLoginRequestRepository,
             refresh_token_repository::RefreshTokenRepository, role_repository::RoleRepository,
             security_block_repository::SecurityBlockRepository,
             signing_key_repository::SigningKeyRepository,
@@ -65,6 +66,7 @@ use crate::{
         in_memory_password_change_token_repository::InMemoryPasswordChangeTokenRepository,
         in_memory_password_reset_token_repository::InMemoryPasswordResetTokenRepository,
         in_memory_policy_acceptance_repository::InMemoryPolicyAcceptanceRepository,
+        in_memory_qr_login_request_repository::InMemoryQrLoginRequestRepository,
         in_memory_refresh_token_repository::InMemoryRefreshTokenRepository,
         in_memory_role_repository::InMemoryRoleRepository,
         in_memory_security_block_repository::InMemorySecurityBlockRepository,
@@ -144,6 +146,7 @@ pub struct InMemoryUnitOfWork {
     webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
     tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
     login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
+    qr_login_request_repository: Arc<InMemoryQrLoginRequestRepository>,
 }
 
 impl InMemoryUnitOfWork {
@@ -180,6 +183,7 @@ impl InMemoryUnitOfWork {
         webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
         tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
         login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
+        qr_login_request_repository: Arc<InMemoryQrLoginRequestRepository>,
     ) -> Self {
         Self {
             user_repository,
@@ -213,6 +217,7 @@ impl InMemoryUnitOfWork {
             webhook_delivery_repository,
             tenant_risk_policy_repository,
             login_event_label_repository,
+            qr_login_request_repository,
         }
     }
 }
@@ -346,6 +351,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         Arc::clone(&self.login_event_label_repository) as Arc<dyn LoginEventLabelRepository>
     }
 
+    fn qr_login_request_repository(&self) -> Arc<dyn QrLoginRequestRepository> {
+        Arc::clone(&self.qr_login_request_repository) as Arc<dyn QrLoginRequestRepository>
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), DomainError> {
         self.user_repository.memory.commit();
         self.tenant_repository.memory.commit();
@@ -366,6 +375,7 @@ impl UnitOfWork for InMemoryUnitOfWork {
         self.mfa_challenge_repository.memory.commit();
         self.password_reset_token_repository.memory.commit();
         self.magic_link_token_repository.memory.commit();
+        self.qr_login_request_repository.memory.commit();
         self.password_change_token_repository.memory.commit();
         self.email_provider_repository.memory.commit();
         self.external_identity_provider_repository.memory.commit();
@@ -415,6 +425,7 @@ pub struct InMemoryUnitOfWorkFactory {
     webhook_delivery_repository: Arc<InMemoryWebhookDeliveryRepository>,
     tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
     login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
+    qr_login_request_repository: Arc<InMemoryQrLoginRequestRepository>,
 }
 
 impl InMemoryUnitOfWorkFactory {
@@ -465,7 +476,16 @@ impl InMemoryUnitOfWorkFactory {
             security_block_repository: Arc::new(InMemorySecurityBlockRepository::new()),
             tenant_risk_policy_repository: Arc::new(InMemoryTenantRiskPolicyRepository::new()),
             login_event_label_repository: Arc::new(InMemoryLoginEventLabelRepository::new()),
+            qr_login_request_repository: Arc::new(InMemoryQrLoginRequestRepository::new()),
         }
+    }
+
+    pub fn with_qr_login_request_repository(
+        mut self,
+        repo: Arc<InMemoryQrLoginRequestRepository>,
+    ) -> Self {
+        self.qr_login_request_repository = repo;
+        self
     }
 
     pub fn with_login_event_label_repository(
@@ -721,6 +741,7 @@ impl UnitOfWorkFactory for InMemoryUnitOfWorkFactory {
             Arc::clone(&self.webhook_delivery_repository),
             Arc::clone(&self.tenant_risk_policy_repository),
             Arc::clone(&self.login_event_label_repository),
+            Arc::clone(&self.qr_login_request_repository),
         )))
     }
 }

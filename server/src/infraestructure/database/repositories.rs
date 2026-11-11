@@ -25,6 +25,7 @@ pub mod organization_repository;
 pub mod password_change_token_repository;
 pub mod password_reset_token_repository;
 pub mod policy_acceptance_repository;
+pub mod qr_login_request_repository;
 pub mod refresh_token_repository;
 pub mod risk_model_repository;
 pub mod role_repository;

@@ -68,6 +68,7 @@ use crate::{
                 rotate_oauth_client_secret, update_oauth_client,
             },
             organization::{get_organization_by_id, update_organization},
+            qr_login,
             role::{
                 assign_role_users, create_role, delete_role_by_id, get_role_by_id, list_role_users,
                 list_roles, list_user_roles, unassign_role_user, update_role_by_id,
@@ -226,6 +227,15 @@ pub struct AuthenticationUseCases {
     pub confirm_current_password: Arc<confirm_current_password::use_case::UseCase>,
 }
 
+// QR code sign-in: the browser's code (start, poll) and the scanning device's side
+// (scan, decide), for both the hosted approval page and signed-in apps (/me).
+pub struct QrLoginUseCases {
+    pub start: Arc<qr_login::start::use_case::UseCase>,
+    pub poll: Arc<qr_login::poll::use_case::UseCase>,
+    pub scan: Arc<qr_login::scan::use_case::UseCase>,
+    pub decide: Arc<qr_login::decide::use_case::UseCase>,
+}
+
 // MFA challenges during sign-in, and self-service enrollment.
 pub struct MfaUseCases {
     pub send_mfa_email_otp: Arc<send_email_otp::use_case::UseCase>,
@@ -347,6 +357,7 @@ pub struct AppState {
     pub consents: Arc<ConsentUseCases>,
     pub sessions: Arc<SessionUseCases>,
     pub authentication: Arc<AuthenticationUseCases>,
+    pub qr_login: Arc<QrLoginUseCases>,
     pub mfa: Arc<MfaUseCases>,
     pub webhooks: Arc<WebhookUseCases>,
     pub email: Arc<EmailUseCases>,

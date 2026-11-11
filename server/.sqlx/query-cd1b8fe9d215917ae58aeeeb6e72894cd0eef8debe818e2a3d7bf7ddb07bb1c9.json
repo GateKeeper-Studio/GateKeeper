@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only, magic_link_enabled,\n            backchannel_logout_uri, backchannel_logout_session_required,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE tenant_id = $1 AND client_id = $2\n        ",
+  "query": "\n          SELECT id, tenant_id, client_id, client_secret_hash, client_type, name,\n            redirect_uris, post_logout_redirect_uris, allowed_scopes, allowed_grant_types,\n            require_pkce, require_consent, email_provider_id, tos_uri, policy_uri,\n            initiate_login_uri, allowed_languages, default_language,\n            mfa_required, mfa_email_enabled, mfa_totp_enabled, mfa_webauthn_enabled,\n            is_active, created_at, updated_at, external_login_only, magic_link_enabled,\n            qr_login_enabled, backchannel_logout_uri, backchannel_logout_session_required,\n            login_appearance as \"login_appearance?: sqlx::types::Json<LoginAppearanceRow>\"\n          FROM oauth_clients\n          WHERE client_id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -302,6 +302,17 @@
       },
       {
         "ordinal": 27,
+        "name": "qr_login_enabled",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "oauth_clients",
+            "name": "qr_login_enabled"
+          }
+        }
+      },
+      {
+        "ordinal": 28,
         "name": "backchannel_logout_uri",
         "type_info": "Text",
         "origin": {
@@ -312,7 +323,7 @@
         }
       },
       {
-        "ordinal": 28,
+        "ordinal": 29,
         "name": "backchannel_logout_session_required",
         "type_info": "Bool",
         "origin": {
@@ -323,7 +334,7 @@
         }
       },
       {
-        "ordinal": 29,
+        "ordinal": 30,
         "name": "login_appearance?: sqlx::types::Json<LoginAppearanceRow>",
         "type_info": "Jsonb",
         "origin": {
@@ -336,7 +347,6 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid",
         "Uuid"
       ]
     },
@@ -368,10 +378,11 @@
       true,
       false,
       false,
+      false,
       true,
       false,
       true
     ]
   },
-  "hash": "359b5777bde6667af8860e4d89d713adfd003051db7ffdd80a94a9f22d6df5da"
+  "hash": "cd1b8fe9d215917ae58aeeeb6e72894cd0eef8debe818e2a3d7bf7ddb07bb1c9"
 }

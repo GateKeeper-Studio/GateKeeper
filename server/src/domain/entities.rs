@@ -38,6 +38,7 @@ pub mod mfa_method;
 pub mod oauth_client;
 pub mod password_change_token;
 pub mod password_reset_token;
+pub mod qr_login_request;
 pub mod refresh_token;
 pub mod risk_model;
 pub mod signing_key;

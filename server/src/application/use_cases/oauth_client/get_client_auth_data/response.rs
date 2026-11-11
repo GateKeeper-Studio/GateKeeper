@@ -49,6 +49,8 @@ pub struct Response {
     // Whether the hosted page should offer "Email me a sign-in link" (magic link
     // login). See `OAuthClient::allows_magic_link_login`.
     pub magic_link_login_enabled: bool,
+    // QR code sign-in (`OAuthClient::allows_qr_login`).
+    pub qr_login_enabled: bool,
     pub oauth_providers: Vec<OAuthProviderView>,
     // The tenant's active custom sign-up fields, in display order — the login
     // SPA renders these as additional inputs on the sign-up form.
@@ -189,6 +191,7 @@ impl Response {
             passkey_login_enabled: !external_login_only
                 && client.allows_mfa_method(&MfaMethod::Webauthn),
             magic_link_login_enabled: client.allows_magic_link_login(),
+            qr_login_enabled: client.allows_qr_login(),
             oauth_providers: providers
                 .iter()
                 .map(|p| OAuthProviderView {

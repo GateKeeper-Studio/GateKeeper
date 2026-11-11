@@ -106,6 +106,7 @@ export const oauthClientFormSchema = z.object({
 	// 400 surfaces as a form error.
 	externalLoginOnly: z.boolean(),
 	magicLinkEnabled: z.boolean(),
+	qrLoginEnabled: z.boolean(),
 	mfaRequired: z.boolean(),
 	mfaEmailEnabled: z.boolean(),
 	mfaTotpEnabled: z.boolean(),

@@ -40,6 +40,12 @@ export type ClientAuthData = {
 	 * Optional so an older IdP that doesn't send it simply hides the button.
 	 */
 	magicLinkLoginEnabled?: boolean;
+	/**
+	 * Offer "Sign in with a QR code": this page shows a code, and another device where
+	 * the user signs in (or an app they are signed in to) scans it and approves.
+	 * Optional so an older IdP that doesn't send it simply hides the button.
+	 */
+	qrLoginEnabled?: boolean;
 	// Which languages this client's hosted pages offer, and which one text is
 	// resolved against when a locale isn't specified/available. `loginAppearance`
 	// and `customFieldDefinitions` below are already resolved server-side for

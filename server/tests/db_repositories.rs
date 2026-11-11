@@ -29,6 +29,7 @@ use web_api::{
             oauth_client::{ClientType, MfaPolicy, OAuthClient},
             organization::Organization,
             outbox_event::OutboxEvent,
+            qr_login_request::{QrApprover, QrLoginRequest, QrLoginStatus, QrRequester},
             refresh_token::RefreshToken,
             tenant::Tenant,
             user::User,
@@ -42,6 +43,7 @@ use web_api::{
             oauth_client_repository::OAuthClientRepository,
             organization_repository::OrganizationRepository,
             outbox_event_repository::OutboxEventRepository,
+            qr_login_request_repository::QrLoginRequestRepository,
             refresh_token_repository::RefreshTokenRepository, tenant_repository::TenantRepository,
             user_repository::UserRepository,
             webhook_delivery_repository::WebhookDeliveryRepository,
@@ -59,6 +61,7 @@ use web_api::{
                 oauth_client_repository::DbOAuthClientRepository,
                 organization_repository::DbOrganizationRepository,
                 outbox_event_repository::DbOutboxEventRepository,
+                qr_login_request_repository::DbQrLoginRequestRepository,
                 refresh_token_repository::DbRefreshTokenRepository,
                 tenant_repository::DbTenantRepository, user_repository::DbUserRepository,
                 webhook_delivery_repository::DbWebhookDeliveryRepository,
@@ -622,6 +625,254 @@ async fn magic_link_tokens_round_trip_and_die_with_their_session(pool: PgPool) {
         tokens.find_by_id(token.id()).await.unwrap().is_none(),
         "the link is deleted with its session"
     );
+}
+
+// QR code sign-in: the waiting session reads back as one, the client flag persists,
+// and every status change is a single conditional statement — two devices racing on
+// one code cannot both claim it, a claim names the only user who may decide, a
+// decision is taken once, and the approval is collected once. The request dies with
+// its session (the retention purge).
+#[sqlx::test(migrations = "./migrations")]
+async fn qr_login_requests_move_forward_once_and_die_with_their_session(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let mut client = seed_client(&pool, &tenant).await;
+    let user = seed_user(&pool, &tenant).await;
+    let other = seed_user(&pool, &tenant).await;
+
+    let clients = DbOAuthClientRepository::new(pool.clone());
+    client.set_qr_login_enabled(true);
+    clients.update(&client).await.unwrap();
+    let read_client = clients
+        .find_by_id(tenant.id(), client.id())
+        .await
+        .unwrap()
+        .expect("client");
+    assert!(read_client.qr_login_enabled());
+    assert!(read_client.allows_qr_login());
+
+    let sessions = DbAuthSessionRepository::new(pool.clone());
+    let mut session = login_session(&tenant, &client, "hash-qr");
+    session.await_qr_approval();
+    sessions.add(&session).await.unwrap();
+    let read = sessions
+        .find_by_token_hash(tenant.id(), "hash-qr")
+        .await
+        .unwrap()
+        .expect("QR session");
+    assert_eq!(read.primary_factor(), PrimaryFactor::QrCode);
+    assert!(read.is_awaiting_qr_approval());
+
+    let repo = DbQrLoginRequestRepository::new(pool.clone());
+    let now = Utc::now();
+    let request = QrLoginRequest::new(
+        tenant.id(),
+        client.id(),
+        session.id(),
+        "t".repeat(64),
+        QrRequester {
+            ip_address: Some("203.0.113.7".to_string()),
+            user_agent: Some("Mozilla/5.0".to_string()),
+            location: Some("São Paulo, SP, BR".to_string()),
+        },
+        now,
+        now + Duration::minutes(2),
+    );
+    repo.add(&request).await.unwrap();
+    let stored = repo
+        .find_by_id(request.id())
+        .await
+        .unwrap()
+        .expect("request");
+    assert_eq!(stored.status(), QrLoginStatus::Pending);
+    assert_eq!(
+        stored.requester().location.as_deref(),
+        Some("São Paulo, SP, BR")
+    );
+    assert_eq!(
+        repo.find_by_auth_session(session.id())
+            .await
+            .unwrap()
+            .map(|r| r.id()),
+        Some(request.id())
+    );
+
+    // Nothing can be decided or collected before a claim.
+    let claim = "c".repeat(64);
+    assert!(
+        !repo
+            .approve(
+                request.id(),
+                &claim,
+                user.id(),
+                false,
+                QrApprover::HostedPage,
+                now
+            )
+            .await
+            .unwrap()
+    );
+    assert!(!repo.complete(request.id(), now).await.unwrap());
+
+    // Claimed once, by the app of `user`.
+    let deadline = now + Duration::minutes(10);
+    assert!(
+        repo.claim(request.id(), &claim, Some(user.id()), now, deadline)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !repo
+            .claim(request.id(), &"d".repeat(64), None, now, deadline)
+            .await
+            .unwrap()
+    );
+
+    // Only the claim code and the scanning user decide.
+    assert!(
+        !repo
+            .approve(
+                request.id(),
+                &"d".repeat(64),
+                user.id(),
+                false,
+                QrApprover::SignedInApp,
+                now
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        !repo
+            .approve(
+                request.id(),
+                &claim,
+                other.id(),
+                false,
+                QrApprover::SignedInApp,
+                now
+            )
+            .await
+            .unwrap()
+    );
+    assert!(!repo.deny(request.id(), &claim, None, now).await.unwrap());
+    assert!(
+        !repo
+            .deny(request.id(), &claim, Some(other.id()), now)
+            .await
+            .unwrap()
+    );
+    // Not after the deadline either.
+    assert!(
+        !repo
+            .approve(
+                request.id(),
+                &claim,
+                user.id(),
+                false,
+                QrApprover::SignedInApp,
+                deadline
+            )
+            .await
+            .unwrap()
+    );
+
+    assert!(
+        repo.approve(
+            request.id(),
+            &claim,
+            user.id(),
+            true,
+            QrApprover::SignedInApp,
+            now
+        )
+        .await
+        .unwrap()
+    );
+    assert!(
+        !repo
+            .deny(request.id(), &claim, Some(user.id()), now)
+            .await
+            .unwrap(),
+        "decided once"
+    );
+    let approved = repo.find_by_id(request.id()).await.unwrap().unwrap();
+    assert_eq!(approved.status(), QrLoginStatus::Approved);
+    assert_eq!(approved.approved_user_id(), Some(user.id()));
+    assert!(approved.approver_mfa_verified());
+    assert_eq!(approved.approved_via(), Some(QrApprover::SignedInApp));
+    assert_eq!(approved.scanned_by_user_id(), Some(user.id()));
+    assert!(approved.scanned_at().is_some() && approved.decided_at().is_some());
+
+    assert!(repo.complete(request.id(), now).await.unwrap());
+    assert!(
+        !repo.complete(request.id(), now).await.unwrap(),
+        "collected once"
+    );
+    assert_eq!(
+        repo.find_by_id(request.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .status(),
+        QrLoginStatus::Completed
+    );
+
+    // A hosted-page claim names no user: the claim code alone denies it.
+    let mut second_session = login_session(&tenant, &client, "hash-qr-2");
+    second_session.await_qr_approval();
+    sessions.add(&second_session).await.unwrap();
+    let second = QrLoginRequest::new(
+        tenant.id(),
+        client.id(),
+        second_session.id(),
+        "u".repeat(64),
+        QrRequester::default(),
+        now,
+        now + Duration::minutes(2),
+    );
+    repo.add(&second).await.unwrap();
+    assert!(
+        repo.claim(second.id(), &claim, None, now, deadline)
+            .await
+            .unwrap()
+    );
+    assert!(repo.deny(second.id(), &claim, None, now).await.unwrap());
+    assert_eq!(
+        repo.find_by_id(second.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .status(),
+        QrLoginStatus::Denied
+    );
+
+    // The CHECKs hold the status machine's invariants.
+    let unclaimed = sqlx::query(
+        "UPDATE qr_login_requests SET status = 'scanned', claim_hash = NULL WHERE id = $1",
+    )
+    .bind(second.id())
+    .execute(&pool)
+    .await;
+    assert!(unclaimed.is_err(), "past pending, a claim is required");
+
+    // One code per waiting session; and the row dies with it.
+    let duplicate = QrLoginRequest::new(
+        tenant.id(),
+        client.id(),
+        session.id(),
+        "v".repeat(64),
+        QrRequester::default(),
+        now,
+        now + Duration::minutes(2),
+    );
+    assert!(repo.add(&duplicate).await.is_err());
+    sqlx::query("DELETE FROM auth_sessions WHERE id = $1")
+        .bind(session.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(repo.find_by_id(request.id()).await.unwrap().is_none());
 }
 
 // Restarting a ceremony replaces only that session's challenge, never one running in

@@ -62,6 +62,12 @@ export function buildOidcParams(
 		params.set('available_mfa_methods', availableMfaMethods);
 	}
 
+	// QR code sign-in: this sign-in approves another device's (see utils/qr-approval).
+	const qrApproval = source.get('qr_approval');
+	if (qrApproval) {
+		params.set('qr_approval', qrApproval);
+	}
+
 	for (const [key, value] of Object.entries(extra)) {
 		if (value) {
 			params.set(key, value);

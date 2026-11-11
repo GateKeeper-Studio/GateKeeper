@@ -14,6 +14,7 @@ pub mod mfa;
 pub mod oauth;
 pub mod oauth_client;
 pub mod organization;
+pub mod qr_login;
 pub mod risk_model;
 pub mod role;
 pub mod security;

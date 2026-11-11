@@ -244,6 +244,15 @@ exempt list because their caller comes from the token.
   the same work for every email: anything that depends on whether the account exists
   (lookup, inserts, sending email) goes through the `TaskSpawner` port, off the request
   path (see `request_magic_link`).
+- **QR code sign-in** (`use_cases/qr_login/`): a `primary_factor = qr_code` session binds
+  no user until another device approves; only the browser holding that session's code
+  can collect the approval, so an approval signs in that browser only. The approving
+  device presents the code's token once (the first scan claims it) and then the claim
+  code; every status change of `qr_login_requests` is one conditional statement. The
+  hosted approval page proves the approver with a completed sign-in for the same client
+  (burned, never a code); an app proves it with an `account`-scoped token
+  (`/me/qr-login/*`), which does not count as a second factor. The completing poll
+  risk-scores the browser itself. See `docs/FLOWS-AUTHENTICATION.md` §1.
 - **Refresh tokens rotate** with **reuse detection** — presenting an already-rotated
   token revokes the whole token family and emits `token.reuse_detected`. A refresh (and
   the social-login callback) is also **risk-scored** by the same engine as an interactive

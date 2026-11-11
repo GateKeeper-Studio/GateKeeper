@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE qr_login_requests\n          SET status = 'approved', approved_user_id = $3, approver_mfa_verified = $4,\n              approved_via = $5, decided_at = $6\n          WHERE id = $1 AND status = 'scanned' AND claim_hash = $2 AND expires_at > $6\n            AND (scanned_by_user_id IS NULL OR scanned_by_user_id = $3)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Bool",
+        "Varchar",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6c2a5f0164364ba4a55655c0731c77ca87ff0e78f11a062e6b93fd7281c3c05f"
+}

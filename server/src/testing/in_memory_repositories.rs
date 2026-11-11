@@ -25,6 +25,7 @@ pub mod in_memory_organization_repository;
 pub mod in_memory_password_change_token_repository;
 pub mod in_memory_password_reset_token_repository;
 pub mod in_memory_policy_acceptance_repository;
+pub mod in_memory_qr_login_request_repository;
 pub mod in_memory_refresh_token_repository;
 pub mod in_memory_risk_model_repository;
 pub mod in_memory_role_repository;

@@ -19,6 +19,11 @@ pub const USER_PASSWORD_CHANGED: &str = "user.password.changed";
 // A one-time sign-in link was emailed (magic link login). Recorded only for an
 // existing, eligible account — the request endpoint itself answers the same for all.
 pub const USER_MAGIC_LINK_SENT: &str = "user.login.magic_link_sent";
+// QR code sign-in: the device that scanned the code approved or denied the sign-in of
+// the browser showing it. The browser's own sign-in is then `user.login.success`
+// with `metadata.method = "qr_code"`.
+pub const USER_QR_LOGIN_APPROVED: &str = "user.login.qr_approved";
+pub const USER_QR_LOGIN_DENIED: &str = "user.login.qr_denied";
 pub const USER_MFA_ENROLLED: &str = "user.mfa.enrolled";
 pub const USER_MFA_REMOVED: &str = "user.mfa.removed";
 // The user explicitly extended a pre-authorization session from the login UI. Worth

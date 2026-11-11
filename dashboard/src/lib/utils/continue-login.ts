@@ -4,6 +4,7 @@ import { resolve } from '$app/paths';
 import { authorizeApi } from '$lib/services/auth/authorize';
 import { EMfaType, type LoginResponse } from '$lib/services/auth/login';
 import { storeSession } from '$lib/state/auth-session-expiry.svelte';
+import { approveQrSignIn, isQrApproval } from '$lib/utils/qr-approval';
 
 export type ContinueLoginContext = {
 	clientId: string;
@@ -94,6 +95,12 @@ export async function continueAfterLogin(
 			})
 		);
 		return { kind: 'navigated' };
+	}
+
+	// Signed in to approve a QR code: the session approves the other device instead of
+	// becoming a code here.
+	if (isQrApproval(ctx.oidcParams)) {
+		return approveQrSignIn(clientId, loginData.sessionCode);
 	}
 
 	const redirectUri = ctx.oidcParams.get('redirect_uri') || '/';
