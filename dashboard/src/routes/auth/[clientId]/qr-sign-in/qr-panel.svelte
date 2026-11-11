@@ -32,7 +32,15 @@
 	// to this many in a row (about ten minutes). Then the user asks for one.
 	const MAX_CODES = 5;
 
-	type Phase = 'loading' | 'pending' | 'scanned' | 'signing-in' | 'expired' | 'denied' | 'error';
+	type Phase =
+		| 'loading'
+		| 'pending'
+		| 'scanned'
+		| 'confirm'
+		| 'signing-in'
+		| 'expired'
+		| 'denied'
+		| 'error';
 
 	const clientId = page.params.clientId as string;
 	const searchParams = page.url.searchParams;
@@ -50,6 +58,8 @@
 	let now = $state(Date.now());
 
 	let current: StartQrLoginResponse | null = null;
+	// The approval, held until the user confirms it is their account.
+	let approved = $state<PollQrLoginResponse | null>(null);
 	let codesShown = 0;
 	let pollTimer: ReturnType<typeof setTimeout> | undefined;
 	let stopped = false;
@@ -64,6 +74,9 @@
 		if (stopped || clock.phase === 'expired') return;
 		phase = 'loading';
 		error = null;
+		// Never leave a dead code on screen while the next one loads.
+		qrDataUrl = null;
+		current = null;
 
 		const [data, err] = await startQrLoginApi({
 			clientId,
@@ -140,7 +153,10 @@
 				ended('denied');
 				return;
 			case 'approved':
-				await signIn(data);
+				stopped = true;
+				clearTimeout(pollTimer);
+				approved = data;
+				phase = 'confirm';
 		}
 	}
 
@@ -160,11 +176,16 @@
 		phase = kind;
 	}
 
-	// Approved on the other device: from here this browser continues exactly as after
-	// a password (a second factor, a forced password change, or straight to the app).
-	async function signIn(data: PollQrLoginResponse) {
-		stopped = true;
-		if (!data.login) {
+	// Approved on the other device, and the user confirmed it is their account: from
+	// here this browser continues exactly as after a password (a second factor, a
+	// forced password change, or straight to the app).
+	//
+	// The confirmation is not a formality. Whoever scans the code decides which
+	// account this browser signs in to: someone who photographed it could approve it
+	// with THEIR account, and this page would then sign the user in as them.
+	async function signIn() {
+		const data = approved;
+		if (!data?.login) {
 			phase = 'error';
 			error = m.auth_generic_error();
 			return;
@@ -188,7 +209,10 @@
 		}
 	}
 
+	// "Not my account": drop that sign-in (its session code lives only in this page and
+	// expires unused) and show a fresh code.
 	function newCode() {
+		approved = null;
 		stopped = false;
 		codesShown = 0;
 		void showCode();
@@ -281,6 +305,18 @@
 				<li>{m.qr_sign_in_step_approve()}</li>
 			</ol>
 		{/if}
+	{:else if phase === 'confirm' && approved}
+		<div class="flex flex-col items-center gap-2 text-center">
+			<CircleCheckIcon class="size-10 text-green-600" />
+			<p class="text-lg font-semibold">{m.qr_sign_in_confirm_title()}</p>
+			<p class="text-sm text-muted-foreground">{m.qr_sign_in_confirm_description()}</p>
+			<p class="rounded-md border px-3 py-2 text-sm font-medium break-all">{approved.email}</p>
+		</div>
+		<div class="grid gap-2">
+			<Button onclick={signIn}>{m.qr_sign_in_confirm_continue()}</Button>
+			<Button variant="outline" onclick={newCode}>{m.qr_sign_in_confirm_not_me()}</Button>
+		</div>
+		<p class="text-center text-xs text-muted-foreground">{m.qr_sign_in_confirm_hint()}</p>
 	{:else if phase === 'signing-in'}
 		<div class="flex items-center justify-center gap-2 text-sm text-muted-foreground">
 			<LoadingSpinner />
@@ -310,7 +346,7 @@
 		</Button>
 	{/if}
 
-	{#if phase !== 'signing-in'}
+	{#if phase !== 'signing-in' && phase !== 'confirm'}
 		<a
 			href={resolve(`/auth/[clientId]/sign-in?${urlParams.toString()}`, { clientId })}
 			class="text-center text-sm font-semibold hover:underline"

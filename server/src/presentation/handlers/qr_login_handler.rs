@@ -99,6 +99,9 @@ pub struct AppScanBody {
 pub struct AppDecisionBody {
     pub request_id: Uuid,
     pub claim_code: String,
+    // Approving only: the account's current password (see qr_login::decide).
+    #[serde(alias = "current_password")]
+    pub current_password: Option<String>,
 }
 
 // POST /v1/auth/qr-login/scan — the hosted approval page read a code.
@@ -191,7 +194,9 @@ pub async fn scan_in_app(
     Ok((StatusCode::OK, NO_STORE, Json(response)))
 }
 
-// POST /me/qr-login/approve and /deny — that app decides.
+// POST /me/qr-login/approve and /deny — that app decides. Approving takes
+// `{requestId, claimCode, currentPassword}`; a missing or wrong password answers 403
+// `step_up_required` (a wrong one also denies the request).
 pub async fn approve_in_app(
     state: State<AppState>,
     principal: AuthPrincipal,
@@ -225,7 +230,15 @@ async fn decide_in_app(
             request_id: body.request_id,
             claim_code: body.claim_code,
             decision,
-            decider: Decider::SignedInUser { tenant_id, user_id },
+            decider: Decider::SignedInUser {
+                tenant_id,
+                user_id,
+                // A denial needs no proof; never pass a password along with one.
+                current_password: match decision {
+                    Decision::Approve => body.current_password,
+                    Decision::Deny => None,
+                },
+            },
             ip_address: ctx.ip_address,
             user_agent: ctx.user_agent,
         })

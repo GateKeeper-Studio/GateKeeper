@@ -52,8 +52,9 @@ use crate::{
             in_memory_user_repository::InMemoryUserRepository,
         },
         in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
+        password_hasher::test_password_hasher,
         templated_email_support::recording_templated_email_sender,
-        user_factory::{TEST_PASSWORD_SECRET, generate_user},
+        user_factory::{TEST_PASSWORD, TEST_PASSWORD_SECRET, generate_user},
     },
     utils::oauth_crypto::{generate_opaque_token, sha256_hex},
 };
@@ -194,7 +195,7 @@ fn build(options: Options) -> Fixture {
             risk.clone(),
         ),
         scan: scan::use_case::UseCase::new(factory.clone()),
-        decide: decide::use_case::UseCase::new(factory.clone()),
+        decide: decide::use_case::UseCase::new(factory.clone(), test_password_hasher()),
         authorize: authorize_session::use_case::UseCase::new(factory),
         risk,
         clients,
@@ -310,6 +311,19 @@ impl Fixture {
         Decider::HostedPage {
             client_id: PUBLIC_CLIENT_ID.to_string(),
             session_code: session_code.map(str::to_string),
+        }
+    }
+
+    // An app signed in as `user_id`, approving with that account's password.
+    fn app_decider(&self, user_id: Uuid) -> Decider {
+        self.app_decider_with(user_id, Some(TEST_PASSWORD))
+    }
+
+    fn app_decider_with(&self, user_id: Uuid, password: Option<&str>) -> Decider {
+        Decider::SignedInUser {
+            tenant_id: self.tenant_id,
+            user_id,
+            current_password: password.map(str::to_string),
         }
     }
 
@@ -652,10 +666,7 @@ async fn a_signed_in_app_approves_but_the_browser_still_owes_the_clients_second_
         &shown,
         &scanned.claim_code,
         Decision::Approve,
-        Decider::SignedInUser {
-            tenant_id: fx.tenant_id,
-            user_id: fx.user_id,
-        },
+        fx.app_decider(fx.user_id),
     )
     .await
     .unwrap();
@@ -730,10 +741,7 @@ async fn an_apps_claim_is_decided_by_its_own_user_in_its_own_tenant() {
 
     let scanned = fx.scan_as(&shown, fx.app(fx.user_id)).await.unwrap();
     let other = fx.add_user();
-    let as_other = Decider::SignedInUser {
-        tenant_id: fx.tenant_id,
-        user_id: other,
-    };
+    let as_other = fx.app_decider(other);
     assert!(is_auth_error(
         fx.decide_as(
             &shown,
@@ -840,10 +848,7 @@ async fn a_risk_step_up_on_the_browser_asks_for_a_second_factor() {
         &shown,
         &scanned.claim_code,
         Decision::Approve,
-        Decider::SignedInUser {
-            tenant_id: fx.tenant_id,
-            user_id: fx.user_id,
-        },
+        fx.app_decider(fx.user_id),
     )
     .await
     .unwrap();
@@ -866,4 +871,144 @@ async fn a_blocked_ip_gets_no_code() {
     });
     assert!(is_auth_error(fx.show().await));
     assert!(fx.requests.all().is_empty());
+}
+
+#[tokio::test]
+async fn a_risk_step_up_on_the_browser_holds_even_after_a_second_factor_on_the_phone() {
+    let fx = build(Options {
+        mfa_policy: MfaPolicy {
+            required: true,
+            email_enabled: true,
+            totp_enabled: true,
+            webauthn_enabled: true,
+        },
+        risk: FakeRiskEngine::with_decision(RiskDecision::AllowWithMfa),
+        ..Options::default()
+    });
+    fx.seed_totp();
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_on_phone(&shown).await.unwrap();
+    let phone = fx.phone_session(|s| {
+        s.require_mfa();
+        s.verify_mfa(&MfaMethod::Totp, Utc::now());
+    });
+    fx.decide_as(
+        &shown,
+        &scanned.claim_code,
+        Decision::Approve,
+        fx.hosted(Some(&phone)),
+    )
+    .await
+    .unwrap();
+
+    // The risk engine flagged THIS browser (what a relayed code looks like): the
+    // phone's second factor does not answer for it.
+    let login = fx.poll(&shown).await.unwrap().login.unwrap();
+    assert_eq!(login.mfa_type.as_deref(), Some("totp"));
+    assert!(fx.session_by_code(&login.session_code).is_mfa_pending());
+}
+
+#[tokio::test]
+async fn an_app_approves_only_with_the_accounts_current_password() {
+    let fx = build(Options::default());
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_as(&shown, fx.app(fx.user_id)).await.unwrap();
+
+    // No password: the app is asked for one, and nothing changes.
+    let missing = fx
+        .decide_as(
+            &shown,
+            &scanned.claim_code,
+            Decision::Approve,
+            fx.app_decider_with(fx.user_id, None),
+        )
+        .await;
+    assert!(matches!(missing, Err(DomainError::StepUpRequired(_))));
+    assert_eq!(fx.request(&shown).status(), QrLoginStatus::Scanned);
+
+    // A password tried against a code this user did not claim is never checked.
+    let foreign = fx
+        .decide_as(
+            &shown,
+            "not-the-claim",
+            Decision::Approve,
+            fx.app_decider_with(fx.user_id, Some("wrong")),
+        )
+        .await;
+    assert!(is_auth_error(foreign));
+    assert_eq!(fx.request(&shown).status(), QrLoginStatus::Scanned);
+
+    // A wrong password ends the request: every guess costs a new code.
+    let wrong = fx
+        .decide_as(
+            &shown,
+            &scanned.claim_code,
+            Decision::Approve,
+            fx.app_decider_with(fx.user_id, Some("not-the-password")),
+        )
+        .await;
+    assert!(matches!(wrong, Err(DomainError::StepUpRequired(_))));
+    assert_eq!(fx.request(&shown).status(), QrLoginStatus::Denied);
+    let denied = fx
+        .audit_actions()
+        .into_iter()
+        .find(|(a, _, _)| a == USER_QR_LOGIN_DENIED)
+        .expect("audited");
+    assert_eq!(denied.2["reason"], "wrong_password");
+    assert_eq!(fx.poll(&shown).await.unwrap().status, Status::Denied);
+
+    // The right password approves.
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_as(&shown, fx.app(fx.user_id)).await.unwrap();
+    fx.decide_as(
+        &shown,
+        &scanned.claim_code,
+        Decision::Approve,
+        fx.app_decider(fx.user_id),
+    )
+    .await
+    .unwrap();
+    assert_eq!(fx.poll(&shown).await.unwrap().status, Status::Approved);
+}
+
+#[tokio::test]
+async fn an_account_without_a_password_cannot_approve_from_an_app() {
+    let fx = build(Options::default());
+    {
+        let mut users = fx.users.memory.data.lock().unwrap();
+        let user = users.get(&fx.user_id).cloned().unwrap();
+        let passwordless = User::reconstruct(
+            user.id(),
+            user.email().to_string(),
+            user.tenant_id(),
+            true,
+            user.profile().cloned(),
+            None,
+            true,
+            user.created_at(),
+            user.updated_at(),
+        );
+        users.insert(fx.user_id, passwordless);
+    }
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_as(&shown, fx.app(fx.user_id)).await.unwrap();
+    let refused = fx
+        .decide_as(
+            &shown,
+            &scanned.claim_code,
+            Decision::Approve,
+            fx.app_decider(fx.user_id),
+        )
+        .await;
+    assert!(matches!(refused, Err(DomainError::AccessDenied(_))));
+    assert_eq!(fx.request(&shown).status(), QrLoginStatus::Scanned);
+    // Denying needs no proof.
+    fx.decide_as(
+        &shown,
+        &scanned.claim_code,
+        Decision::Deny,
+        fx.app_decider_with(fx.user_id, None),
+    )
+    .await
+    .unwrap();
 }

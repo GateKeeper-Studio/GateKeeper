@@ -250,9 +250,12 @@ exempt list because their caller comes from the token.
   device presents the code's token once (the first scan claims it) and then the claim
   code; every status change of `qr_login_requests` is one conditional statement. The
   hosted approval page proves the approver with a completed sign-in for the same client
-  (burned, never a code); an app proves it with an `account`-scoped token
-  (`/me/qr-login/*`), which does not count as a second factor. The completing poll
-  risk-scores the browser itself. See `docs/FLOWS-AUTHENTICATION.md` §1.
+  (burned, never a code); an app proves it with an `account`-scoped token plus the
+  current password (`/me/qr-login/*`; a wrong one denies the request), which never
+  counts as a second factor. The completing poll risk-scores the browser itself, and a
+  risk-forced step-up applies there even when the phone passed a second factor. The
+  browser confirms the approved account before continuing. See
+  `docs/FLOWS-AUTHENTICATION.md` §1.
 - **Refresh tokens rotate** with **reuse detection** — presenting an already-rotated
   token revokes the whole token family and emits `token.reuse_detected`. A refresh (and
   the social-login callback) is also **risk-scored** by the same engine as an interactive

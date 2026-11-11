@@ -49,9 +49,9 @@ const BLOCKED: &str = "sign-in blocked, please try again later";
 // is conditional): the approving user is bound to the waiting session, the session
 // code is rotated (the old one sat in the page while it polled), and the rules of a
 // password sign-in apply to THIS browser — the risk engine scores it with its own IP
-// and user agent, the client's MFA policy and a risk-forced step-up ask for a second
-// factor (unless the approval itself passed one), and a forced password change must
-// still be made.
+// and user agent, a risk-forced step-up always asks for a second factor, the client's
+// MFA policy does unless the approval itself passed one, and a forced password change
+// must still be made.
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
     templated_email: Arc<TemplatedEmailSender>,
@@ -215,10 +215,13 @@ impl UseCase {
         session.rotate_token(sha256_hex(&raw_session_token));
 
         // A second factor the approving device already passed (minutes ago, for this
-        // very sign-in) is not asked for twice. Otherwise the client's MFA policy and a
-        // risk-forced step-up apply here as after a password.
+        // very sign-in) satisfies the client's MFA policy: it is not asked for twice.
+        // A risk-forced step-up is different: the risk engine judged THIS browser
+        // (a new device, another country), which is what a relayed code looks like,
+        // so it asks here whatever the approving device passed. Otherwise both apply
+        // here as after a password.
         let force_mfa = risk.decision == RiskDecision::AllowWithMfa;
-        let mfa = if request.approver_mfa_verified() {
+        let mfa = if request.approver_mfa_verified() && !force_mfa {
             MfaEngagement::default()
         } else {
             self.mfa_gate

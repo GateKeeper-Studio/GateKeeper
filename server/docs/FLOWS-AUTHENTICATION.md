@@ -288,7 +288,9 @@ Two kinds of device can approve:
 - **An app the user is already signed in to** — the "scan with the app" case. With an
   access token carrying the `account` scope, it calls `POST /me/qr-login/scan` with the
   two values from the URL fragment, shows what is asking, then `POST
-  /me/qr-login/approve` (or `/deny`) with the claim code the scan returned.
+  /me/qr-login/approve` with the claim code the scan returned **and the account's
+  current password** (`/deny` needs only the claim code). An account without a password
+  approves through the hosted page instead.
 
 ```
   Browser (sign-in page)                Provider                    Phone / app
@@ -316,7 +318,8 @@ Two kinds of device can approve:
      │                                    │ · bind user, risk-score THIS browser, rotate the
      │  ← { login-shaped response, email }│   code, MFA gate, forced change, audit the LOGIN
      │◀───────────────────────────────────│
-     │ 6. MFA page or authorize → redirect to the RP (continueAfterLogin)
+     │ 6. "Continue as <email>?" — the user confirms it is their account
+     │ 7. MFA page or authorize → redirect to the RP (continueAfterLogin)
 ```
 
 - **It can only ever sign in the browser that asked.** The browser's half is its login
@@ -343,13 +346,25 @@ Two kinds of device can approve:
   User-Agent, e.g. "Chrome · Windows"), its approximate location (GeoIP, when
   configured) and when it asked. Not its IP address: the scanner may not be the person
   who asked. Audit rows keep both sides' request context.
+- **A stolen token is not enough.** An app approves with its access token AND the
+  account's current password: a bearer token says nothing about who holds it, and
+  without the password a stolen 15-minute token could be turned into a full sign-in
+  (with its own refresh token) on the thief's browser. A wrong password denies the
+  request, so every guess costs a new code, which the strict rate limit bounds; a
+  password is only checked against a code this user really claimed.
 - **Second factor.** QR approval is the primary factor (`primary_factor = qr_code`; any
   second factor can follow it). If the approving sign-in on the hosted page passed a
-  second factor, the browser is not asked for another one (`approver_mfa_verified`).
-  Otherwise — an app's approval, or a hosted sign-in that needed none — the client's
-  MFA policy and a risk-forced step-up apply to the browser exactly as after a
-  password. An access token proves the user signed in once, not that they just passed
-  a second factor.
+  second factor, the client's MFA policy is satisfied by it and the browser is not asked
+  for another one (`approver_mfa_verified`). A risk-forced step-up is different: the
+  risk engine judged the browser itself (a new device, another country — what a relayed
+  code looks like), so the browser is asked for a second factor whatever the phone
+  passed. An app's approval never counts as a second factor (a token and a password are
+  not one): the client's MFA policy applies to the browser as after a password.
+- **The browser confirms the account.** Whoever approves decides which account the
+  browser signs in to, so someone who photographs the code could approve it with their
+  OWN account and sign the user's browser in as them (to collect what the user then
+  types). The browser therefore shows the approved email and continues only when the
+  user confirms; "Not my account" drops that sign-in and shows a new code.
 - **Risk is scored for the browser.** The completing poll evaluates the risk engine with
   the browser's own IP and User-Agent; `BLOCK_TEMPORARILY` refuses the sign-in and
   burns its session. Asking for a code goes through the same pre-authentication IP
@@ -366,7 +381,8 @@ Two kinds of device can approve:
   victim who approves it signs the attacker in. What stands in the way is what the
   approver is shown (which app, which browser, where — the location is what gives a
   relay away, when GeoIP is configured), the explicit warning on the approval screen,
-  the 2-minute code, and risk scoring of the completing browser. It is not
+  the 2-minute code, and risk scoring of the completing browser, whose step-up asks the
+  attacker for a second factor the phone's approval does not answer for. It is not
   phishing-resistant the way a passkey is: browsers already offer a QR code for
   passkeys stored on a phone ("use a phone or tablet", the WebAuthn hybrid transport),
   and that flow checks over Bluetooth that the phone is physically near the computer.

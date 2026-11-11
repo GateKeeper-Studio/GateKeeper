@@ -785,9 +785,10 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             scan: Arc::new(qr_login::scan::use_case::UseCase::new(Arc::clone(
                 &uow_factory,
             ))),
-            decide: Arc::new(qr_login::decide::use_case::UseCase::new(Arc::clone(
-                &uow_factory,
-            ))),
+            decide: Arc::new(qr_login::decide::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&password_hasher),
+            )),
         }),
         mfa: Arc::new(MfaUseCases {
             send_mfa_email_otp: Arc::new(send_email_otp::use_case::UseCase::new(
