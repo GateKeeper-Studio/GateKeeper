@@ -18,6 +18,12 @@ pub struct InMemoryEmailVerificationTokenRepository {
     pub memory: Arc<InMemoryRepository<Uuid, EmailVerificationToken>>,
 }
 
+impl Default for InMemoryEmailVerificationTokenRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryEmailVerificationTokenRepository {
     pub fn new() -> Self {
         Self {

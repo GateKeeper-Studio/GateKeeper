@@ -1714,7 +1714,7 @@ async fn a_promoted_model_scores_real_logins_through_the_hybrid_engine(pool: PgP
             }),
             ip_history: web_api::domain::repositories::login_event_repository::IpHistory {
                 attempts: 10,
-                failed: if fraud { 8 } else { (i % 2) as i64 },
+                failed: if fraud { 8 } else { i % 2 },
             },
             geo_available: false,
             ..FeatureFacts::default()

@@ -20,6 +20,12 @@ pub struct InMemoryQrLoginRequestRepository {
     pub memory: Arc<InMemoryRepository<Uuid, QrLoginRequest>>,
 }
 
+impl Default for InMemoryQrLoginRequestRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryQrLoginRequestRepository {
     pub fn new() -> Self {
         Self {

@@ -81,7 +81,7 @@ impl SecurityBlockRepository for InMemorySecurityBlockRepository {
             .filter(|b| b.tenant_id() == tenant_id && b.is_active(now))
             .cloned()
             .collect();
-        out.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        out.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
         Ok(out)
     }
 

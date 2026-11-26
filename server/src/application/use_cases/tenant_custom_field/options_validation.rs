@@ -40,12 +40,12 @@ pub fn validate_localized_text(
         cleaned.insert(locale, value);
     }
 
-    if let Some(required) = required_locale {
-        if !cleaned.contains_key(required) {
-            return Err(DomainError::Validation(format!(
-                "{label} must include the tenant's default language ('{required}')"
-            )));
-        }
+    if let Some(required) = required_locale
+        && !cleaned.contains_key(required)
+    {
+        return Err(DomainError::Validation(format!(
+            "{label} must include the tenant's default language ('{required}')"
+        )));
     }
 
     Ok(cleaned)

@@ -19,6 +19,12 @@ pub struct InMemoryMfaEnrollmentRepository {
     pub memory: Arc<InMemoryRepository<Uuid, MfaEnrollment>>,
 }
 
+impl Default for InMemoryMfaEnrollmentRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryMfaEnrollmentRepository {
     pub fn new() -> Self {
         Self {

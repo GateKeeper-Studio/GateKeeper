@@ -16,6 +16,12 @@ pub struct InMemoryTenantRepository {
     pub memory: Arc<InMemoryRepository<Uuid, Tenant>>,
 }
 
+impl Default for InMemoryTenantRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryTenantRepository {
     pub fn new() -> Self {
         Self {

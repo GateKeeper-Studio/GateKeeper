@@ -19,6 +19,12 @@ pub struct InMemoryMagicLinkTokenRepository {
     pub memory: Arc<InMemoryRepository<Uuid, MagicLinkToken>>,
 }
 
+impl Default for InMemoryMagicLinkTokenRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryMagicLinkTokenRepository {
     pub fn new() -> Self {
         Self {

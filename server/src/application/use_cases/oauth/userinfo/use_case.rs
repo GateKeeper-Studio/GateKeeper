@@ -68,15 +68,15 @@ impl UseCase {
             email_verified: None,
         };
 
-        if has("profile") {
-            if let Some(profile) = user.profile() {
-                response.name = profile
-                    .display_name()
-                    .cloned()
-                    .or_else(|| Some(format!("{} {}", profile.first_name(), profile.last_name())));
-                response.given_name = Some(profile.first_name().to_string());
-                response.family_name = Some(profile.last_name().to_string());
-            }
+        if has("profile")
+            && let Some(profile) = user.profile()
+        {
+            response.name = profile
+                .display_name()
+                .cloned()
+                .or_else(|| Some(format!("{} {}", profile.first_name(), profile.last_name())));
+            response.given_name = Some(profile.first_name().to_string());
+            response.family_name = Some(profile.last_name().to_string());
         }
 
         if has("email") {

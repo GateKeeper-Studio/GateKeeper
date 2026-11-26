@@ -50,15 +50,16 @@ pub fn placeholders(input: &str) -> Vec<String> {
     let bytes = input.as_bytes();
     let mut i = 0;
     while i + 1 < bytes.len() {
-        if bytes[i] == b'{' && bytes[i + 1] == b'{' {
-            if let Some(end) = input[i + 2..].find("}}") {
-                let key = input[i + 2..i + 2 + end].trim();
-                if !key.is_empty() {
-                    keys.push(key.to_string());
-                }
-                i = i + 2 + end + 2;
-                continue;
+        if bytes[i] == b'{'
+            && bytes[i + 1] == b'{'
+            && let Some(end) = input[i + 2..].find("}}")
+        {
+            let key = input[i + 2..i + 2 + end].trim();
+            if !key.is_empty() {
+                keys.push(key.to_string());
             }
+            i = i + 2 + end + 2;
+            continue;
         }
         i += 1;
     }

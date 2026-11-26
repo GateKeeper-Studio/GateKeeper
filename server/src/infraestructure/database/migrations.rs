@@ -248,7 +248,7 @@ mod tests {
         assert_eq!(PRE_SQUASH_VERSIONS.len(), 71);
         assert!(PRE_SQUASH_VERSIONS.windows(2).all(|w| w[0] < w[1]));
         assert_eq!(PRE_SQUASH_VERSIONS.last(), Some(&CATCH_UP_VERSION));
-        assert!(CATCH_UP_VERSION < BASELINE_VERSION);
+        const { assert!(CATCH_UP_VERSION < BASELINE_VERSION) };
     }
 
     #[test]

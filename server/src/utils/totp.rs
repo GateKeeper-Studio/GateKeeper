@@ -62,12 +62,8 @@ pub fn verify(secret: &[u8], code: &str, unix_seconds: i64, skew: i64) -> Option
         return None;
     }
     let current = step_for(unix_seconds);
-    for step in (current - skew)..=(current + skew) {
-        if step >= 0 && constant_time_eq(&generate(secret, step), code) {
-            return Some(step);
-        }
-    }
-    None
+    ((current - skew)..=(current + skew))
+        .find(|&step| step >= 0 && constant_time_eq(&generate(secret, step), code))
 }
 
 // 6-digit codes are tiny, but keep the comparison constant-time anyway: it is

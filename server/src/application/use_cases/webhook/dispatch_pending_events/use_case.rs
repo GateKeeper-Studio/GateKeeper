@@ -52,7 +52,9 @@ pub struct UseCase {
 }
 
 // A claimed delivery with everything needed to attempt it, resolved while the claim
-// transaction is open.
+// transaction is open. Bounded by the batch size and short-lived, so the size gap
+// between variants costs nothing worth a Box.
+#[allow(clippy::large_enum_variant)]
 enum Prepared {
     Webhook {
         delivery: WebhookDelivery,

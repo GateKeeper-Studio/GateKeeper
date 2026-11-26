@@ -19,6 +19,12 @@ pub struct InMemoryUserRepository {
     pub preferred_2fa_methods: Mutex<HashMap<Uuid, String>>,
 }
 
+impl Default for InMemoryUserRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryUserRepository {
     // The user as this unit of work sees it: its own pending write, else the data.
     fn current(&self, user_id: Uuid) -> Option<User> {
@@ -188,15 +194,14 @@ impl UserRepository for InMemoryUserRepository {
         let mut saved = user.clone();
         // Mirrors the database upsert: with the same password, the earlier temporary
         // password expiry wins, so a stale copy cannot revive a burned one.
-        if let (Some(stored), Some(incoming)) = (self.current(user.id()), user.credentials()) {
-            if let Some(stored) = stored.credentials()
-                && stored.password_hash() == incoming.password_hash()
-                && let Some(stored_expiry) = stored.temporary_password_expires_at()
-            {
-                let mut credentials = incoming.clone();
-                credentials.burn_temporary_password(stored_expiry);
-                saved.set_credentials(credentials);
-            }
+        if let (Some(stored), Some(incoming)) = (self.current(user.id()), user.credentials())
+            && let Some(stored) = stored.credentials()
+            && stored.password_hash() == incoming.password_hash()
+            && let Some(stored_expiry) = stored.temporary_password_expires_at()
+        {
+            let mut credentials = incoming.clone();
+            credentials.burn_temporary_password(stored_expiry);
+            saved.set_credentials(credentials);
         }
         self.memory.draft.lock().unwrap().insert(user.id(), saved);
         Ok(())
@@ -213,9 +218,9 @@ impl UserRepository for InMemoryUserRepository {
         let Some(mut credentials) = user.credentials().cloned() else {
             return Ok(false);
         };
-        if !credentials
+        if credentials
             .temporary_password_expires_at()
-            .is_some_and(|expires_at| expires_at > now)
+            .is_none_or(|expires_at| expires_at <= now)
         {
             return Ok(false);
         }

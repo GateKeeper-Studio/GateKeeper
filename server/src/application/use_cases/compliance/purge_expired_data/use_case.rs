@@ -21,15 +21,18 @@ use crate::{
 // session/token/code rows in one transaction. Idempotent — re-running purges nothing
 // new. The audit log is NEVER touched here (its retention is a separate, longer
 // floor). `data.purged` is emitted at the handler layer with the run's counts.
+// The platform-admin credential tables: refresh tokens, console sessions, invitations.
+type AdminCredentialRepositories = (
+    Arc<dyn AdminRefreshTokenRepository>,
+    Arc<dyn AdminWebSessionRepository>,
+    Arc<dyn AdminInvitationRepository>,
+);
+
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
     // Platform-admin credential tables. Not part of the tenant Unit of Work, so they
     // are purged on their own after it commits (each delete is idempotent).
-    admin_sessions: Option<(
-        Arc<dyn AdminRefreshTokenRepository>,
-        Arc<dyn AdminWebSessionRepository>,
-        Arc<dyn AdminInvitationRepository>,
-    )>,
+    admin_sessions: Option<AdminCredentialRepositories>,
 }
 
 impl UseCase {

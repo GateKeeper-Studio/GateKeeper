@@ -18,6 +18,12 @@ pub struct InMemoryAuthSessionRepository {
     pub memory: Arc<InMemoryRepository<Uuid, AuthSession>>,
 }
 
+impl Default for InMemoryAuthSessionRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryAuthSessionRepository {
     pub fn new() -> Self {
         Self {

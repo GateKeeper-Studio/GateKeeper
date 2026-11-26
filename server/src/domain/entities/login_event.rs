@@ -21,7 +21,7 @@ impl RiskLevel {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_db(s: &str) -> Self {
         match s {
             "MEDIUM" => RiskLevel::Medium,
             "HIGH" => RiskLevel::High,
@@ -64,7 +64,7 @@ impl RiskDecision {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_db(s: &str) -> Self {
         match s {
             "ALLOW_WITH_MFA" => RiskDecision::AllowWithMfa,
             "BLOCK_TEMPORARILY" => RiskDecision::BlockTemporarily,
@@ -120,7 +120,7 @@ impl RiskSeverity {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_db(s: &str) -> Self {
         match s {
             "MEDIUM" => RiskSeverity::Medium,
             "HIGH" => RiskSeverity::High,
@@ -164,7 +164,7 @@ impl RiskSignalType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
             "BLOCKED_IP" => RiskSignalType::BlockedIp,
             "TOO_MANY_FAILED_ATTEMPTS_BY_IP" => RiskSignalType::TooManyFailedAttemptsByIp,

@@ -19,6 +19,12 @@ pub struct InMemoryTrustedDeviceRepository {
     pub memory: Arc<InMemoryRepository<Uuid, TrustedDevice>>,
 }
 
+impl Default for InMemoryTrustedDeviceRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryTrustedDeviceRepository {
     pub fn new() -> Self {
         Self {

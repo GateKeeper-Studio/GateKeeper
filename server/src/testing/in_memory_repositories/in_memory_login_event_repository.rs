@@ -112,10 +112,9 @@ impl LoginEventRepository for InMemoryLoginEventRepository {
             if s.event.tenant_id() == tenant_id
                 && s.event.ip_address() == Some(ip)
                 && s.event.created_at() >= since
+                && let Some(k) = identity_key(&s.event)
             {
-                if let Some(k) = identity_key(&s.event) {
-                    keys.insert(k);
-                }
+                keys.insert(k);
             }
         }
         Ok(keys.len() as i64)
@@ -281,7 +280,7 @@ impl LoginEventRepository for InMemoryLoginEventRepository {
             .filter(|s| s.event.tenant_id() == tenant_id && matches_filter(s, filter))
             .map(|s| s.event.clone())
             .collect();
-        matched.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        matched.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
         let offset = ((page.max(1) - 1) * page_size) as usize;
         Ok(matched
             .into_iter()
@@ -383,7 +382,7 @@ impl LoginEventRepository for InMemoryLoginEventRepository {
                 count,
             })
             .collect();
-        out.sort_by(|a, b| b.count.cmp(&a.count));
+        out.sort_by_key(|e| std::cmp::Reverse(e.count));
         Ok(out)
     }
 
@@ -493,7 +492,7 @@ impl LoginEventRepository for InMemoryLoginEventRepository {
             .into_values()
             .filter(|u| u.failed_attempts > 0)
             .collect();
-        out.sort_by(|a, b| b.failed_attempts.cmp(&a.failed_attempts));
+        out.sort_by_key(|e| std::cmp::Reverse(e.failed_attempts));
         out.truncate(limit.max(0) as usize);
         Ok(out)
     }
@@ -515,7 +514,7 @@ impl LoginEventRepository for InMemoryLoginEventRepository {
             })
             .map(|s| s.event.clone())
             .collect();
-        out.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        out.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
         out.truncate(limit.max(0) as usize);
         Ok(out)
     }
@@ -537,61 +536,60 @@ impl LoginEventRepository for InMemoryLoginEventRepository {
             })
             .map(|s| s.event.clone())
             .collect();
-        out.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        out.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
         out.truncate(limit.max(0) as usize);
         Ok(out)
     }
 }
 
 fn matches_filter(s: &Stored, filter: &LoginEventFilter) -> bool {
-    if let Some(uid) = filter.user_id {
-        if s.event.user_id() != Some(uid) {
-            return false;
-        }
+    if let Some(uid) = filter.user_id
+        && s.event.user_id() != Some(uid)
+    {
+        return false;
     }
-    if let Some(ip) = &filter.ip_address {
-        if s.event.ip_address() != Some(ip.as_str()) {
-            return false;
-        }
+    if let Some(ip) = &filter.ip_address
+        && s.event.ip_address() != Some(ip.as_str())
+    {
+        return false;
     }
-    if let Some(cc) = &filter.country_code {
-        if s.event.country_code() != Some(cc.as_str()) {
-            return false;
-        }
+    if let Some(cc) = &filter.country_code
+        && s.event.country_code() != Some(cc.as_str())
+    {
+        return false;
     }
-    if let Some(level) = &filter.risk_level {
-        if s.event.risk_level().as_str() != level {
-            return false;
-        }
+    if let Some(level) = &filter.risk_level
+        && s.event.risk_level().as_str() != level
+    {
+        return false;
     }
-    if let Some(decision) = &filter.decision {
-        if s.event.decision().as_str() != decision {
-            return false;
-        }
+    if let Some(decision) = &filter.decision
+        && s.event.decision().as_str() != decision
+    {
+        return false;
     }
-    if let Some(success) = filter.success {
-        if s.event.success() != success {
-            return false;
-        }
+    if let Some(success) = filter.success
+        && s.event.success() != success
+    {
+        return false;
     }
-    if let Some(signal) = &filter.signal_type {
-        if !s
+    if let Some(signal) = &filter.signal_type
+        && !s
             .signals
             .iter()
             .any(|sig| sig.signal_type().as_str() == signal)
-        {
-            return false;
-        }
+    {
+        return false;
     }
-    if let Some(from) = filter.from {
-        if s.event.created_at() < from {
-            return false;
-        }
+    if let Some(from) = filter.from
+        && s.event.created_at() < from
+    {
+        return false;
     }
-    if let Some(to) = filter.to {
-        if s.event.created_at() > to {
-            return false;
-        }
+    if let Some(to) = filter.to
+        && s.event.created_at() > to
+    {
+        return false;
     }
     true
 }

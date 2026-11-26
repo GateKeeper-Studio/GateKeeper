@@ -93,10 +93,9 @@ impl MagicLinkDispatcher {
             .magic_link_token_repository()
             .latest_created_at_for_user(user.id())
             .await?
+            && now - latest < cooldown
         {
-            if now - latest < cooldown {
-                return Ok(());
-            }
+            return Ok(());
         }
 
         // Mint the opaque token — the raw value is emailed, only its SHA-256 hash is

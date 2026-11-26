@@ -86,16 +86,18 @@ fn apply_placeholders(input: &str, vars: &[(String, String)], mode: Substitution
     let bytes = input.as_bytes();
     let mut i = 0;
     while i < input.len() {
-        if i + 1 < bytes.len() && bytes[i] == b'{' && bytes[i + 1] == b'{' {
-            if let Some(end_rel) = input[i + 2..].find("}}") {
-                let key = input[i + 2..i + 2 + end_rel].trim();
-                match map.get(key) {
-                    Some(value) => out.push_str(value),
-                    None => out.push_str(&input[i..i + 2 + end_rel + 2]),
-                }
-                i = i + 2 + end_rel + 2;
-                continue;
+        if i + 1 < bytes.len()
+            && bytes[i] == b'{'
+            && bytes[i + 1] == b'{'
+            && let Some(end_rel) = input[i + 2..].find("}}")
+        {
+            let key = input[i + 2..i + 2 + end_rel].trim();
+            match map.get(key) {
+                Some(value) => out.push_str(value),
+                None => out.push_str(&input[i..i + 2 + end_rel + 2]),
             }
+            i = i + 2 + end_rel + 2;
+            continue;
         }
         let ch = input[i..].chars().next().unwrap();
         out.push(ch);
@@ -145,10 +147,10 @@ fn scrub_html(html: &str) -> Result<String, DomainError> {
                 el.remove_attribute(&name);
             }
             for attr in ["href", "src", "background", "action"] {
-                if let Some(value) = el.get_attribute(attr) {
-                    if is_dangerous_url(&value) {
-                        el.remove_attribute(attr);
-                    }
+                if let Some(value) = el.get_attribute(attr)
+                    && is_dangerous_url(&value)
+                {
+                    el.remove_attribute(attr);
                 }
             }
             Ok(())

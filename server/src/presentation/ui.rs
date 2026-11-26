@@ -144,7 +144,7 @@ enum Segment {
 fn route_segments(pattern: &str) -> Vec<Segment> {
     pattern
         .split('/')
-        .filter(|s| !s.is_empty() && !(s.starts_with('(') && s.ends_with(')')))
+        .filter(|s| !(s.is_empty() || (s.starts_with('(') && s.ends_with(')'))))
         .map(|s| {
             if s.starts_with("[...") {
                 Segment::Rest
@@ -550,7 +550,7 @@ mod tests {
             .unwrap()
     }
 
-    fn header<'a>(response: &'a Response, name: header::HeaderName) -> &'a str {
+    fn header(response: &Response, name: header::HeaderName) -> &str {
         response
             .headers()
             .get(name)

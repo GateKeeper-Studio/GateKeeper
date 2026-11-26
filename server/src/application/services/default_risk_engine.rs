@@ -49,7 +49,9 @@ pub(crate) struct RuleFacts {
     pub travel: Option<(f64, f64)>,
 }
 
-// The rules' verdict on an attempt, before anything is persisted.
+// The rules' verdict on an attempt, before anything is persisted. One per login
+// attempt, moved once: the size gap between variants costs nothing worth a Box.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Assessment {
     // Nothing for a statistical score to add: an IP already blocked before
     // authentication, or the Risk Engine switched off for the tenant.
@@ -274,62 +276,61 @@ impl DefaultRiskEngine {
         }
 
         // --- Geo/device signals (only for a known user with prior history) ---
-        if input.credentials_valid {
-            if let Some(user_id) = input.user_id {
-                let last = self
-                    .login_event_repository
-                    .last_successful_login(input.tenant_id, user_id)
-                    .await?;
+        if input.credentials_valid
+            && let Some(user_id) = input.user_id
+        {
+            let last = self
+                .login_event_repository
+                .last_successful_login(input.tenant_id, user_id)
+                .await?;
 
-                // Skip these rules on the user's very first successful login so we don't
-                // flag every brand-new account.
-                if let Some(last) = last {
-                    if let Some(country) = geo.as_ref().and_then(|g| g.country_code.as_deref()) {
-                        let seen = self
-                            .login_event_repository
-                            .has_seen_country(input.tenant_id, user_id, country)
-                            .await?;
-                        if !seen {
-                            facts.new_country = true;
-                            signals.push(RiskSignal::new(
-                                RiskSignalType::NewCountry,
-                                json!({ "country_code": country }),
-                            ));
-                        }
+            // Skip these rules on the user's very first successful login so we don't
+            // flag every brand-new account.
+            if let Some(last) = last {
+                if let Some(country) = geo.as_ref().and_then(|g| g.country_code.as_deref()) {
+                    let seen = self
+                        .login_event_repository
+                        .has_seen_country(input.tenant_id, user_id, country)
+                        .await?;
+                    if !seen {
+                        facts.new_country = true;
+                        signals.push(RiskSignal::new(
+                            RiskSignalType::NewCountry,
+                            json!({ "country_code": country }),
+                        ));
                     }
-
-                    if let (Some(g), Some(lat2), Some(lon2)) =
-                        (geo.as_ref(), last.latitude, last.longitude)
-                    {
-                        if let (Some(lat1), Some(lon1)) = (g.latitude, g.longitude) {
-                            let km = haversine_km(lat1, lon1, lat2, lon2);
-                            let hours = (now - last.created_at).num_minutes().max(0) as f64 / 60.0;
-                            facts.travel = Some((km, hours));
-                            if is_impossible_travel(km, hours) {
-                                signals.push(RiskSignal::new(
-                                    RiskSignalType::ImpossibleTravel,
-                                    json!({
-                                        "distance_km": km.round(),
-                                        "elapsed_hours": (hours * 10.0).round() / 10.0,
-                                    }),
-                                ));
-                            }
-                        }
-                    }
-
-                    if let Some(ua_hash) = input.user_agent.as_deref().map(sha256_hex) {
-                        let seen = self
-                            .login_event_repository
-                            .has_seen_user_agent(input.tenant_id, user_id, &ua_hash)
-                            .await?;
-                        if !seen {
-                            facts.new_device = true;
-                            signals.push(RiskSignal::new(RiskSignalType::NewDevice, json!({})));
-                        }
-                    }
-
-                    facts.last_login = Some(last);
                 }
+
+                if let (Some(g), Some(lat2), Some(lon2)) =
+                    (geo.as_ref(), last.latitude, last.longitude)
+                    && let (Some(lat1), Some(lon1)) = (g.latitude, g.longitude)
+                {
+                    let km = haversine_km(lat1, lon1, lat2, lon2);
+                    let hours = (now - last.created_at).num_minutes().max(0) as f64 / 60.0;
+                    facts.travel = Some((km, hours));
+                    if is_impossible_travel(km, hours) {
+                        signals.push(RiskSignal::new(
+                            RiskSignalType::ImpossibleTravel,
+                            json!({
+                                "distance_km": km.round(),
+                                "elapsed_hours": (hours * 10.0).round() / 10.0,
+                            }),
+                        ));
+                    }
+                }
+
+                if let Some(ua_hash) = input.user_agent.as_deref().map(sha256_hex) {
+                    let seen = self
+                        .login_event_repository
+                        .has_seen_user_agent(input.tenant_id, user_id, &ua_hash)
+                        .await?;
+                    if !seen {
+                        facts.new_device = true;
+                        signals.push(RiskSignal::new(RiskSignalType::NewDevice, json!({})));
+                    }
+                }
+
+                facts.last_login = Some(last);
             }
         }
 
@@ -402,20 +403,18 @@ impl DefaultRiskEngine {
                 RiskSignalType::TooManyFailedAttemptsByIp | RiskSignalType::PasswordSpraying
             )
         });
-        if trips_ip_block {
-            if let Some(ip) = input.ip_address.as_deref() {
-                let block = SecurityBlock::new_ip_block(
-                    input.tenant_id,
-                    ip.to_string(),
-                    "automatic: login velocity threshold exceeded".to_string(),
-                    "system".to_string(),
-                    now + Duration::minutes(policy.temporary_block_minutes() as i64),
-                    None,
-                );
-                // Best-effort: a block write failure must not abort the login evaluation.
-                if let Err(e) = self.security_block_repository.add(&block).await {
-                    tracing::error!("failed to create automatic IP block: {e:?}");
-                }
+        if trips_ip_block && let Some(ip) = input.ip_address.as_deref() {
+            let block = SecurityBlock::new_ip_block(
+                input.tenant_id,
+                ip.to_string(),
+                "automatic: login velocity threshold exceeded".to_string(),
+                "system".to_string(),
+                now + Duration::minutes(policy.temporary_block_minutes() as i64),
+                None,
+            );
+            // Best-effort: a block write failure must not abort the login evaluation.
+            if let Err(e) = self.security_block_repository.add(&block).await {
+                tracing::error!("failed to create automatic IP block: {e:?}");
             }
         }
 

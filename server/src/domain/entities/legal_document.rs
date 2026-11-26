@@ -20,7 +20,7 @@ impl LegalDocumentType {
     }
 
     /// Parse the stored column value back into the enum.
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "terms_of_service" => Some(LegalDocumentType::TermsOfService),
             "privacy_policy" => Some(LegalDocumentType::PrivacyPolicy),

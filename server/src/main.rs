@@ -291,10 +291,10 @@ async fn main() {
     if let Err(err) = result {
         tracing::error!("server error: {err}");
     }
-    if let Some(handle) = https_server {
-        if let Err(err) = handle.await {
-            tracing::error!("https server did not shut down cleanly: {err:?}");
-        }
+    if let Some(handle) = https_server
+        && let Err(err) = handle.await
+    {
+        tracing::error!("https server did not shut down cleanly: {err:?}");
     }
 
     if let Some(handle) = metrics_server {

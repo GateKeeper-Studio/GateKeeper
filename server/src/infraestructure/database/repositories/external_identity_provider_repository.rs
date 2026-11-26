@@ -231,12 +231,12 @@ fn map_sqlx_error(e: sqlx::Error) -> DomainError {
 // A unique-violation on (oauth_client_id, provider) means the client already has
 // this provider configured — surface a clean conflict instead of a 500.
 fn map_insert_error(e: sqlx::Error) -> DomainError {
-    if let sqlx::Error::Database(db_err) = &e {
-        if db_err.is_unique_violation() {
-            return DomainError::Conflict(
-                "This provider is already configured for the client".to_string(),
-            );
-        }
+    if let sqlx::Error::Database(db_err) = &e
+        && db_err.is_unique_violation()
+    {
+        return DomainError::Conflict(
+            "This provider is already configured for the client".to_string(),
+        );
     }
     map_sqlx_error(e)
 }

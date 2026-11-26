@@ -177,10 +177,10 @@ impl ConsoleSettings {
     //   - any state-changing method must carry an `Origin` equal to the console
     //     origin the request was made at.
     pub fn refuse_cross_origin(&self, method: &Method, headers: &HeaderMap) -> Option<Response> {
-        if let Some(site) = headers.get("sec-fetch-site") {
-            if site.as_bytes() != b"same-origin" {
-                return Some(cross_origin_refused());
-            }
+        if let Some(site) = headers.get("sec-fetch-site")
+            && site.as_bytes() != b"same-origin"
+        {
+            return Some(cross_origin_refused());
         }
         let safe = matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS);
         if !safe {

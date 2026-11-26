@@ -62,7 +62,7 @@ impl EmailTemplateType {
     }
 
     /// Parse the stored column value back into the enum.
-    pub fn from_str(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "email_verification" => Some(EmailTemplateType::EmailVerification),
             "password_reset" => Some(EmailTemplateType::PasswordReset),
@@ -78,7 +78,7 @@ impl EmailTemplateType {
     /// Parse the URL slug used by the admin routes. Accepts both the stored
     /// underscore form and a hyphenated variant.
     pub fn from_slug(slug: &str) -> Option<Self> {
-        Self::from_str(&slug.replace('-', "_"))
+        Self::parse(&slug.replace('-', "_"))
     }
 
     /// Human-readable name for the dashboard list.

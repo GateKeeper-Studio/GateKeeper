@@ -87,7 +87,7 @@ impl SecurityBlockRepository for DbSecurityBlockRepository {
             SecurityBlock::reconstruct(
                 r.id,
                 r.tenant_id,
-                BlockType::from_str(&r.block_type),
+                BlockType::from_db(&r.block_type),
                 r.ip_address,
                 r.user_id,
                 r.reason,
@@ -127,7 +127,7 @@ impl SecurityBlockRepository for DbSecurityBlockRepository {
             SecurityBlock::reconstruct(
                 r.id,
                 r.tenant_id,
-                BlockType::from_str(&r.block_type),
+                BlockType::from_db(&r.block_type),
                 r.ip_address,
                 r.user_id,
                 r.reason,
@@ -165,7 +165,7 @@ impl SecurityBlockRepository for DbSecurityBlockRepository {
                 SecurityBlock::reconstruct(
                     r.id,
                     r.tenant_id,
-                    BlockType::from_str(&r.block_type),
+                    BlockType::from_db(&r.block_type),
                     r.ip_address,
                     r.user_id,
                     r.reason,
@@ -201,7 +201,7 @@ impl SecurityBlockRepository for DbSecurityBlockRepository {
             SecurityBlock::reconstruct(
                 r.id,
                 r.tenant_id,
-                BlockType::from_str(&r.block_type),
+                BlockType::from_db(&r.block_type),
                 r.ip_address,
                 r.user_id,
                 r.reason,

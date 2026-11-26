@@ -55,12 +55,12 @@ impl UseCase {
         let mut clients = HashMap::new();
         let mut views = Vec::with_capacity(families.len());
         for family in families {
-            if !clients.contains_key(&family.client_id) {
+            if let std::collections::hash_map::Entry::Vacant(e) = clients.entry(family.client_id) {
                 let client = self
                     .oauth_client_repository
                     .find_by_id(query.tenant_id, family.client_id)
                     .await?;
-                clients.insert(family.client_id, client);
+                e.insert(client);
             }
             let client = clients.get(&family.client_id).and_then(Option::as_ref);
 

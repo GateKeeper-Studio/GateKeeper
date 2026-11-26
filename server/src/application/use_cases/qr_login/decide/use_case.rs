@@ -196,6 +196,7 @@ impl UseCase {
 
     // Who approves, and the proof of it. `Ok(Err(..))` is a refusal; every refusal
     // but a missing or wrong password is the same generic error.
+    #[allow(clippy::too_many_arguments)]
     async fn approval(
         &self,
         uow: &dyn UnitOfWork,

@@ -18,6 +18,12 @@ pub struct InMemoryEmailProviderRepository {
     pub memory: Arc<InMemoryRepository<Uuid, EmailProvider>>,
 }
 
+impl Default for InMemoryEmailProviderRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryEmailProviderRepository {
     pub fn new() -> Self {
         Self {

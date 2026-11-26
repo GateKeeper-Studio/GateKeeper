@@ -140,10 +140,10 @@ fn parse_mfa_methods(methods: Option<&[String]>) -> Vec<MfaMethod> {
 
     if let Some(methods) = methods {
         for method in methods {
-            if let Some(method) = MfaMethod::parse(method) {
-                if !parsed.contains(&method) {
-                    parsed.push(method);
-                }
+            if let Some(method) = MfaMethod::parse(method)
+                && !parsed.contains(&method)
+            {
+                parsed.push(method);
             }
         }
     }

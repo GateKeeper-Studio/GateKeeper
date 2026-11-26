@@ -23,6 +23,12 @@ pub struct InMemoryMfaChallengeRepository {
     pub memory: Arc<InMemoryRepository<Uuid, MfaChallenge>>,
 }
 
+impl Default for InMemoryMfaChallengeRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryMfaChallengeRepository {
     pub fn new() -> Self {
         Self {

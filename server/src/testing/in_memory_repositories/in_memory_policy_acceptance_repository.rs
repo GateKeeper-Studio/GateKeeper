@@ -61,7 +61,7 @@ impl PolicyAcceptanceRepository for InMemoryPolicyAcceptanceRepository {
             .filter(|a| a.user_id() == user_id)
             .cloned()
             .collect();
-        rows.sort_by(|a, b| b.accepted_at().cmp(&a.accepted_at()));
+        rows.sort_by_key(|e| std::cmp::Reverse(e.accepted_at()));
         Ok(rows)
     }
 

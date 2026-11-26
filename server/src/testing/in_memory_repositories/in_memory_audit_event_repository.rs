@@ -54,7 +54,7 @@ impl InMemoryAuditEventRepository {
             .filter(|e| Self::matches(e, tenant_id, filter))
             .cloned()
             .collect();
-        matched.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        matched.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
         matched
     }
 }

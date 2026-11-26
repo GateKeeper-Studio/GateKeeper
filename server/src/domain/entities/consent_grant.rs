@@ -36,6 +36,7 @@ impl ConsentGrant {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn reconstruct(
         id: Uuid,
         tenant_id: Uuid,

@@ -18,6 +18,12 @@ pub struct InMemoryConsentGrantRepository {
     pub memory: Arc<InMemoryRepository<Uuid, ConsentGrant>>,
 }
 
+impl Default for InMemoryConsentGrantRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryConsentGrantRepository {
     pub fn new() -> Self {
         Self {

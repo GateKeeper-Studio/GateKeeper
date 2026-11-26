@@ -498,7 +498,7 @@ impl OAuthClient {
         self.allowed_grant_types.iter().any(|g| g == grant)
     }
 
-    pub fn filter_scopes<'a>(&self, requested: &'a [String]) -> Vec<String> {
+    pub fn filter_scopes(&self, requested: &[String]) -> Vec<String> {
         requested
             .iter()
             .filter(|s| self.allowed_scopes.iter().any(|allowed| allowed == *s))
