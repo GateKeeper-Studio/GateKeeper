@@ -151,7 +151,11 @@ jobs:
         with:
           workspaces: server
       - name: Install cargo-geiger
-        run: cargo install cargo-geiger --locked
+        # Build the tool with stable, not server/'s pinned 1.96 (rust-toolchain.toml):
+        # cargo-geiger's MSRV outruns the pin (0.14 needs rustc 1.97). The `+stable`
+        # override wins over the toolchain file for this command only; the scan below
+        # still runs on the pinned toolchain.
+        run: cargo +stable install cargo-geiger --locked
       - name: Migrations
         run: sqlx migrate run || true
       - name: Geiger report
