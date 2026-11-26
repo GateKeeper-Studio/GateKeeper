@@ -9,7 +9,9 @@ use validator::Validate;
 
 use crate::{
     application::use_cases::{
-        admin_account::{change_password, deactivate_account, get_profile, update_profile},
+        admin_account::{
+            change_password, deactivate_account, get_profile, record_console_tour, update_profile,
+        },
         admin_mfa::{confirm_totp, disable, get_status, regenerate_recovery_codes, start_totp},
         organization::{get_organization_by_id, update_organization},
     },
@@ -139,6 +141,20 @@ pub async fn change_my_password(
     let event = self_service_event(&principal, &ctx, ADMIN_PASSWORD_CHANGED);
     let _ = state.audit_logger.record(event).await;
 
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// PUT /admin/me/console-tour — `{ "version": 1 }`: the admin finished or closed that
+// version of the console's guided tour, so first access elsewhere skips it. A UI
+// preference, so no audit event.
+pub async fn record_my_console_tour(
+    State(state): State<AppState>,
+    principal: AuthPrincipal,
+    AppJson(mut payload): AppJson<record_console_tour::command::Command>,
+) -> Result<impl IntoResponse, ApiError> {
+    payload.validate().map_err(ApiError::Validation)?;
+    payload.admin_id = principal.user_id; // pin to the caller
+    state.admin.record_my_console_tour.execute(payload).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

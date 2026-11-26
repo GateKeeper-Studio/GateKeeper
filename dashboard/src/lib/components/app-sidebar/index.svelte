@@ -50,6 +50,7 @@
 	const navMain = $derived([
 		{
 			title: m.nav_general(),
+			tourId: 'nav-general',
 			url: '#',
 			icon: SquareTerminalIcon,
 			isActive: true,
@@ -94,6 +95,7 @@
 		},
 		{
 			title: m.nav_security(),
+			tourId: 'nav-security',
 			url: '#',
 			icon: ShieldAlertIcon,
 			tenantScoped: true,
@@ -127,6 +129,7 @@
 		},
 		{
 			title: m.nav_compliance(),
+			tourId: 'nav-compliance',
 			url: '#',
 			icon: ShieldIcon,
 			tenantScoped: true,

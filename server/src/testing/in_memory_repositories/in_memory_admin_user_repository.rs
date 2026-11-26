@@ -139,6 +139,15 @@ impl AdminUserRepository for InMemoryAdminUserRepository {
         Ok(())
     }
 
+    async fn record_console_tour(&self, id: Uuid, version: i32) -> Result<(), DomainError> {
+        let mut admins = self.admins.lock().unwrap();
+        if let Some(slot) = admins.iter_mut().find(|a| a.id() == id) {
+            let seen = slot.console_tour_version().max(version);
+            *slot = slot.clone().with_console_tour_version(seen);
+        }
+        Ok(())
+    }
+
     // `mfa_enabled` is always false here: the in-memory stores are independent, so
     // tests that need it read the factor repository.
     async fn list_by_organization(
@@ -189,7 +198,8 @@ impl AdminUserRepository for InMemoryAdminUserRepository {
                     slot.created_at(),
                     Some(Utc::now()),
                 )
-                .with_account_state(slot.organization_requires_mfa(), slot.last_sign_in_at());
+                .with_account_state(slot.organization_requires_mfa(), slot.last_sign_in_at())
+                .with_console_tour_version(slot.console_tour_version());
                 Ok(true)
             }
             None => Ok(false),

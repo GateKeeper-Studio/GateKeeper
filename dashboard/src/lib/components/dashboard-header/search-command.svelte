@@ -65,7 +65,7 @@
 </script>
 
 <div class="ml-auto flex flex-col gap-4">
-	<Button onclick={() => (open = true)} variant="outline" class="w-fit">
+	<Button onclick={() => (open = true)} variant="outline" class="w-fit" data-tour="search">
 		<SearchIcon class="mr-2 size-4" />
 		<span class="font-medium text-muted-foreground">{m.search_command_button()}</span>
 	</Button>

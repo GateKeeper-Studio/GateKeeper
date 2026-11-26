@@ -34,6 +34,8 @@
 			// Tenant-scoped groups are hidden until a tenant is active (their links would
 			// otherwise point at /tenants/undefined/...). Org-level groups stay visible.
 			tenantScoped?: boolean;
+			// The group's `data-tour` id for the guided tour ($lib/tour/console-tour.ts).
+			tourId?: string;
 			items?: {
 				title: string;
 				url: string;
@@ -72,6 +74,7 @@
 					<a
 						href={homeUrl}
 						{...props}
+						data-tour="nav-home"
 						class={cn(props.class as string, isHomeActive && activeClasses)}
 					>
 						<HomeIcon />
@@ -88,7 +91,7 @@
 				{@const groupActive = item.isActive || (item.items ?? []).some((s) => isActive(s.url))}
 				<Collapsible.Root open={groupActive} class="group/collapsible">
 					{#snippet child({ props })}
-						<Sidebar.MenuItem {...props}>
+						<Sidebar.MenuItem {...props} data-tour={item.tourId}>
 							<Collapsible.Trigger>
 								{#snippet child({ props })}
 									<Sidebar.MenuButton {...props} tooltipContent={item.title}>

@@ -37,6 +37,10 @@ pub struct AdminUser {
     // The organization requires two-step verification of every admin.
     organization_requires_mfa: bool,
     last_sign_in_at: Option<DateTime<Utc>>,
+    // The highest version of the console's guided tour the admin has finished or
+    // closed (0: never seen). A console preference, not account data: written only by
+    // `AdminUserRepository::record_console_tour`, never by `update`.
+    console_tour_version: i32,
 }
 
 // One admin as the organization's admin list shows it. A read model: no credential.
@@ -81,6 +85,7 @@ impl AdminUser {
             locked_until: None,
             organization_requires_mfa: false,
             last_sign_in_at: None,
+            console_tour_version: 0,
         }
     }
 
@@ -111,6 +116,7 @@ impl AdminUser {
             locked_until: None,
             organization_requires_mfa: false,
             last_sign_in_at: None,
+            console_tour_version: 0,
         }
     }
 
@@ -136,6 +142,12 @@ impl AdminUser {
     ) -> Self {
         self.organization_requires_mfa = organization_requires_mfa;
         self.last_sign_in_at = last_sign_in_at;
+        self
+    }
+
+    // The console tour version the admin has seen, loaded alongside the account.
+    pub fn with_console_tour_version(mut self, version: i32) -> Self {
+        self.console_tour_version = version;
         self
     }
 
@@ -223,6 +235,9 @@ impl AdminUser {
     }
     pub fn last_sign_in_at(&self) -> Option<DateTime<Utc>> {
         self.last_sign_in_at
+    }
+    pub fn console_tour_version(&self) -> i32 {
+        self.console_tour_version
     }
 }
 

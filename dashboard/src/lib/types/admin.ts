@@ -17,4 +17,9 @@ export type AdminIdentity = {
 	 * admin to `/login/two-step`.
 	 */
 	mfaSetupRequired: boolean;
+	/**
+	 * The highest version of the console's guided tour this admin has finished or
+	 * closed (0: never). The console shows the tour on first access below its own.
+	 */
+	consoleTourVersion: number;
 };

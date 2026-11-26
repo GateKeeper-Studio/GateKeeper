@@ -50,13 +50,16 @@
 			</p>
 		</div>
 
-		<Button href={`/console/tenants/${tenantId}/oauth-clients/create-oauth-client`}>
+		<Button
+			href={`/console/tenants/${tenantId}/oauth-clients/create-oauth-client`}
+			data-tour="oauth-clients-create"
+		>
 			<PlusIcon />
 			{m.oauth_clients_new_client()}
 		</Button>
 	</div>
 
-	<div class="mt-6">
+	<div class="mt-6" data-tour="oauth-clients-list">
 		{#if clientsQuery.isPending}
 			<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
 				{#each Array(3) as _, i (i)}

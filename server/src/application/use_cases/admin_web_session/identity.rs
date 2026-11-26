@@ -17,6 +17,9 @@ pub struct AdminIdentity {
     // The organization requires two-step verification and this admin has not set it
     // up: the console shows only the enrollment screen until they do.
     pub mfa_setup_required: bool,
+    // The highest version of the console's guided tour this admin has finished or
+    // closed (0: never). The console shows the tour on first access below its own.
+    pub console_tour_version: i32,
 }
 
 impl AdminIdentity {
@@ -32,6 +35,7 @@ impl AdminIdentity {
             initials: initials_from_name(&name),
             name,
             mfa_setup_required: false,
+            console_tour_version: admin.console_tour_version(),
         }
     }
 

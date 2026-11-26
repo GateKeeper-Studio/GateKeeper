@@ -51,6 +51,12 @@ pub trait AdminUserRepository: Send + Sync {
         at: DateTime<Utc>,
     ) -> Result<(), DomainError>;
 
+    // Records that the admin finished or closed version `version` of the console's
+    // guided tour. Never lowers the stored version, so an older console still open in
+    // another tab cannot bring an outdated tour back. Does not stamp `updated_at`: a
+    // console preference is not a change to the account.
+    async fn record_console_tour(&self, id: Uuid, version: i32) -> Result<(), DomainError>;
+
     // Every admin of an organization (active or not), oldest first, with whether each
     // has two-step verification on.
     async fn list_by_organization(

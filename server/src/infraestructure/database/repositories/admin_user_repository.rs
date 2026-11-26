@@ -53,6 +53,7 @@ macro_rules! admin_from_row {
             $r.locked_until,
         )
         .with_account_state($r.organization_requires_mfa, $r.last_sign_in_at)
+        .with_console_tour_version($r.console_tour_version)
     };
 }
 
@@ -65,7 +66,7 @@ impl AdminUserRepository for DbAdminUserRepository {
                 r#"
           SELECT a.id, a.organization_id, a.email, a.name, a.password_hash, a.password_algorithm,
                  a.is_active, a.created_at, a.updated_at, a.failed_sign_in_count, a.locked_until,
-                 a.last_sign_in_at, o.is_active AS organization_active,
+                 a.last_sign_in_at, a.console_tour_version, o.is_active AS organization_active,
                  o.require_admin_mfa AS organization_requires_mfa
           FROM admin_users a
           JOIN organizations o ON o.id = a.organization_id
@@ -87,7 +88,7 @@ impl AdminUserRepository for DbAdminUserRepository {
                 r#"
           SELECT a.id, a.organization_id, a.email, a.name, a.password_hash, a.password_algorithm,
                  a.is_active, a.created_at, a.updated_at, a.failed_sign_in_count, a.locked_until,
-                 a.last_sign_in_at, o.is_active AS organization_active,
+                 a.last_sign_in_at, a.console_tour_version, o.is_active AS organization_active,
                  o.require_admin_mfa AS organization_requires_mfa
           FROM admin_users a
           JOIN organizations o ON o.id = a.organization_id
@@ -229,6 +230,25 @@ impl AdminUserRepository for DbAdminUserRepository {
         "#,
                 id,
                 at
+            ),
+            execute
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(())
+    }
+
+    async fn record_console_tour(&self, id: Uuid, version: i32) -> Result<(), DomainError> {
+        run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          UPDATE admin_users
+          SET console_tour_version = GREATEST(console_tour_version, $2)
+          WHERE id = $1
+        "#,
+                id,
+                version
             ),
             execute
         )

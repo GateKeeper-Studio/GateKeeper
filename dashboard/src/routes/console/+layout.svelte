@@ -2,6 +2,7 @@
 	import { Toaster } from "svelte-sonner";
   import { createQuery } from "@tanstack/svelte-query";
   import { page } from "$app/state";
+  import { beforeNavigate } from "$app/navigation";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import AppSidebar from "$lib/components/app-sidebar/index.svelte";
   import SettingsDialog from "$lib/components/settings-dialog/index.svelte";
@@ -11,6 +12,7 @@
   import { selectedTenant } from "$lib/state/selected-tenant.svelte";
   import { appTheme } from "$lib/state/app-theme.svelte";
   import { bootProgress } from "$lib/state/boot-progress.svelte";
+  import { hasSeenConsoleTour, startConsoleTour, stopConsoleTour } from "$lib/tour/console-tour";
 
   // The selected tenant now lives in the shared rune store
   // ($lib/state/selected-tenant.svelte). This layout owns the tenant-list fetch and
@@ -51,6 +53,26 @@
   // working on global pages such as Organization and after a reload.
   $effect(() => {
     if (page.params.tenantId) selectedTenant.setActive(page.params.tenantId);
+  });
+
+  // First visit: the guided tour, once per admin (the server remembers it), after the
+  // splash has revealed the shell and the page has had a moment to render. The console
+  // root forwards to a tenant, so wait until it has (an account with no tenant stays).
+  // The help button in the header replays it any time.
+  $effect(() => {
+    const admin = page.data.admin;
+    if (!admin || !bootProgress.revealed || selectedTenant.loading) return;
+    if (selectedTenant.tenants.length > 0 && !page.params.tenantId) return;
+    if (hasSeenConsoleTour(admin)) return;
+    const routeId = page.route.id;
+    const timer = setTimeout(() => void startConsoleTour({ admin, routeId }), 700);
+    return () => clearTimeout(timer);
+  });
+
+  // The tour's steps point at the page's elements: leaving the page ends it. A change
+  // of query string only (a tab, a filter) keeps the page and the tour.
+  beforeNavigate((navigation) => {
+    if (navigation.from?.url.pathname !== navigation.to?.url.pathname) stopConsoleTour();
   });
 
   // Apply the active organization's saved theme (main color + component styles) from

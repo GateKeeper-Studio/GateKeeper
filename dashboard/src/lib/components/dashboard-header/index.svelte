@@ -3,6 +3,7 @@
 	import SearchCommand from './search-command.svelte';
 	import ThemeToggle from '$lib/components/theme-toggle.svelte';
 	import LanguageSwitcher from '$lib/components/language-switcher.svelte';
+	import TourButton from '$lib/components/tour-button.svelte';
 
 	type BreadcrumbItem = {
 		name: string;
@@ -24,6 +25,9 @@
 >
 	<Breadcrumbs {...breadcrumbs} />
 	<SearchCommand />
-	<LanguageSwitcher />
-	<ThemeToggle />
+	<div class="flex items-center gap-4" data-tour="preferences">
+		<LanguageSwitcher />
+		<ThemeToggle />
+	</div>
+	<TourButton />
 </header>

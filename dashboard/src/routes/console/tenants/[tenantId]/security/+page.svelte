@@ -52,7 +52,7 @@
 		<ErrorAlert title={m.security_overview_error_title()} message={overviewQuery.error.message} />
 	{:else}
 		{@const metrics = overviewQuery.data.metrics}
-		<div class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+		<div class="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4" data-tour="security-kpis">
 			{@render kpi(m.security_overview_kpi_total_attempts(), metrics.total_attempts, 'text-foreground')}
 			{@render kpi(m.security_overview_kpi_successful(), metrics.successful_logins, 'text-green-600')}
 			{@render kpi(m.security_label_failed(), metrics.failed_logins, 'text-amber-600')}
@@ -62,7 +62,7 @@
 			{@render kpi(m.security_overview_kpi_password_spraying(), metrics.password_spraying_events, 'text-red-600')}
 		</div>
 
-		<div class="mt-8 grid gap-6 lg:grid-cols-2">
+		<div class="mt-8 grid gap-6 lg:grid-cols-2" data-tour="security-insights">
 			<div class="rounded-xl border">
 				<div class="border-b px-4 py-3 text-sm font-semibold">{m.security_overview_top_suspicious_ips()}</div>
 				<div class="overflow-x-auto">
