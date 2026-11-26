@@ -109,6 +109,12 @@ jobs:
   supply-chain:
     # Advisory / license / ban / source gates. No compilation, no database.
     runs-on: ubuntu-latest
+    # audit-check publishes its report as a Check Run, which the default read-only
+    # token cannot create ("Resource not accessible by integration"). PRs from forks
+    # still get read-only tokens; the action then prints the report in the log.
+    permissions:
+      contents: read
+      checks: write
     steps:
       - uses: actions/checkout@v4
 
