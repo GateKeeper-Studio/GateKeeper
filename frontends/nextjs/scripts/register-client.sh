@@ -7,7 +7,7 @@
 # at creation — so it must be created through the admin endpoint, not seeded in SQL.
 #
 # Usage:
-#   ./scripts/register-client.sh <tenant_id> [admin_bearer_token]
+#   ./scripts/register-client.sh <tenant_id> [admin_bearer_token]   # prompts for an admin sign-in when omitted
 #
 # Environment overrides:
 #   IDP_BASE_URL   (default http://localhost:8080)
@@ -24,10 +24,14 @@ if [[ -z "$TENANT_ID" ]]; then
   exit 1
 fi
 
-AUTH_HEADER=()
-if [[ -n "$ADMIN_TOKEN" ]]; then
-  AUTH_HEADER=(-H "Authorization: Bearer ${ADMIN_TOKEN}")
+# The admin API always needs a platform-admin token. Without one on the command line,
+# sign in interactively (POST /admin/login).
+if [[ -z "$ADMIN_TOKEN" ]]; then
+  # shellcheck source=../../scripts/gatekeeper-admin-token.sh
+  source "$(dirname "$0")/../../scripts/gatekeeper-admin-token.sh"
+  ADMIN_TOKEN="$(gatekeeper_admin_token "$IDP_BASE_URL")"
 fi
+AUTH_HEADER=(-H "Authorization: Bearer ${ADMIN_TOKEN}")
 
 read -r -d '' BODY <<JSON || true
 {

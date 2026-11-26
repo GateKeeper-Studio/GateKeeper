@@ -50,6 +50,24 @@ pub fn validate_post_logout_redirect_uris(uris: &[String]) -> Result<(), DomainE
     Ok(())
 }
 
+// Schemes a browser runs or renders in place instead of handing to an application.
+// The hosted login page navigates to the redirect URI from the identity provider's
+// own origin, so one of these registered as a "custom scheme" would be script
+// injection there (`javascript:fetch('/api/…')`), not a redirect.
+const FORBIDDEN_SCHEMES: &[&str] = &[
+    "javascript",
+    "data",
+    "vbscript",
+    "blob",
+    "file",
+    "about",
+    "view-source",
+    "filesystem",
+    "ws",
+    "wss",
+    "ftp",
+];
+
 fn validate_one(label: &str, uri: &str) -> Result<(), DomainError> {
     let invalid = |msg: String| DomainError::InvalidRequest(msg);
 
@@ -58,20 +76,61 @@ fn validate_one(label: &str, uri: &str) -> Result<(), DomainError> {
             "{label} must not contain a fragment: {uri}"
         )));
     }
+    // A browser strips tabs and newlines from a URL and trims leading control
+    // characters before reading the scheme, so ` java\tscript:` is `javascript:`.
+    if uri.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(invalid(format!(
+            "{label} must not contain whitespace or control characters"
+        )));
+    }
 
-    let Some((scheme, rest)) = uri.split_once("://") else {
-        // Allow custom schemes of the form "scheme:/path" (RFC 8252 native apps),
-        // but they still must have a scheme and a colon.
-        if uri.contains(':') && !uri.starts_with(':') {
-            return Ok(());
-        }
+    // RFC 3986: scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ), compared
+    // case-insensitively.
+    let Some((scheme, after_scheme)) = uri.split_once(':') else {
         return Err(invalid(format!("{label} must be an absolute URI: {uri}")));
     };
+    let scheme = scheme.to_ascii_lowercase();
+    let well_formed = scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    if !well_formed {
+        return Err(invalid(format!("{label} must be an absolute URI: {uri}")));
+    }
+    if FORBIDDEN_SCHEMES.contains(&scheme.as_str()) {
+        return Err(invalid(format!(
+            "{label} must not use the `{scheme}:` scheme"
+        )));
+    }
 
-    match scheme {
-        "https" => Ok(()),
-        "http" => {
-            let host = rest.split(['/', ':', '?']).next().unwrap_or("");
+    match scheme.as_str() {
+        "https" | "http" => {
+            let Some(rest) = after_scheme.strip_prefix("//") else {
+                return Err(invalid(format!("{label} must be an absolute URI: {uri}")));
+            };
+            // A browser reads `\` as `/` in http(s) URLs and other parsers do not,
+            // so the same text would name two different hosts.
+            if uri.contains('\\') {
+                return Err(invalid(format!(
+                    "{label} must not contain a backslash: {uri}"
+                )));
+            }
+            let authority = rest.split(['/', '?']).next().unwrap_or("");
+            // `http://localhost:80@evil.example/` is a request to evil.example.
+            if authority.is_empty() || authority.contains('@') {
+                return Err(invalid(format!(
+                    "{label} must have a host and no credentials: {uri}"
+                )));
+            }
+            if scheme == "https" {
+                return Ok(());
+            }
+            let host = match authority.strip_prefix('[') {
+                Some(v6) => v6.split(']').next().map(|h| format!("[{h}]")),
+                None => authority.split(':').next().map(str::to_string),
+            }
+            .unwrap_or_default()
+            .to_ascii_lowercase();
             if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
                 Ok(())
             } else {
@@ -80,7 +139,8 @@ fn validate_one(label: &str, uri: &str) -> Result<(), DomainError> {
                 )))
             }
         }
-        // Custom application scheme (e.g. com.example.app://callback) — permitted.
+        // Custom application scheme (RFC 8252 native apps, e.g.
+        // com.example.app://callback or com.example.app:/callback) — permitted.
         _ => Ok(()),
     }
 }
@@ -418,6 +478,56 @@ mod tests {
         entities::oauth_client::{HeroSide, LoginFont, LoginLayout},
         errors::DomainError,
     };
+
+    fn redirect(uri: &str) -> Result<(), DomainError> {
+        super::validate_redirect_uris(&[uri.to_string()])
+    }
+
+    #[test]
+    fn redirect_uris_a_browser_would_execute_are_refused() {
+        for uri in [
+            "javascript:alert(document.domain)",
+            "JavaScript:alert(1)",
+            "java\tscript:alert(1)",
+            " javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "vbscript:msgbox(1)",
+            "blob:https://id.example.com/1",
+            "file:///etc/passwd",
+        ] {
+            assert!(redirect(uri).is_err(), "{uri:?} should be refused");
+        }
+    }
+
+    #[test]
+    fn plain_http_is_loopback_only_whatever_the_userinfo_says() {
+        for uri in [
+            "http://localhost:80@evil.example/cb",
+            "http://127.0.0.1@evil.example/cb",
+            "https://app.example.com@evil.example/cb",
+            "http://localhost\\@evil.example/cb",
+            "http://evil.example/cb",
+            "http:/localhost/cb",
+            "https://",
+        ] {
+            assert!(redirect(uri).is_err(), "{uri:?} should be refused");
+        }
+    }
+
+    #[test]
+    fn ordinary_redirect_uris_still_pass() {
+        for uri in [
+            "https://app.example.com/callback",
+            "https://app.example.com:8443/callback?x=1",
+            "http://localhost:5173/callback",
+            "http://127.0.0.1/callback",
+            "http://[::1]:3000/callback",
+            "com.example.app://callback",
+            "com.example.app:/callback",
+        ] {
+            assert!(redirect(uri).is_ok(), "{uri:?} should pass");
+        }
+    }
 
     fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs

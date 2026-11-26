@@ -9,6 +9,7 @@ export {
 export {
   createMfaClient,
   defaultMfaMethodLabels,
+  getPasskeyAssertion,
   registerPasskey,
   type MfaClient,
   type MfaClientOptions,
@@ -16,6 +17,10 @@ export {
   type MfaConfigurationState,
   type MfaMethodEntry,
   type PasskeyCreationOptions,
+  type PasskeyRequestOptions,
+  type StepUpPrompt,
+  type StepUpProof,
+  type StepUpStart,
   type TotpEnrollment,
   type WebAuthnStartResponse
 } from './mfa.js';

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE admin_users\n          SET console_tour_version = GREATEST(console_tour_version, $2)\n          WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "def672ebfb4bb98b25fb6254f3ab1b681ba33015c3c42ef074b4faa66f597ba6"
+}

@@ -109,14 +109,25 @@ jobs:
   supply-chain:
     # Advisory / license / ban / source gates. No compilation, no database.
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
+      # Only to install cargo-audit; the scan reads Cargo.lock and compiles nothing.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        # Built with stable, not server/'s pinned toolchain, like cargo-geiger below.
+        run: cargo +stable install cargo-audit --locked
+
       - name: cargo-audit
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: server
+        # Runs inside server/ (the job default), so cargo-audit reads
+        # server/.cargo/audit.toml: the accepted exceptions, documented in
+        # docs/MEMORY-SAFETY.md. rustsec/audit-check ran `cargo audit --file
+        # server/Cargo.lock` from the repo root, where that file is never found, so
+        # every accepted advisory failed the job.
+        run: cargo +stable audit
 
       - name: cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v2
@@ -151,7 +162,11 @@ jobs:
         with:
           workspaces: server
       - name: Install cargo-geiger
-        run: cargo install cargo-geiger --locked
+        # Build the tool with stable, not server/'s pinned 1.96 (rust-toolchain.toml):
+        # cargo-geiger's MSRV outruns the pin (0.14 needs rustc 1.97). The `+stable`
+        # override wins over the toolchain file for this command only; the scan below
+        # still runs on the pinned toolchain.
+        run: cargo +stable install cargo-geiger --locked
       - name: Migrations
         run: sqlx migrate run || true
       - name: Geiger report

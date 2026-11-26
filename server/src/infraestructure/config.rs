@@ -59,6 +59,11 @@ pub struct AppConfig {
     /// Separate listener for `/metrics`. `None` disables it. The main API port no
     /// longer serves metrics, so a public API does not expose the registry.
     pub metrics_port: Option<u16>,
+    /// Optional HTTPS listener next to the HTTP one (`TLS_CERT_FILE` + `TLS_KEY_FILE`).
+    /// Meant for local development: phones on the LAN and WebAuthn need a secure
+    /// context, which plain HTTP has only on localhost. Production terminates TLS at
+    /// the load balancer / reverse proxy instead.
+    pub tls: Option<TlsConfig>,
     pub log_json: bool,
 
     /// Public issuer URL pinned as `iss` in every token.
@@ -113,6 +118,12 @@ pub struct AppConfig {
     /// How long the active model is cached per process; bounds how long a
     /// promotion or rollback takes to reach every replica.
     pub risk_model_cache_ttl_seconds: u64,
+
+    // ── Dashboard (docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md) ──────────────
+    /// Directory of the built dashboard (`dashboard/build`). When set, this server
+    /// serves the admin console and the hosted login UI itself, and AUTH_UI_BASE_URL
+    /// should be this server's own public URL. Unset: API only.
+    pub ui_dir: Option<String>,
 
     // ── Outbound webhooks ────────────────────────────────────────────────────
     /// Master switch for the background dispatcher. When false the outbox still
@@ -179,7 +190,9 @@ pub struct GeoIpConfig {
 }
 
 const DEFAULT_ISSUER: &str = "http://localhost:8080";
-const DEFAULT_AUTH_UI_BASE_URL: &str = "http://localhost:5173";
+// The server serves its own login UI (UI_DIR), so in development the login UI is on
+// the issuer's origin. Only the dashboard's hot-reload mode (`npm run dev`) differs.
+const DEFAULT_AUTH_UI_BASE_URL: &str = "http://localhost:8080";
 const DEFAULT_METRICS_PORT: u16 = 9090;
 
 impl AppConfig {
@@ -242,6 +255,7 @@ impl AppConfig {
                 .parse()
                 .expect("PORT must be a valid number"),
             metrics_port: resolve_metrics_port(),
+            tls: resolve_tls(),
             log_json: resolve_log_json(app_env),
 
             oauth_issuer: env_string("OAUTH_ISSUER").unwrap_or_else(|| DEFAULT_ISSUER.to_string()),
@@ -289,6 +303,7 @@ impl AppConfig {
             risk_scoring: RiskScoring::from_env(env_string("RISK_SCORING").as_deref()),
             risk_model_max_age_days: env_parsed("RISK_MODEL_MAX_AGE_DAYS", 90),
             risk_model_cache_ttl_seconds: env_parsed("RISK_MODEL_CACHE_TTL_SECONDS", 60),
+            ui_dir: env_string("UI_DIR"),
 
             webhooks_enabled: env_flag("WEBHOOKS_ENABLED", true),
             webhook_poll_interval_seconds: env_parsed("WEBHOOK_POLL_INTERVAL_SECONDS", 5),
@@ -312,6 +327,32 @@ impl AppConfig {
 /// before reading `APP_ENV` so a value set only in `.env` is honoured.
 pub fn load_dotenv() {
     dotenvy::dotenv().ok();
+}
+
+#[derive(Debug, Clone)]
+pub struct TlsConfig {
+    /// PEM certificate chain (leaf first).
+    pub cert_file: std::path::PathBuf,
+    /// PEM private key (PKCS#8, SEC1 or PKCS#1).
+    pub key_file: std::path::PathBuf,
+    /// Port of the HTTPS listener (`TLS_PORT`, default 8443). `PORT` keeps serving HTTP.
+    pub port: u16,
+}
+
+pub const DEFAULT_TLS_PORT: u16 = 8443;
+
+// Both files, or neither: half a TLS configuration is a mistake to stop on, not to
+// silently serve plain HTTP for.
+fn resolve_tls() -> Option<TlsConfig> {
+    match (env_string("TLS_CERT_FILE"), env_string("TLS_KEY_FILE")) {
+        (None, None) => None,
+        (Some(cert_file), Some(key_file)) => Some(TlsConfig {
+            cert_file: cert_file.into(),
+            key_file: key_file.into(),
+            port: env_parsed("TLS_PORT", DEFAULT_TLS_PORT),
+        }),
+        _ => panic!("TLS_CERT_FILE and TLS_KEY_FILE must be set together"),
+    }
 }
 
 // JSON logs unless LOG_FORMAT says otherwise; JSON is the default outside
@@ -569,7 +610,7 @@ fn production_config_problems(get: &dyn Fn(&str) -> Option<String>) -> Vec<Strin
     }
 
     // WebAuthn needs an explicit origin; it otherwise inherits AUTH_UI_BASE_URL and
-    // ultimately http://localhost:5173, which silently breaks every passkey ceremony.
+    // ultimately the localhost default, which silently breaks every passkey ceremony.
     if missing("WEBAUTHN_RP_ORIGIN") && missing("AUTH_UI_BASE_URL") {
         problems.push(
             "WEBAUTHN_RP_ORIGIN (or AUTH_UI_BASE_URL) must be set — the WebAuthn relying-party \

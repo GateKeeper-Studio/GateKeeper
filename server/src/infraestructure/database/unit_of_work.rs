@@ -32,13 +32,14 @@ use crate::{
             password_change_token_repository::PasswordChangeTokenRepository,
             password_reset_token_repository::PasswordResetTokenRepository,
             policy_acceptance_repository::PolicyAcceptanceRepository,
+            qr_login_request_repository::QrLoginRequestRepository,
             refresh_token_repository::RefreshTokenRepository, role_repository::RoleRepository,
             security_block_repository::SecurityBlockRepository,
             signing_key_repository::SigningKeyRepository,
             social_identity_repository::SocialIdentityRepository,
             tenant_repository::TenantRepository,
             tenant_risk_policy_repository::TenantRiskPolicyRepository,
-            user_repository::UserRepository,
+            trusted_device_repository::TrustedDeviceRepository, user_repository::UserRepository,
             webhook_delivery_repository::WebhookDeliveryRepository,
             webhook_subscription_repository::WebhookSubscriptionRepository,
         },
@@ -67,12 +68,14 @@ use crate::{
             password_change_token_repository::DbPasswordChangeTokenRepository,
             password_reset_token_repository::DbPasswordResetTokenRepository,
             policy_acceptance_repository::DbPolicyAcceptanceRepository,
+            qr_login_request_repository::DbQrLoginRequestRepository,
             refresh_token_repository::DbRefreshTokenRepository, role_repository::DbRoleRepository,
             security_block_repository::DbSecurityBlockRepository,
             signing_key_repository::DbSigningKeyRepository,
             social_identity_repository::DbSocialIdentityRepository,
             tenant_repository::DbTenantRepository,
             tenant_risk_policy_repository::DbTenantRiskPolicyRepository,
+            trusted_device_repository::DbTrustedDeviceRepository,
             user_repository::DbUserRepository,
             webhook_delivery_repository::DbWebhookDeliveryRepository,
             webhook_subscription_repository::DbWebhookSubscriptionRepository,
@@ -99,6 +102,8 @@ pub struct DbUnitOfWork {
     mfa_challenge_repository: Arc<DbMfaChallengeRepository>,
     password_reset_token_repository: Arc<DbPasswordResetTokenRepository>,
     magic_link_token_repository: Arc<DbMagicLinkTokenRepository>,
+    qr_login_request_repository: Arc<DbQrLoginRequestRepository>,
+    trusted_device_repository: Arc<DbTrustedDeviceRepository>,
     password_change_token_repository: Arc<DbPasswordChangeTokenRepository>,
     email_provider_repository: Arc<DbEmailProviderRepository>,
     external_identity_provider_repository: Arc<DbExternalIdentityProviderRepository>,
@@ -170,6 +175,12 @@ impl DbUnitOfWork {
                 transaction_context.clone(),
             )),
             magic_link_token_repository: Arc::new(DbMagicLinkTokenRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            qr_login_request_repository: Arc::new(DbQrLoginRequestRepository::with_tx(
+                transaction_context.clone(),
+            )),
+            trusted_device_repository: Arc::new(DbTrustedDeviceRepository::with_tx(
                 transaction_context.clone(),
             )),
             password_change_token_repository: Arc::new(DbPasswordChangeTokenRepository::with_tx(
@@ -287,6 +298,14 @@ impl UnitOfWork for DbUnitOfWork {
 
     fn magic_link_token_repository(&self) -> Arc<dyn MagicLinkTokenRepository> {
         self.magic_link_token_repository.clone()
+    }
+
+    fn qr_login_request_repository(&self) -> Arc<dyn QrLoginRequestRepository> {
+        self.qr_login_request_repository.clone()
+    }
+
+    fn trusted_device_repository(&self) -> Arc<dyn TrustedDeviceRepository> {
+        self.trusted_device_repository.clone()
     }
 
     fn password_change_token_repository(&self) -> Arc<dyn PasswordChangeTokenRepository> {

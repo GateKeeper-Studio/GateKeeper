@@ -42,10 +42,11 @@ mod tests {
             false,
             0,
         );
-        let mut data = repo.memory.data.lock().unwrap();
-        data.insert(second.id(), second);
-        data.insert(first.id(), first);
-        drop(data);
+        {
+            let mut data = repo.memory.data.lock().unwrap();
+            data.insert(second.id(), second);
+            data.insert(first.id(), first);
+        }
 
         let use_case = UseCase::new(repo);
         let response = use_case.execute(Query { tenant_id }).await.unwrap();

@@ -14,7 +14,7 @@ use crate::{
             LoginEventRepository, SecurityOverviewMetrics, SuspiciousIp,
         },
     },
-    infraestructure::database::executor::{DbExecutor, SharedTx, run},
+    infraestructure::database::executor::{DbExecutor, SharedTx, run, run_custom_plan},
 };
 
 pub struct DbLoginEventRepository {
@@ -89,8 +89,8 @@ impl LoginEventRow {
             self.success,
             self.failure_reason,
             self.risk_score,
-            RiskLevel::from_str(&self.risk_level),
-            RiskDecision::from_str(&self.decision),
+            RiskLevel::from_db(&self.risk_level),
+            RiskDecision::from_db(&self.decision),
             self.created_at,
         )
         .with_scoring(self.risk_features, self.risk_model)
@@ -439,7 +439,7 @@ impl LoginEventRepository for DbLoginEventRepository {
         page: u32,
         page_size: u32,
     ) -> Result<Vec<LoginEvent>, DomainError> {
-        let rows = run!(
+        let rows = run_custom_plan!(
             self.executor,
             sqlx::query_as!(
                 LoginEventRow,
@@ -486,7 +486,7 @@ impl LoginEventRepository for DbLoginEventRepository {
     }
 
     async fn count(&self, tenant_id: Uuid, filter: &LoginEventFilter) -> Result<u32, DomainError> {
-        let count = run!(
+        let count = run_custom_plan!(
             self.executor,
             sqlx::query_scalar!(
                 r#"
@@ -567,10 +567,10 @@ impl LoginEventRepository for DbLoginEventRepository {
         Ok(rows
             .into_iter()
             .filter_map(|r| {
-                RiskSignalType::from_str(&r.signal_type).map(|signal_type| {
+                RiskSignalType::parse(&r.signal_type).map(|signal_type| {
                     RiskSignal::reconstruct(
                         signal_type,
-                        RiskSeverity::from_str(&r.severity),
+                        RiskSeverity::from_db(&r.severity),
                         r.points,
                         r.metadata_json.unwrap_or_else(|| serde_json::json!({})),
                     )

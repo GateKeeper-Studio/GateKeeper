@@ -73,14 +73,24 @@
     run(() => mfaClient.renameMethod(entry.id as string, name));
   }
 
-  // The IdP requires the current password to remove a factor (step-up). This
-  // headless example keeps the prompt minimal; a real UI should use a masked
-  // password field.
+  // Step-up: the IdP asks for proof before a sensitive change. This headless example
+  // keeps the prompts minimal; a real UI should use a masked password field. An
+  // account with a passkey and no password is asked nothing: the passkey is the proof.
+  const askStepUp = (kind: 'password' | 'email') =>
+    prompt(
+      kind === 'password'
+        ? 'Confirm with your current password'
+        : 'Enter the confirmation code we just emailed you'
+    );
+
   function removeMethod(entry: MfaMethodEntry) {
     if (!entry.id) return;
     if (!confirm(`Remove "${methodLabel(entry)}"?`)) return;
-    const currentPassword = prompt('Confirm with your current password') ?? undefined;
-    run(() => mfaClient.removeMethod(entry.id as string, currentPassword || undefined));
+    run(async () => {
+      const proof = await mfaClient.collectStepUp(askStepUp);
+      if (proof === undefined) return;
+      await mfaClient.removeMethod(entry.id as string, proof);
+    });
   }
 
   function startTotp() {
@@ -102,7 +112,12 @@
   function addPasskey(event: SubmitEvent) {
     event.preventDefault();
     run(async () => {
-      await mfaClient.addPasskey(passkeyName);
+      // Only an account without a password proves itself here.
+      const start = await mfaClient.startStepUp();
+      const proof =
+        start.method === 'password' ? undefined : await mfaClient.proveStepUp(start, askStepUp);
+      if (start.method !== 'password' && proof === undefined) return;
+      await mfaClient.addPasskey(passkeyName, proof);
       passkeyName = '';
     });
   }

@@ -7,6 +7,10 @@ import type {
   MfaMethodEntry,
   PasskeyCreationOptions,
   PasskeyPublicKeyOptionsJson,
+  PasskeyRequestOptions,
+  PasskeyRequestOptionsJson,
+  StepUpProof,
+  StepUpStart,
   TotpEnrollment,
   WebAuthnStartResponse
 } from './types.js';
@@ -85,10 +89,74 @@ export async function registerPasskey(options: PasskeyCreationOptions): Promise<
     : credentialToJSON(credential);
 }
 
+function parseRequestOptions(publicKey: PasskeyRequestOptionsJson): PublicKeyCredentialRequestOptions {
+  return {
+    ...publicKey,
+    challenge: base64urlToBuffer(publicKey.challenge),
+    allowCredentials: (publicKey.allowCredentials ?? []).map((cred) => ({
+      ...cred,
+      id: base64urlToBuffer(cred.id)
+    }))
+  } as PublicKeyCredentialRequestOptions;
+}
+
+function assertionToJSON(credential: PublicKeyCredential) {
+  const response = credential.response as AuthenticatorAssertionResponse;
+  return {
+    id: credential.id,
+    rawId: bufferToBase64url(credential.rawId),
+    type: credential.type,
+    authenticatorAttachment: credential.authenticatorAttachment ?? null,
+    clientExtensionResults: credential.getClientExtensionResults?.() ?? {},
+    response: {
+      authenticatorData: bufferToBase64url(response.authenticatorData),
+      clientDataJSON: bufferToBase64url(response.clientDataJSON),
+      signature: bufferToBase64url(response.signature),
+      userHandle: response.userHandle ? bufferToBase64url(response.userHandle) : null
+    }
+  };
+}
+
+/** Runs a passkey assertion (the step-up's ceremony) and returns it as JSON. */
+export async function getPasskeyAssertion(options: PasskeyRequestOptions): Promise<unknown> {
+  if (!window.PublicKeyCredential) {
+    throw new Error('This browser does not support passkeys');
+  }
+
+  const credentialConstructor = PublicKeyCredential as unknown as {
+    parseRequestOptionsFromJSON?: (options: unknown) => PublicKeyCredentialRequestOptions;
+  };
+
+  const publicKey =
+    typeof credentialConstructor.parseRequestOptionsFromJSON === 'function'
+      ? credentialConstructor.parseRequestOptionsFromJSON(options.publicKey)
+      : parseRequestOptions(options.publicKey);
+
+  const credential = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
+  if (!credential) throw new Error('Passkey confirmation was cancelled');
+
+  const jsonCredential = credential as PublicKeyCredential & { toJSON?: () => unknown };
+  return typeof jsonCredential.toJSON === 'function'
+    ? jsonCredential.toJSON()
+    : assertionToJSON(credential);
+}
+
+// The body a sensitive change carries its proof in.
+function stepUpBody(proof?: StepUpProof): Record<string, unknown> {
+  if (proof === undefined) return {};
+  if (typeof proof === 'string') return { current_password: proof };
+  if ('currentPassword' in proof) return { current_password: proof.currentPassword };
+  if ('assertion' in proof) {
+    return { step_up: { challenge_id: proof.challengeId, assertion: proof.assertion } };
+  }
+  return { step_up: { challenge_id: proof.challengeId, code: proof.code } };
+}
+
 export function createMfaClient(options: MfaClientOptions = {}): MfaClient {
   const basePath = options.basePath ?? '/api/mfa';
   const fetchFn = options.fetch ?? fetch;
   const passkeyRegistrar = options.registerPasskey ?? registerPasskey;
+  const passkeyAsserter = options.getPasskeyAssertion ?? getPasskeyAssertion;
 
   function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     return requestJson<T>(`${basePath}${path}`, { ...init, fetch: fetchFn });
@@ -110,10 +178,10 @@ export function createMfaClient(options: MfaClientOptions = {}): MfaClient {
         body: JSON.stringify({ name })
       });
     },
-    async removeMethod(id, currentPassword) {
+    async removeMethod(id, proof) {
       await request(`/methods/${id}`, {
         method: 'DELETE',
-        body: JSON.stringify({ current_password: currentPassword ?? null })
+        body: JSON.stringify(stepUpBody(proof))
       });
     },
     startTotpEnrollment() {
@@ -125,8 +193,11 @@ export function createMfaClient(options: MfaClientOptions = {}): MfaClient {
         body: JSON.stringify({ code })
       });
     },
-    startPasskeyEnrollment() {
-      return request<WebAuthnStartResponse>('/webauthn/start', { method: 'POST' });
+    startPasskeyEnrollment(proof) {
+      return request<WebAuthnStartResponse>('/webauthn/start', {
+        method: 'POST',
+        body: JSON.stringify(stepUpBody(proof))
+      });
     },
     finishPasskeyEnrollment(input) {
       return request<MfaMethodEntry>('/webauthn/finish', {
@@ -134,10 +205,25 @@ export function createMfaClient(options: MfaClientOptions = {}): MfaClient {
         body: JSON.stringify(input)
       });
     },
-    async addPasskey(name) {
-      const { mfaId, options: passkeyOptions } = await this.startPasskeyEnrollment();
+    async addPasskey(name, proof) {
+      const { mfaId, options: passkeyOptions } = await this.startPasskeyEnrollment(proof);
       const attestation = await passkeyRegistrar(passkeyOptions);
       return this.finishPasskeyEnrollment({ mfaId, name: name?.trim() || null, attestation });
+    },
+    startStepUp() {
+      return request<StepUpStart>('/step-up', { method: 'POST' });
+    },
+    async proveStepUp(start, ask) {
+      if (start.method === 'passkey') {
+        const assertion = await passkeyAsserter(start.options);
+        return { challengeId: start.challengeId, assertion };
+      }
+      const answer = (await ask(start.method))?.trim();
+      if (!answer) return undefined;
+      return start.method === 'password' ? answer : { challengeId: start.challengeId, code: answer };
+    },
+    async collectStepUp(ask) {
+      return this.proveStepUp(await this.startStepUp(), ask);
     }
   };
 }

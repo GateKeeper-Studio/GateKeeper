@@ -19,6 +19,9 @@ pub struct AdminTokenClaims {
     pub email: String,
     pub name: String,
     pub organization_id: Uuid,
+    // The admin's organization requires two-step verification and this admin has not
+    // set it up: the token opens only the enrollment endpoints (`require_admin`).
+    pub mfa_setup_required: bool,
 }
 
 // Issues and verifies platform-admin access tokens. Implemented in infrastructure
@@ -32,6 +35,7 @@ pub trait AdminTokenIssuer: Send + Sync {
         email: &str,
         name: &str,
         organization_id: Uuid,
+        mfa_setup_required: bool,
     ) -> Result<IssuedAdminToken, DomainError>;
     fn verify(&self, token: &str) -> Result<AdminTokenClaims, DomainError>;
 }

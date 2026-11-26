@@ -30,6 +30,11 @@ From this directory:
 ./scripts/register-public-client.sh <tenant_id> [admin_bearer_token]
 ```
 
+Without `admin_bearer_token` the script signs you in as a platform admin (email,
+password, and a two-step code if your account has one) through `POST /admin/login`.
+You can also create the client by hand in the console at
+`http://localhost:8080/console` (tenant → OAuth clients → New).
+
 The script creates a public client with:
 
 - `client_type: "public"`
@@ -53,14 +58,15 @@ Fill `.env`:
 
 ```bash
 VITE_GATEKEEPER_IDP_BASE_URL=http://localhost:8080
-VITE_GATEKEEPER_AUTH_UI_BASE_URL=http://localhost:5173
 VITE_GATEKEEPER_TENANT_ID=<tenant_id>
 VITE_GATEKEEPER_CLIENT_ID=<public_client_id>
 VITE_GATEKEEPER_REDIRECT_URI=http://localhost:5174/
 VITE_GATEKEEPER_SCOPE=openid profile email
 ```
 
-The app runs on `http://localhost:5174`.
+The app runs on `http://localhost:5174`. Sign-in happens on the identity provider's own
+login UI (`VITE_GATEKEEPER_IDP_BASE_URL`), so there is nothing else to run besides the
+server. `VITE_GATEKEEPER_AUTH_UI_BASE_URL` exists only for a login UI on another origin.
 
 ## Required server settings
 
@@ -78,7 +84,8 @@ If `CORS_ALLOWED_ORIGINS` is empty, the local API is permissive for development.
 1. Click **Sign in**.
 2. The app stores the PKCE verifier and state in `sessionStorage`.
 3. The browser is redirected to
-   `{AUTH_UI_BASE_URL}/auth/{CLIENT_ID}/sign-in?...`.
+   `{IDP_BASE_URL}/auth/{CLIENT_ID}/sign-in?...`, the login UI the identity provider
+   serves.
 4. The hosted login UI authenticates the user and redirects back to
    `VITE_GATEKEEPER_REDIRECT_URI?code=...&state=...`.
 5. The app verifies `state` and posts to `{IDP_BASE_URL}/oauth/token` with

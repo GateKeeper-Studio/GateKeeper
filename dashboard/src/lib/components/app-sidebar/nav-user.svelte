@@ -33,6 +33,7 @@
 				{#snippet child({ props })}
 					<Sidebar.MenuButton
 						size="lg"
+						data-tour="user-menu"
 						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						{...props}
 					>

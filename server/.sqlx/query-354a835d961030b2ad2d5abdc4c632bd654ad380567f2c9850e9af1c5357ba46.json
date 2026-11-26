@@ -1,0 +1,196 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT a.id, a.organization_id, a.email, a.name, a.password_hash, a.password_algorithm,\n                 a.is_active, a.created_at, a.updated_at, a.failed_sign_in_count, a.locked_until,\n                 a.last_sign_in_at, a.console_tour_version, o.is_active AS organization_active,\n                 o.require_admin_mfa AS organization_requires_mfa\n          FROM admin_users a\n          JOIN organizations o ON o.id = a.organization_id\n          WHERE a.email = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "organization_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "organization_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "email",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "email"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "password_hash",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "password_hash"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "password_algorithm",
+        "type_info": "Varchar",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "password_algorithm"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "is_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "updated_at"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "failed_sign_in_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "failed_sign_in_count"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "locked_until",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "locked_until"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "last_sign_in_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "last_sign_in_at"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "console_tour_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "console_tour_version"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
+        "name": "organization_active",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "organizations",
+            "name": "is_active"
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "organization_requires_mfa",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "organizations",
+            "name": "require_admin_mfa"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "354a835d961030b2ad2d5abdc4c632bd654ad380567f2c9850e9af1c5357ba46"
+}

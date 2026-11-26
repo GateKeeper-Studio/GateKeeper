@@ -1,5 +1,8 @@
+pub mod admin_invitation_repository;
+pub mod admin_mfa_repository;
 pub mod admin_refresh_token_repository;
 pub mod admin_user_repository;
+pub mod admin_web_session_repository;
 pub mod audit_event_repository;
 pub mod auth_session_repository;
 pub mod authorization_code_repository;
@@ -22,6 +25,7 @@ pub mod organization_repository;
 pub mod password_change_token_repository;
 pub mod password_reset_token_repository;
 pub mod policy_acceptance_repository;
+pub mod qr_login_request_repository;
 pub mod refresh_token_repository;
 pub mod risk_model_repository;
 pub mod role_repository;
@@ -30,6 +34,7 @@ pub mod signing_key_repository;
 pub mod social_identity_repository;
 pub mod tenant_repository;
 pub mod tenant_risk_policy_repository;
+pub mod trusted_device_repository;
 pub mod user_repository;
 
 // Outbound events: transactional outbox + signed webhook delivery.

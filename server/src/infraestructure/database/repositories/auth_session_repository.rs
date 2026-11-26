@@ -84,6 +84,13 @@ impl AuthSessionRepository for DbAuthSessionRepository {
         }))
     }
 
+    // SECURITY: `FOR UPDATE`. Every step of a sign-in reads its session through
+    // here, then reads and rewrites the rows that hang off it (the MFA challenge and
+    // its wrong-guess counter, the authorization code). Without the row lock, guesses
+    // sent in parallel all read `attempts = 0` and all write `attempts = 1`: the
+    // five-guess limit on an emailed or authenticator code counted a whole burst as
+    // one. The lock makes the requests of one session run one after the other. It is
+    // held only until that unit of work ends, and does nothing on the pool executor.
     async fn find_by_token_hash(
         &self,
         tenant_id: Uuid,
@@ -100,6 +107,7 @@ impl AuthSessionRepository for DbAuthSessionRepository {
             expires_at, absolute_expires_at, created_at, risk_login_event_id
           FROM auth_sessions
           WHERE tenant_id = $1 AND session_token_hash = $2
+          FOR UPDATE
         "#,
                 tenant_id,
                 token_hash

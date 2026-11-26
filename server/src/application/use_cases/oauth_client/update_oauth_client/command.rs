@@ -90,6 +90,10 @@ pub struct Command {
     #[serde(default)]
     pub magic_link_enabled: bool,
 
+    // QR code sign-in. A full replace like the rest: omitted turns it off.
+    #[serde(default)]
+    pub qr_login_enabled: bool,
+
     // OIDC Back-Channel Logout: where to POST a signed logout_token when one of this
     // client's sessions ends. Validated like a webhook URL; null/blank = none.
     #[serde(default)]

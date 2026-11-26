@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT COUNT(*) AS \"count!\"\n          FROM mfa_challenges\n          WHERE user_id = $1 AND purpose = $2 AND method = $3 AND created_at >= $4\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "9365a9de215e675c194d9def446be5bd53b83b4d6bd4c4d7e2467c62146bfe68"
+}

@@ -8,7 +8,9 @@
 - All changes via pull request; **at least one reviewer** (segregation of duties,
   SOC 2 CC8.1). No direct pushes to the default branch.
 - Reversible DB migrations: every migration has `.up.sql` **and** `.down.sql`
-  (already the repo convention).
+  (already the repo convention). The one exception is the squashed baseline
+  `20261110000000_initial_schema.sql`, irreversible by design: reverting it would drop
+  the whole schema.
 - Tag releases; the changelog / merged-PR history is the change-management evidence.
 
 ## CI gates (required)

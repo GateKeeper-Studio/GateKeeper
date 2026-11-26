@@ -13,6 +13,8 @@
 	import CpuIcon from '@lucide/svelte/icons/cpu';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import FingerprintIcon from '@lucide/svelte/icons/fingerprint';
+	import SmartphoneIcon from '@lucide/svelte/icons/smartphone';
+	import { tick } from 'svelte';
 
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -23,7 +25,7 @@
 	import LanguageSwitcher from '$lib/components/language-switcher.svelte';
 
 	import { validate } from '$lib/utils/form';
-	import { adminLogin } from '$lib/services/auth/admin-login';
+	import { adminLogin, INVALID_MFA_CODE, MFA_REQUIRED } from '$lib/services/auth/admin-login';
 	import { websiteHref } from '$lib/external-urls';
 	import { m } from '$lib/paraglide/messages.js';
 
@@ -38,6 +40,20 @@
 	let errors = $state<Record<string, string>>({});
 	let isLoading = $state(false);
 	let error = $state<string | null>(null);
+
+	// Second step, for an admin with two-step verification. The server asks for it
+	// only after the password was right; the email and password are sent again with
+	// the code, so no half-signed-in state exists anywhere.
+	let mfaStep = $state(false);
+	let mfaCode = $state('');
+	let mfaInput = $state<HTMLInputElement | null>(null);
+
+	function leaveMfaStep() {
+		mfaStep = false;
+		mfaCode = '';
+		password = '';
+		errors = {};
+	}
 
 	const highlights = [
 		{ icon: CpuIcon, text: m.admin_login_highlight_rust() },
@@ -59,13 +75,36 @@
 			errors = result.errors;
 			return;
 		}
+		if (mfaStep && mfaCode.trim().length === 0) {
+			errors = { mfaCode: m.admin_login_mfa_code_required() };
+			return;
+		}
 		errors = {};
 		isLoading = true;
 
-		const [data, err] = await adminLogin(result.data.email.trim(), result.data.password);
+		const [data, err] = await adminLogin(
+			result.data.email.trim(),
+			result.data.password,
+			mfaStep ? mfaCode.trim() : undefined
+		);
 
 		if (err || !data) {
-			showError(err?.data?.error || err?.data?.message || m.admin_login_invalid_credentials());
+			const code = err?.data?.error;
+			if (code === MFA_REQUIRED) {
+				isLoading = false;
+				mfaStep = true;
+				await tick();
+				mfaInput?.focus();
+				return;
+			}
+			if (code === INVALID_MFA_CODE) {
+				mfaCode = '';
+				showError(m.admin_login_invalid_code());
+				return;
+			}
+			// A wrong password (or a lock) on the second attempt: start over.
+			if (mfaStep) leaveMfaStep();
+			showError(err?.data?.message || code || m.admin_login_invalid_credentials());
 			return;
 		}
 
@@ -74,7 +113,7 @@
 		// from `+layout.server.ts`, never an absolute URL, so it cannot redirect
 		// off-site; re-check that here rather than trusting the query string.
 		const next = page.url.searchParams.get('next');
-		const target = next && next.startsWith('/') && !next.startsWith('//') ? next : resolve('/');
+		const target = next && next.startsWith('/') && !next.startsWith('//') ? next : resolve('/console');
 		await goto(target);
 	}
 </script>
@@ -106,10 +145,15 @@
 					<span class="text-lg">GateKeeper</span>
 				</a>
 
-				<h1 class="text-2xl font-semibold tracking-tight">{m.admin_login_title()}</h1>
-				<p class="mt-1.5 text-sm text-muted-foreground">
-					{m.admin_login_description()}
-				</p>
+				{#if mfaStep}
+					<h1 class="text-2xl font-semibold tracking-tight">{m.admin_login_mfa_title()}</h1>
+					<p class="mt-1.5 text-sm text-muted-foreground">{m.admin_login_mfa_description()}</p>
+				{:else}
+					<h1 class="text-2xl font-semibold tracking-tight">{m.admin_login_title()}</h1>
+					<p class="mt-1.5 text-sm text-muted-foreground">
+						{m.admin_login_description()}
+					</p>
+				{/if}
 
 				{#if error}
 					<div class="mt-6">
@@ -118,7 +162,36 @@
 				{/if}
 
 				<form onsubmit={onSubmit} class="mt-6 space-y-4">
-					<div class="space-y-2">
+					{#if mfaStep}
+						<div class="space-y-2">
+							<Label for="mfa-code">{m.admin_login_mfa_code_label()}</Label>
+							<div class="relative">
+								<SmartphoneIcon
+									class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+								/>
+								<!-- Text, not numeric: a recovery code has letters. -->
+								<Input
+									id="mfa-code"
+									type="text"
+									inputmode="text"
+									autocomplete="one-time-code"
+									autocapitalize="characters"
+									spellcheck="false"
+									maxlength={32}
+									placeholder="123456"
+									class="pl-9 font-mono tracking-widest"
+									aria-invalid={errors.mfaCode ? 'true' : undefined}
+									bind:ref={mfaInput}
+									bind:value={mfaCode}
+								/>
+							</div>
+							{#if errors.mfaCode}
+								<p class="text-sm font-medium text-destructive">{errors.mfaCode}</p>
+							{/if}
+						</div>
+					{/if}
+
+					<div class="space-y-2" class:hidden={mfaStep}>
 						<Label for="email">{m.auth_email_label()}</Label>
 						<div class="relative">
 							<MailIcon
@@ -139,7 +212,7 @@
 						{/if}
 					</div>
 
-					<div class="space-y-2">
+					<div class="space-y-2" class:hidden={mfaStep}>
 						<Label for="password">{m.auth_password_label()}</Label>
 						<div class="relative">
 							<LockIcon
@@ -182,8 +255,15 @@
 						{#if isLoading}
 							<LoadingSpinner class="absolute left-4" />
 						{/if}
-						{m.admin_login_submit()}
+						{mfaStep ? m.admin_login_mfa_submit() : m.admin_login_submit()}
 					</Button>
+
+					{#if mfaStep}
+						<Button type="button" variant="ghost" class="w-full" onclick={leaveMfaStep}>
+							<ArrowLeftIcon class="size-4" />
+							{m.admin_login_mfa_back()}
+						</Button>
+					{/if}
 				</form>
 
 				<p class="mt-8 text-center text-xs text-muted-foreground">

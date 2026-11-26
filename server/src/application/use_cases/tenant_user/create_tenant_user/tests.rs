@@ -1,23 +1,38 @@
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use chrono::{Duration, Utc};
     use uuid::Uuid;
 
     use crate::{
-        application::use_cases::tenant_user::create_tenant_user::{
-            command::Command, use_case::UseCase,
+        application::{
+            ports::email_sender::EmailSender,
+            services::templated_email_sender::TemplatedEmailSender,
+            shared::token_policy::NEW_ACCOUNT_PASSWORD_TTL_HOURS,
+            use_cases::tenant_user::create_tenant_user::{command::Command, use_case::UseCase},
         },
         domain::{
-            entities::tenant::Tenant, errors::DomainError,
+            entities::{
+                email_provider::{EmailProvider, SmtpEncryption},
+                tenant::Tenant,
+            },
+            errors::DomainError,
             repositories::user_repository::UserRepository,
         },
         testing::{
+            fake_email_renderer::{FakeEmailRenderer, var_from_text},
             in_memory_repositories::{
+                in_memory_email_provider_repository::InMemoryEmailProviderRepository,
+                in_memory_email_template_repository::InMemoryEmailTemplateRepository,
                 in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
                 in_memory_tenant_repository::InMemoryTenantRepository,
                 in_memory_user_repository::InMemoryUserRepository,
             },
             in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
+            recording_email_sender::RecordingEmailSender,
+            templated_email_support::recording_templated_email_sender,
             user_factory::generate_user,
         },
         utils::password_hasher::compare_password,
@@ -45,7 +60,7 @@ mod tests {
             first_name: "First".to_string(),
             last_name: "Last".to_string(),
             is_email_verified: false,
-            temporary_password: "raw_password".to_string(),
+            temporary_password: None,
         }
     }
 
@@ -61,6 +76,22 @@ mod tests {
         UseCase,
         Arc<InMemoryOutboxEventRepository>,
     ) {
+        let (user_repo, use_case, outbox, _) = setup_full(tenant, true, None);
+        (user_repo, use_case, outbox)
+    }
+
+    // A tenant with (or without) an active default provider; the transport records
+    // what it sends unless `transport` replaces it.
+    fn setup_full(
+        tenant: &Tenant,
+        with_provider: bool,
+        transport: Option<Arc<dyn EmailSender>>,
+    ) -> (
+        Arc<InMemoryUserRepository>,
+        UseCase,
+        Arc<InMemoryOutboxEventRepository>,
+        Arc<RecordingEmailSender>,
+    ) {
         let user_repo = Arc::new(InMemoryUserRepository::new());
         let tenant_repo = Arc::new(InMemoryTenantRepository::new());
         let outbox = Arc::new(InMemoryOutboxEventRepository::new());
@@ -72,17 +103,78 @@ mod tests {
             .unwrap()
             .insert(tenant.id(), tenant.clone());
 
+        let providers = Arc::new(InMemoryEmailProviderRepository::new());
+        if with_provider {
+            let provider = EmailProvider::new(
+                tenant.id(),
+                "Main".to_string(),
+                "smtp.example.com".to_string(),
+                587,
+                "mailer".to_string(),
+                "v1:sealed".to_string(),
+                "no-reply@example.com".to_string(),
+                None,
+                SmtpEncryption::StartTls,
+                true,
+            );
+            providers
+                .memory
+                .data
+                .lock()
+                .unwrap()
+                .insert(provider.id(), provider);
+        }
+
         let uow_factory = Arc::new(
             InMemoryUnitOfWorkFactory::new(user_repo.clone(), tenant_repo.clone())
-                .with_outbox_event_repository(outbox.clone()),
+                .with_outbox_event_repository(outbox.clone())
+                .with_email_provider_repository(providers),
         );
+
+        let (recording_templated, recording) = recording_templated_email_sender();
+        let templated = match transport {
+            Some(transport) => Arc::new(TemplatedEmailSender::new(
+                Arc::new(InMemoryEmailTemplateRepository::new()),
+                Arc::new(FakeEmailRenderer::new()),
+                transport,
+            )),
+            None => recording_templated,
+        };
 
         let use_case = UseCase::new(
             uow_factory,
             crate::testing::password_hasher::test_password_hasher(),
+            templated,
+            true,
         );
 
-        (user_repo, use_case, outbox)
+        (user_repo, use_case, outbox, recording)
+    }
+
+    struct FailingEmailSender;
+
+    #[async_trait]
+    impl EmailSender for FailingEmailSender {
+        async fn send(
+            &self,
+            _provider: Option<&EmailProvider>,
+            _to: &str,
+            _subject: &str,
+            _html_body: &str,
+            _text_body: &str,
+        ) -> Result<(), DomainError> {
+            Err(DomainError::Upstream(
+                "the email could not be delivered".to_string(),
+            ))
+        }
+
+        async fn send_test_email(
+            &self,
+            _provider: Option<&EmailProvider>,
+            _to: &str,
+        ) -> Result<(), DomainError> {
+            Ok(())
+        }
     }
 
     // ── Tests ──────────────────────────────────────────────────────────────────
@@ -114,10 +206,12 @@ mod tests {
         assert_eq!(saved.email(), "user@example.com");
     }
 
+    // The server makes the first password and only the user gets it, by email. It is
+    // stored hashed with the tenant secret, single use and expiring.
     #[tokio::test]
-    async fn password_is_hashed_with_tenant_secret() {
+    async fn the_first_password_is_emailed_to_the_user_and_never_returned() {
         let tenant = make_tenant();
-        let (user_repo, use_case) = setup(&tenant);
+        let (user_repo, use_case, _, email) = setup_full(&tenant, true, None);
 
         let response = use_case
             .execute(
@@ -127,22 +221,91 @@ mod tests {
             .await
             .unwrap();
 
+        let sent = email.sent.lock().unwrap().clone();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].to, "user@example.com");
+        assert_eq!(sent[0].subject, "Your new Test Tenant account");
+        let password = var_from_text(&sent[0].text, "password").expect("password in the email");
+        assert!(response.temporary_password_emailed);
+        assert!(!format!("{response:?}").contains(&password));
+
         let saved = user_repo
             .find_by_id(response.user_id)
             .await
             .unwrap()
             .unwrap();
-        let saved_hash = saved.credentials().unwrap().password_hash();
-
+        let credentials = saved.credentials().unwrap();
         // Argon2 uses a random salt, so two hashes of the same password differ.
         // Verify by checking the stored hash validates against the raw password
         // (with the tenant secret), rather than comparing hash strings.
-        assert!(saved_hash.starts_with("$argon2id$v"));
+        assert!(credentials.password_hash().starts_with("$argon2id$v"));
         assert!(compare_password(
-            saved_hash,
-            "raw_password",
+            credentials.password_hash(),
+            &password,
             tenant.password_hash_secret()
         ));
+        assert!(credentials.should_change_password());
+        assert!(!credentials.proves_account_owner());
+        let expires_at = credentials.temporary_password_expires_at().unwrap();
+        assert_eq!(expires_at, response.temporary_password_expires_at);
+        let ttl = expires_at - Utc::now();
+        assert!(ttl <= Duration::hours(NEW_ACCOUNT_PASSWORD_TTL_HOURS));
+        assert!(ttl > Duration::hours(NEW_ACCOUNT_PASSWORD_TTL_HOURS) - Duration::minutes(1));
+    }
+
+    #[tokio::test]
+    async fn a_password_chosen_by_the_caller_is_refused() {
+        let tenant = make_tenant();
+        let (user_repo, use_case, _, email) = setup_full(&tenant, true, None);
+        let mut command = make_command(tenant.id());
+        command.temporary_password = Some("raw_password".to_string());
+
+        let err = use_case
+            .execute(&crate::application::shared::actor::Actor::System, command)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::Validation(_)));
+        assert!(user_repo.memory.data.lock().unwrap().is_empty());
+        assert!(email.sent.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn nothing_is_created_when_the_email_cannot_go_out() {
+        let tenant = make_tenant();
+        let (user_repo, use_case, outbox, _) = setup_full(&tenant, false, None);
+
+        let err = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, DomainError::Validation(_)));
+        assert!(user_repo.memory.data.lock().unwrap().is_empty());
+        assert!(outbox.memory.data.lock().unwrap().is_empty());
+    }
+
+    // The account exists once committed: a failed delivery is reported, not an error,
+    // so the admin knows to send a new password with a reset.
+    #[tokio::test]
+    async fn a_failed_delivery_is_reported_in_the_answer() {
+        let tenant = make_tenant();
+        let (user_repo, use_case, _, _) =
+            setup_full(&tenant, true, Some(Arc::new(FailingEmailSender)));
+
+        let response = use_case
+            .execute(
+                &crate::application::shared::actor::Actor::System,
+                make_command(tenant.id()),
+            )
+            .await
+            .unwrap();
+
+        assert!(!response.temporary_password_emailed);
+        assert_eq!(user_repo.memory.data.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]

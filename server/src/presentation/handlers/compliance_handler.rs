@@ -293,7 +293,8 @@ pub async fn erase_user(
 
 // DELETE /me  (self-service erasure)
 //
-// Step-up: the body must carry `current_password` (see `step_up.rs`).
+// Step-up: the body must carry `current_password`, or the `step_up` proof of an
+// account without a password (see `step_up.rs`).
 pub async fn erase_me(
     State(state): State<AppState>,
     principal: AuthPrincipal,

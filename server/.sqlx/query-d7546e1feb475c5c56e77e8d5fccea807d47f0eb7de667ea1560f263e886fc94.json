@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO admin_mfa (admin_id, totp_secret_enc, totp_confirmed_at, totp_last_step,\n                                 recovery_code_hashes, created_at, updated_at)\n          VALUES ($1, $2, NULL, NULL, '{}', $3, NULL)\n          ON CONFLICT (admin_id) DO UPDATE\n          SET totp_secret_enc = EXCLUDED.totp_secret_enc,\n              totp_last_step = NULL,\n              recovery_code_hashes = '{}',\n              created_at = EXCLUDED.created_at,\n              updated_at = NULL\n          WHERE admin_mfa.totp_confirmed_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d7546e1feb475c5c56e77e8d5fccea807d47f0eb7de667ea1560f263e886fc94"
+}

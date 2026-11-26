@@ -8,6 +8,7 @@
     type MfaConfigurationClasses,
     type MfaConfigurationState,
     type MfaMethodEntry,
+    type StepUpPrompt,
     type TotpEnrollment
   } from './mfa.js';
 
@@ -19,6 +20,10 @@
     classes?: MfaConfigurationClasses;
     confirmRemove?: (entry: MfaMethodEntry) => boolean | Promise<boolean>;
     promptRename?: (entry: MfaMethodEntry) => string | null | Promise<string | null>;
+    // Step-up before removing a method (and adding a passkey to an account without a
+    // password): asked for the current password or the emailed code. A passkey
+    // account is asked nothing: the browser's passkey prompt is the proof.
+    promptStepUp?: StepUpPrompt;
     onChange?: (mfa: MfaConfigurationState) => void;
     children?: Snippet;
   };
@@ -31,8 +36,18 @@
     classes = {},
     confirmRemove,
     promptRename,
+    promptStepUp,
     onChange
   }: Props = $props();
+
+  const STEP_UP_CANCELLED = 'Confirm it is you to make this change';
+  const askStepUp: StepUpPrompt = (kind) =>
+    promptStepUp?.(kind) ??
+    prompt(
+      kind === 'password'
+        ? 'Confirm with your current password'
+        : 'Enter the confirmation code we just emailed you'
+    );
 
   const methodLabels = $derived({ ...defaultMfaMethodLabels, ...labels });
   const mfaClient = $derived(client ?? createMfaClient({ basePath }));
@@ -114,7 +129,13 @@
   function addPasskey(event: SubmitEvent) {
     event.preventDefault();
     run(async () => {
-      await mfaClient.addPasskey(passkeyName);
+      // Only an account without a password proves itself here: for it a passkey
+      // signs in on its own.
+      const start = await mfaClient.startStepUp();
+      const proof =
+        start.method === 'password' ? undefined : await mfaClient.proveStepUp(start, askStepUp);
+      if (start.method !== 'password' && proof === undefined) throw new Error(STEP_UP_CANCELLED);
+      await mfaClient.addPasskey(passkeyName, proof);
       addingPasskey = false;
       passkeyName = '';
     });
@@ -126,7 +147,11 @@
       confirmRemove?.(entry) ??
       confirm(`Remove "${methodLabel(entry)}"? You will no longer be able to sign in with it.`);
     if (!(await approved)) return;
-    run(() => mfaClient.removeMethod(entry.id as string));
+    run(async () => {
+      const proof = await mfaClient.collectStepUp(askStepUp);
+      if (proof === undefined) throw new Error(STEP_UP_CANCELLED);
+      await mfaClient.removeMethod(entry.id as string, proof);
+    });
   }
 
   async function renameMethod(entry: MfaMethodEntry) {

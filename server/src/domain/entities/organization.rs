@@ -8,6 +8,9 @@ pub struct Organization {
     name: String,
     description: Option<String>,
     is_active: bool,
+    // Every admin of the organization must use two-step verification. An admin
+    // without it can only enroll until they do.
+    require_admin_mfa: bool,
     created_at: DateTime<Utc>,
     updated_at: Option<DateTime<Utc>>,
 }
@@ -19,6 +22,7 @@ impl Organization {
             name,
             description,
             is_active,
+            require_admin_mfa: false,
             created_at: Utc::now(),
             updated_at: None,
         }
@@ -45,9 +49,25 @@ impl Organization {
             name,
             description,
             is_active,
+            require_admin_mfa: false,
             created_at,
             updated_at,
         }
+    }
+
+    // The two-step policy, loaded alongside `reconstruct`.
+    pub fn with_admin_mfa_required(mut self, required: bool) -> Self {
+        self.require_admin_mfa = required;
+        self
+    }
+
+    pub fn require_admin_mfa(&self) -> bool {
+        self.require_admin_mfa
+    }
+
+    pub fn set_require_admin_mfa(&mut self, required: bool) {
+        self.require_admin_mfa = required;
+        self.updated_at = Some(Utc::now());
     }
 
     pub fn id(&self) -> Uuid {

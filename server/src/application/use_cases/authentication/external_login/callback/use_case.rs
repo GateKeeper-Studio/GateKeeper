@@ -13,9 +13,23 @@ use crate::{
             risk_engine::{RiskEngine, RiskEvaluationInput},
             secret_cipher::SecretCipher,
             unit_of_work::{UnitOfWork, UnitOfWorkFactory},
+            webauthn::WebauthnService,
         },
+        services::templated_email_sender::TemplatedEmailSender,
+        shared::token_policy::MFA_CODE_TTL_MINUTES,
         use_cases::{
-            authentication::external_login::callback::{command::Command, response::Response},
+            authentication::{
+                external_login::callback::{
+                    command::Command,
+                    response::{Continuation, OidcParams, Response, build_continue_url},
+                },
+                login,
+                login_flow::{
+                    AuthorizationRequest, MfaGate, MfaHints, issue_change_password_code,
+                    open_session,
+                },
+                session_policy::SESSION_IDLE_TTL_MINUTES,
+            },
             webhook::user_event_payload::user_event,
         },
     },
@@ -44,6 +58,9 @@ pub struct UseCase {
     // Same engine the password login uses, so a social sign-in is geo-enriched,
     // recorded as a login event, and refused on a critical risk decision.
     risk_engine: Arc<dyn RiskEngine>,
+    mfa_gate: MfaGate,
+    templated_email: Arc<TemplatedEmailSender>,
+    auth_ui_base_url: String,
 }
 
 impl UseCase {
@@ -52,12 +69,18 @@ impl UseCase {
         provider_client: Arc<dyn ExternalIdentityProviderClient>,
         secret_cipher: Arc<dyn SecretCipher>,
         risk_engine: Arc<dyn RiskEngine>,
+        webauthn: Arc<dyn WebauthnService>,
+        templated_email: Arc<TemplatedEmailSender>,
+        auth_ui_base_url: String,
     ) -> Self {
         Self {
             unit_of_work_factory,
             provider_client,
             secret_cipher,
             risk_engine,
+            mfa_gate: MfaGate::new(webauthn),
+            templated_email,
+            auth_ui_base_url,
         }
     }
 
@@ -105,7 +128,7 @@ impl UseCase {
             .await?;
 
         // 3. Recognise, link, or provision the local user.
-        let user_id = self
+        let (user_id, user_email) = self
             .resolve_user(uow.as_ref(), tenant_id, flow.provider(), &profile)
             .await?;
 
@@ -150,6 +173,118 @@ impl UseCase {
 
         // 5. Record consent implicitly (the external provider authenticated the
         //    user for this first-party app). Idempotent union, as in authorize_session.
+        // SECURITY: a social sign-in is a first factor like a password. The second one
+        // is due here under the same rules (`MfaGate`): the client's policy, a factor
+        // the user enrolled, or a risk step-up. Before this, the callback handed out
+        // the authorization code directly, so "Sign in with Google" skipped two-step
+        // sign-in altogether. When a factor is due no code is minted: the browser gets
+        // an MFA-pending session and finishes on the hosted login page.
+        let force_mfa = risk.decision == RiskDecision::AllowWithMfa;
+        let (mut session, raw_session_token) = open_session(
+            &client,
+            &AuthorizationRequest {
+                redirect_uri: flow.client_redirect_uri(),
+                response_type: "code",
+                scope: flow.client_scope(),
+                state: flow.client_state(),
+                code_challenge: flow.client_code_challenge(),
+                code_challenge_method: flow.client_code_challenge_method(),
+                nonce: flow.client_nonce(),
+            },
+            scopes.clone(),
+            Duration::minutes(SESSION_IDLE_TTL_MINUTES),
+        );
+        session.authenticate(user_id, now);
+        uow.auth_session_repository().add(&session).await?;
+        let mfa = self
+            .mfa_gate
+            .engage(
+                uow.as_ref(),
+                &client,
+                &mut session,
+                user_id,
+                &user_email,
+                force_mfa,
+                MfaHints::default(),
+            )
+            .await?;
+
+        if session.is_mfa_pending() {
+            if force_mfa {
+                session.set_risk_login_event_id(risk.login_event_id);
+            }
+            // A pending forced password change must still be completed first.
+            let must_change_password = uow
+                .user_repository()
+                .find_by_id_with_credentials(user_id)
+                .await?
+                .and_then(|u| u.credentials().map(|c| c.should_change_password()))
+                .unwrap_or(false);
+            let change_password_code = if must_change_password {
+                Some(issue_change_password_code(uow.as_ref(), tenant_id, user_id).await?)
+            } else {
+                None
+            };
+            uow.auth_session_repository().update(&session).await?;
+            uow.external_login_flow_repository()
+                .delete_by_id(flow.id())
+                .await?;
+            uow.commit().await?;
+
+            if let Some(otp) = &mfa.pending_email_otp {
+                self.templated_email
+                    .send_mfa_code(
+                        tenant_id,
+                        otp.provider.as_ref(),
+                        &otp.email,
+                        &otp.code,
+                        client.name(),
+                        &format!("{MFA_CODE_TTL_MINUTES} minutes"),
+                    )
+                    .await?;
+            }
+
+            let continuation = Continuation {
+                email: user_email,
+                login: login::response::Response {
+                    session_code: raw_session_token,
+                    user_id: Some(user_id.to_string()),
+                    credentials_verified: true,
+                    mfa_type: mfa.mfa_type,
+                    mfa_id: mfa.mfa_id,
+                    web_authn_options: mfa.web_authn_options,
+                    available_mfa_methods: mfa.available_mfa_methods,
+                    mfa_enrollment_required: mfa.mfa_enrollment_required,
+                    enrollable_methods: mfa.enrollable_methods,
+                    change_password_code,
+                    session_expires_at: session.expires_at(),
+                    session_absolute_expires_at: session.absolute_expires_at(),
+                    message: "Second factor required".to_string(),
+                },
+                oidc: OidcParams {
+                    redirect_uri: flow.client_redirect_uri().to_string(),
+                    response_type: "code".to_string(),
+                    scope: flow.client_scope().to_string(),
+                    state: flow.client_state().to_string(),
+                    code_challenge: flow.client_code_challenge().to_string(),
+                    code_challenge_method: flow.client_code_challenge_method().to_string(),
+                    nonce: flow.client_nonce().map(str::to_string),
+                },
+            };
+            return Ok(Response::SecondFactor {
+                continue_url: build_continue_url(
+                    &self.auth_ui_base_url,
+                    &client.client_id().to_string(),
+                    &continuation,
+                ),
+            });
+        }
+
+        // No second factor is due: the session has done its job, the code is minted
+        // right here.
+        session.expire_now(now);
+        uow.auth_session_repository().update(&session).await?;
+
         let existing = uow
             .consent_grant_repository()
             .find_by_user_and_client(user_id, client.id())
@@ -186,7 +321,7 @@ impl UseCase {
 
         uow.commit().await?;
 
-        Ok(Response {
+        Ok(Response::Code {
             redirect_uri: flow.client_redirect_uri().to_string(),
             authorization_code: raw_code,
             state: flow.client_state().to_string(),
@@ -202,7 +337,7 @@ impl UseCase {
         tenant_id: uuid::Uuid,
         provider: ExternalProviderKind,
         profile: &ExternalUserProfile,
-    ) -> Result<uuid::Uuid, DomainError> {
+    ) -> Result<(uuid::Uuid, String), DomainError> {
         let social_repo = uow.social_identity_repository();
         let user_repo = uow.user_repository();
 
@@ -218,7 +353,7 @@ impl UseCase {
                 .ok_or_else(|| {
                     DomainError::AuthenticationError("account is not available".to_string())
                 })?;
-            return Ok(user.id());
+            return Ok((user.id(), user.email().to_string()));
         }
 
         // 2. First-time link/provision requires a provider-verified email — this is
@@ -250,7 +385,7 @@ impl UseCase {
                     Some(email.to_lowercase()),
                 ))
                 .await?;
-            return Ok(existing.id());
+            return Ok((existing.id(), existing.email().to_string()));
         }
 
         // 2b. Otherwise provision a new passwordless user (email pre-verified).
@@ -285,6 +420,6 @@ impl UseCase {
             ))
             .await?;
 
-        Ok(user.id())
+        Ok((user.id(), user.email().to_string()))
     }
 }

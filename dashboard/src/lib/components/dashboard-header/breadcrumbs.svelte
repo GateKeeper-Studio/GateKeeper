@@ -41,7 +41,8 @@
 
 <div class="flex items-center gap-4">
   {#if !disableSideBar}
-    <SidebarTrigger />
+    <!-- On mobile the sidebar is an off-canvas sheet: the tour points here instead. -->
+    <SidebarTrigger data-tour="sidebar-trigger" />
   {/if}
 
   <Breadcrumb.Root>

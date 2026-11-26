@@ -44,10 +44,20 @@ pub fn spawn_retention_purge(
         ),
     );
     let uow_factory: Arc<dyn UnitOfWorkFactory> = Arc::new(DbUnitOfWorkFactory::new(
-        db_pool,
+        db_pool.clone(),
         Arc::clone(&secret_cipher),
     ));
-    let use_case = purge_expired_data::use_case::UseCase::new(uow_factory);
+    let use_case = purge_expired_data::use_case::UseCase::new(uow_factory).with_admin_sessions(
+        Arc::new(
+            crate::infraestructure::database::repositories::admin_refresh_token_repository::DbAdminRefreshTokenRepository::new(db_pool.clone()),
+        ),
+        Arc::new(
+            crate::infraestructure::database::repositories::admin_web_session_repository::DbAdminWebSessionRepository::new(db_pool.clone()),
+        ),
+        Arc::new(
+            crate::infraestructure::database::repositories::admin_invitation_repository::DbAdminInvitationRepository::new(db_pool.clone()),
+        ),
+    );
 
     let interval_seconds = config.retention_purge_interval_seconds;
 
@@ -83,6 +93,9 @@ pub fn spawn_retention_purge(
                                     mfa_challenges = result.mfa_challenges,
                                     external_login_flows = result.external_login_flows,
                                     security_blocks = result.security_blocks,
+                                    admin_refresh_tokens = result.admin_refresh_tokens,
+                                    admin_console_sessions = result.admin_console_sessions,
+                                    admin_invitations = result.admin_invitations,
                                     total = result.total,
                                     "retention purge removed expired rows"
                                 );

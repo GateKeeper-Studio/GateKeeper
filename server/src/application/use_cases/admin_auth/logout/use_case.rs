@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use uuid::Uuid;
+
 use crate::{
     application::use_cases::admin_auth::logout::command::Command,
     domain::{
@@ -24,16 +26,18 @@ impl UseCase {
         }
     }
 
-    pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
-        if let Some(token) = self
+    // Returns the admin the token belonged to, if any, for the audit log.
+    pub async fn execute(&self, command: Command) -> Result<Option<Uuid>, DomainError> {
+        let Some(token) = self
             .refresh_token_repository
             .find_by_token_hash(&sha256_hex(&command.refresh_token))
             .await?
-        {
-            self.refresh_token_repository
-                .revoke_family(token.family_id())
-                .await?;
-        }
-        Ok(())
+        else {
+            return Ok(None);
+        };
+        self.refresh_token_repository
+            .revoke_family(token.family_id())
+            .await?;
+        Ok(Some(token.admin_id()))
     }
 }

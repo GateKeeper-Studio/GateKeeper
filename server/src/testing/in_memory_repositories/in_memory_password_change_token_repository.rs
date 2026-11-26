@@ -19,6 +19,12 @@ pub struct InMemoryPasswordChangeTokenRepository {
     pub memory: Arc<InMemoryRepository<Uuid, PasswordChangeToken>>,
 }
 
+impl Default for InMemoryPasswordChangeTokenRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryPasswordChangeTokenRepository {
     pub fn new() -> Self {
         Self {

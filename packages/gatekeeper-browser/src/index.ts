@@ -1,6 +1,11 @@
 export { createGateKeeperBrowserClient } from './client.js';
 export { requestJson, readJsonError, type JsonRequestOptions } from './http.js';
-export { createMfaClient, defaultMfaMethodLabels, registerPasskey } from './mfa.js';
+export {
+  createMfaClient,
+  defaultMfaMethodLabels,
+  getPasskeyAssertion,
+  registerPasskey
+} from './mfa.js';
 export type {
   BrowserSafeSession,
   GateKeeperBrowserClient,
@@ -18,6 +23,11 @@ export type {
   MfaMethodEntry,
   PasskeyCreationOptions,
   PasskeyPublicKeyOptionsJson,
+  PasskeyRequestOptions,
+  PasskeyRequestOptionsJson,
+  StepUpPrompt,
+  StepUpProof,
+  StepUpStart,
   TotpEnrollment,
   UpdateUserProfileInput,
   UserProfileView,

@@ -89,6 +89,7 @@ async fn main() {
 async fn run(pool: &PgPool, cipher: Arc<dyn SecretCipher>, apply: bool) -> Result<(), String> {
     repair_signing_keys(pool, &cipher, apply).await?;
     repair_totp(pool, &cipher, apply).await?;
+    repair_admin_totp(pool, &cipher, apply).await?;
     report_only(
         pool,
         &cipher,
@@ -205,6 +206,43 @@ async fn repair_totp(
         if apply {
             sqlx::query("DELETE FROM mfa_enrollments WHERE id = $1")
                 .bind(id)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+// A platform admin's unreadable TOTP seed: the admin can still sign in with a
+// recovery code (those are hashes, not sealed). Deleting the factor lets them sign in
+// with the password alone and enroll again, so `--apply` is a security downgrade the
+// operator should follow up on.
+async fn repair_admin_totp(
+    pool: &PgPool,
+    cipher: &Arc<dyn SecretCipher>,
+    apply: bool,
+) -> Result<(), String> {
+    let rows = sqlx::query("SELECT admin_id, totp_secret_enc FROM admin_mfa")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let admin_id: Uuid = row.get("admin_id");
+        let enc: String = row.get("totp_secret_enc");
+        let context = SecretContext::new(SecretPurpose::AdminTotpSeed, admin_id);
+        if cipher.decrypt(&enc, context).is_ok() {
+            println!("admin totp   admin={admin_id}: ok");
+            continue;
+        }
+        println!(
+            "admin totp   admin={admin_id}: UNREADABLE -> delete (the admin signs in with \
+             the password alone and must enroll again)"
+        );
+        if apply {
+            sqlx::query("DELETE FROM admin_mfa WHERE admin_id = $1")
+                .bind(admin_id)
                 .execute(pool)
                 .await
                 .map_err(|e| e.to_string())?;

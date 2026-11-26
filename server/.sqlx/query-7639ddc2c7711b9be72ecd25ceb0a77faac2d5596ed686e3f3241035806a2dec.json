@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE qr_login_requests\n          SET status = 'completed', completed_at = $2\n          WHERE id = $1 AND status = 'approved'\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7639ddc2c7711b9be72ecd25ceb0a77faac2d5596ed686e3f3241035806a2dec"
+}

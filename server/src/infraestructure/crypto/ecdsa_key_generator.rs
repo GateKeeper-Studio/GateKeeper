@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use p256::{
-    SecretKey,
+    PublicKey, SecretKey,
+    elliptic_curve::{Generate, sec1::ToSec1Point},
     pkcs8::{EncodePrivateKey, LineEnding},
 };
-use rand_core::OsRng;
 use uuid::Uuid;
 
 use crate::application::ports::secret_cipher::{SecretContext, SecretPurpose};
@@ -36,7 +37,11 @@ impl EcdsaKeyGenerator {
 
 impl SigningKeyGenerator for EcdsaKeyGenerator {
     fn generate(&self, tenant_id: Uuid) -> Result<SigningKey, DomainError> {
-        let secret = SecretKey::random(&mut OsRng);
+        // The system CSPRNG (getrandom). A failure here is an OS fault, never retried
+        // with a weaker source.
+        let secret = SecretKey::try_generate().map_err(|e| {
+            DomainError::InfrastructureError(format!("system RNG unavailable: {e}"))
+        })?;
 
         let private_key_pem = secret
             .to_pkcs8_pem(LineEnding::LF)
@@ -53,7 +58,7 @@ impl SigningKeyGenerator for EcdsaKeyGenerator {
 
         // Public half as a JWK object: {"kty":"EC","crv":"P-256","x":..,"y":..}. The
         // /jwks.json endpoint stamps in `kid`, `alg`, and `use` when it serves this.
-        let public_jwk = secret.public_key().to_jwk_string();
+        let public_jwk = public_jwk(&secret.public_key());
 
         // A random, opaque key id. Verifiers match it against the JWT header `kid`.
         let kid = generate_opaque_token();
@@ -66,6 +71,21 @@ impl SigningKeyGenerator for EcdsaKeyGenerator {
             private_key_sealed,
         ))
     }
+}
+
+// The public half as an RFC 7518 §6.2 JWK, byte for byte what p256 0.13's
+// `to_jwk_string` produced (0.14 dropped JWK export): kty, crv, x, y, the coordinates
+// base64url without padding. Base64url needs no JSON escaping.
+fn public_jwk(public_key: &PublicKey) -> String {
+    let point = public_key.to_sec1_point(false);
+    let (Some(x), Some(y)) = (point.x(), point.y()) else {
+        unreachable!("an uncompressed SEC1 point always has both coordinates");
+    };
+    format!(
+        r#"{{"kty":"EC","crv":"P-256","x":"{}","y":"{}"}}"#,
+        URL_SAFE_NO_PAD.encode(x),
+        URL_SAFE_NO_PAD.encode(y)
+    )
 }
 
 #[cfg(test)]

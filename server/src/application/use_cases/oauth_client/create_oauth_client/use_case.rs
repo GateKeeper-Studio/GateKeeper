@@ -123,6 +123,7 @@ impl UseCase {
         // enforced on update, where the admin has had a chance to configure one.
         client.set_external_login_only(command.external_login_only);
         client.set_magic_link_enabled(command.magic_link_enabled);
+        client.set_qr_login_enabled(command.qr_login_enabled);
         client.set_backchannel_logout(
             backchannel_logout_uri,
             command.backchannel_logout_session_required,

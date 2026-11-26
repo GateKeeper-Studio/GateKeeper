@@ -29,7 +29,7 @@ export type NavCommand = {
 	/**
 	 * Builds the destination href for the given context. Returns `null` when a
 	 * required tenant is missing, in which case the item is hidden (avoids emitting
-	 * `/tenants/undefined/...`).
+	 * `/console/tenants/undefined/...`).
 	 */
 	href: (ctx: CommandContext) => string | null;
 };

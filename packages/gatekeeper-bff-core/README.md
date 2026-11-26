@@ -21,7 +21,6 @@ import { createGateKeeperBff } from '@gatekeeper/bff-core';
 
 export const gatekeeper = createGateKeeperBff({
   idpBaseUrl: process.env.IDP_BASE_URL,
-  authUiBaseUrl: process.env.AUTH_UI_BASE_URL,
   tenantId: process.env.OAUTH_TENANT_ID,
   clientId: process.env.OAUTH_CLIENT_ID,
   clientSecret: process.env.OAUTH_CLIENT_SECRET, // confidential client
@@ -65,7 +64,9 @@ gatekeeper.signOut(cookies);
 
 ## Config
 
-`idpBaseUrl`, `authUiBaseUrl`, `tenantId`, `clientId`, `clientSecret`, `redirectUri`,
-`scope`, `sessionSecret` (required), `secureCookies`, `sessionCookieName`,
-`authRequestTtlSeconds` (optional). Token/userinfo calls are server→server, so **no
+`idpBaseUrl`, `tenantId`, `clientId`, `clientSecret`, `redirectUri`, `scope`,
+`sessionSecret` (required), `authUiBaseUrl`, `secureCookies`, `sessionCookieName`,
+`authRequestTtlSeconds` (optional). `authUiBaseUrl` defaults to `idpBaseUrl`: the
+identity provider serves the hosted login UI (`/auth/{clientId}/sign-in`) itself, so set
+it only when the login UI runs on another origin. Token/userinfo calls are server→server, so **no
 CORS configuration is required** on the IdP.

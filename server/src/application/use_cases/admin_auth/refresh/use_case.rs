@@ -6,6 +6,7 @@ use crate::application::shared::token_policy::REFRESH_TOKEN_TTL_DAYS;
 use crate::{
     application::{
         ports::{admin_token_issuer::AdminTokenIssuer, audit_logger::AuditLogger},
+        services::admin_authenticator::AdminAuthenticator,
         use_cases::admin_auth::refresh::{command::Command, response::Response},
     },
     domain::{
@@ -32,6 +33,7 @@ pub struct UseCase {
     refresh_token_repository: Arc<dyn AdminRefreshTokenRepository>,
     token_issuer: Arc<dyn AdminTokenIssuer>,
     audit_logger: Arc<dyn AuditLogger>,
+    authenticator: Arc<AdminAuthenticator>,
 }
 
 impl UseCase {
@@ -40,12 +42,14 @@ impl UseCase {
         refresh_token_repository: Arc<dyn AdminRefreshTokenRepository>,
         token_issuer: Arc<dyn AdminTokenIssuer>,
         audit_logger: Arc<dyn AuditLogger>,
+        authenticator: Arc<AdminAuthenticator>,
     ) -> Self {
         Self {
             admin_repository,
             refresh_token_repository,
             token_issuer,
             audit_logger,
+            authenticator,
         }
     }
 
@@ -80,14 +84,14 @@ impl UseCase {
             return Err(invalid());
         }
 
-        // 3. Re-validate the admin account: it must still exist and be active. If not,
-        //    kill the family (a deactivated admin's sessions end everywhere).
+        // 3. Re-validate the admin account: it must still exist, be active, and belong
+        //    to an active organization. If not, kill the family.
         let admin = match self
             .admin_repository
             .find_by_id(presented.admin_id())
             .await?
         {
-            Some(admin) if admin.is_active() => admin,
+            Some(admin) if admin.can_sign_in() => admin,
             _ => {
                 self.refresh_token_repository
                     .revoke_family(presented.family_id())
@@ -96,7 +100,10 @@ impl UseCase {
             }
         };
 
-        // 4. Rotate: mark the presented token rotated and mint its successor.
+        // 4. Rotate: mark the presented token rotated and mint its successor. The
+        //    write only succeeds while the token is still live, so of two
+        //    concurrent refreshes with the same token exactly one gets a successor;
+        //    the other is refused without touching the family.
         let raw_new = generate_opaque_token();
         let mut presented = presented;
         let new_token = presented.rotate(
@@ -104,16 +111,22 @@ impl UseCase {
             now + Duration::days(REFRESH_TOKEN_TTL_DAYS),
             now,
         );
-        self.refresh_token_repository
+        if !self
+            .refresh_token_repository
             .rotate(&presented, &new_token)
-            .await?;
+            .await?
+        {
+            return Err(invalid());
+        }
 
         // 5. Re-mint the access token for the (still-valid) admin.
+        let setup_required = self.authenticator.mfa_setup_required(&admin).await?;
         let issued = self.token_issuer.issue(
             admin.id(),
             admin.email(),
             admin.name(),
             admin.organization_id(),
+            setup_required,
         )?;
 
         let event = AuditEvent::new(

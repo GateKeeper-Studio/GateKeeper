@@ -23,7 +23,9 @@ export { configureMfaMethods, mfaMethods };
 export function gatekeeperConfig(): GateKeeperConfig {
   return {
     idpBaseUrl: env.IDP_BASE_URL,
-    authUiBaseUrl: env.AUTH_UI_BASE_URL,
+    // Optional: the identity provider serves its own login UI. Set only when the
+    // login UI runs on another origin.
+    authUiBaseUrl: env.AUTH_UI_BASE_URL || undefined,
     tenantId: env.OAUTH_TENANT_ID,
     clientId: env.OAUTH_CLIENT_ID,
     clientSecret: env.OAUTH_CLIENT_SECRET,

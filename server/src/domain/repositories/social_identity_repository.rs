@@ -18,6 +18,14 @@ pub trait SocialIdentityRepository: Send + Sync {
 
     async fn add(&self, identity: &SocialIdentity) -> Result<(), DomainError>;
 
+    // Every external account linked to one user of `tenant_id`, oldest first. Used by
+    // the admin's view of how a user can sign in.
+    async fn find_by_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<SocialIdentity>, DomainError>;
+
     // Linked providers for a batch of users (one query, no N+1). Used by the user
     // listing to render "Sign in with …" login-method badges.
     async fn find_providers_for_users(

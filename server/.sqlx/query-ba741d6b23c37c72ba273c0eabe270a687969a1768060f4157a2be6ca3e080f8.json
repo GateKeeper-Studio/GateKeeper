@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE admin_users\n          SET is_active = false, updated_at = $3\n          WHERE id = $1\n            AND is_active\n            AND (SELECT COUNT(*) FROM admin_users\n                 WHERE organization_id = $2 AND is_active) > 1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ba741d6b23c37c72ba273c0eabe270a687969a1768060f4157a2be6ca3e080f8"
+}

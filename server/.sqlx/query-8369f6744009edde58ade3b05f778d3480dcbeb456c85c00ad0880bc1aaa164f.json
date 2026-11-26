@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          INSERT INTO qr_login_requests\n            (id, tenant_id, client_id, auth_session_id, token_hash, status,\n             requester_ip, requester_user_agent, requester_location, expires_at, created_at)\n          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8369f6744009edde58ade3b05f778d3480dcbeb456c85c00ad0880bc1aaa164f"
+}

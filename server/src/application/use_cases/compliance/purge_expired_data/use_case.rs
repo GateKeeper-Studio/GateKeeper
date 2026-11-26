@@ -7,22 +7,50 @@ use crate::{
         ports::unit_of_work::UnitOfWorkFactory,
         use_cases::compliance::purge_expired_data::response::Response,
     },
-    domain::errors::DomainError,
+    domain::{
+        errors::DomainError,
+        repositories::{
+            admin_invitation_repository::AdminInvitationRepository,
+            admin_refresh_token_repository::AdminRefreshTokenRepository,
+            admin_web_session_repository::AdminWebSessionRepository,
+        },
+    },
 };
 
 // Retention enforcement (WI-03, storage limitation). Hard-deletes already-expired
 // session/token/code rows in one transaction. Idempotent — re-running purges nothing
 // new. The audit log is NEVER touched here (its retention is a separate, longer
 // floor). `data.purged` is emitted at the handler layer with the run's counts.
+// The platform-admin credential tables: refresh tokens, console sessions, invitations.
+type AdminCredentialRepositories = (
+    Arc<dyn AdminRefreshTokenRepository>,
+    Arc<dyn AdminWebSessionRepository>,
+    Arc<dyn AdminInvitationRepository>,
+);
+
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
+    // Platform-admin credential tables. Not part of the tenant Unit of Work, so they
+    // are purged on their own after it commits (each delete is idempotent).
+    admin_sessions: Option<AdminCredentialRepositories>,
 }
 
 impl UseCase {
     pub fn new(unit_of_work_factory: Arc<dyn UnitOfWorkFactory>) -> Self {
         Self {
             unit_of_work_factory,
+            admin_sessions: None,
         }
+    }
+
+    pub fn with_admin_sessions(
+        mut self,
+        refresh_tokens: Arc<dyn AdminRefreshTokenRepository>,
+        console_sessions: Arc<dyn AdminWebSessionRepository>,
+        invitations: Arc<dyn AdminInvitationRepository>,
+    ) -> Self {
+        self.admin_sessions = Some((refresh_tokens, console_sessions, invitations));
+        self
     }
 
     pub async fn execute(&self) -> Result<Response, DomainError> {
@@ -64,6 +92,16 @@ impl UseCase {
 
         uow.commit().await?;
 
+        let (admin_refresh_tokens, admin_console_sessions, admin_invitations) =
+            match &self.admin_sessions {
+                Some((refresh, console, invitations)) => (
+                    refresh.delete_expired(now).await?,
+                    console.delete_expired(now).await?,
+                    invitations.delete_expired(now).await?,
+                ),
+                None => (0, 0, 0),
+            };
+
         let total = refresh_tokens
             + auth_sessions
             + authorization_codes
@@ -72,7 +110,10 @@ impl UseCase {
             + password_change_tokens
             + mfa_challenges
             + external_login_flows
-            + security_blocks;
+            + security_blocks
+            + admin_refresh_tokens
+            + admin_console_sessions
+            + admin_invitations;
 
         Ok(Response {
             refresh_tokens,
@@ -84,6 +125,9 @@ impl UseCase {
             mfa_challenges,
             external_login_flows,
             security_blocks,
+            admin_refresh_tokens,
+            admin_console_sessions,
+            admin_invitations,
             total,
         })
     }

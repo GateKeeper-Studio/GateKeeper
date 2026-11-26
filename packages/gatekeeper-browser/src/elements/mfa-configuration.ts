@@ -7,6 +7,9 @@ import type {
   TotpEnrollment
 } from '../types.js';
 
+const EMAILED_CODE_PROMPT = 'Enter the confirmation code we just emailed you';
+const STEP_UP_CANCELLED = 'Confirm it is you to make this change';
+
 function escapeHtml(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -194,7 +197,7 @@ export class GateKeeperMfaConfigurationElement extends HTMLElement {
           this.#removing === methodKey(entry)
             ? `
               <form class="gk-mfa__actions" data-action="confirm-remove" data-method-key="${key}">
-                <label class="gk-mfa__muted" for="gk-mfa-current-password">Confirm with your current password</label>
+                <label class="gk-mfa__muted" for="gk-mfa-current-password">Current password (leave empty if your account has none)</label>
                 <input id="gk-mfa-current-password" name="current-password" type="password" autocomplete="current-password" class="gk-mfa__input" />
                 <button class="gk-mfa__button gk-mfa__button--danger" type="submit" ${this.#disabledAttr()}>Remove</button>
                 <button class="gk-mfa__button" type="button" data-action="cancel-remove" ${this.#disabledAttr()}>Cancel</button>
@@ -334,13 +337,27 @@ export class GateKeeperMfaConfigurationElement extends HTMLElement {
       const input = form.elements.namedItem('current-password') as HTMLInputElement | null;
       if (!entry?.id) return;
       void this.#run(async () => {
-        await this.client.removeMethod(entry.id as string, input?.value || undefined);
+        // The password from the form, or for an account without one the passkey
+        // prompt or the emailed code.
+        const proof = await this.client.collectStepUp((kind) =>
+          kind === 'password' ? input?.value || null : prompt(EMAILED_CODE_PROMPT)
+        );
+        if (proof === undefined) throw new Error(STEP_UP_CANCELLED);
+        await this.client.removeMethod(entry.id as string, proof);
         this.#removing = null;
       });
     } else if (form.dataset.action === 'add-passkey') {
       const input = form.elements.namedItem('passkey-name') as HTMLInputElement | null;
       void this.#run(async () => {
-        await this.client.addPasskey(input?.value ?? null);
+        // Only an account without a password proves itself here: for it a passkey
+        // signs in on its own.
+        const start = await this.client.startStepUp();
+        const proof =
+          start.method === 'password'
+            ? undefined
+            : await this.client.proveStepUp(start, () => prompt(EMAILED_CODE_PROMPT));
+        if (start.method !== 'password' && proof === undefined) throw new Error(STEP_UP_CANCELLED);
+        await this.client.addPasskey(input?.value ?? null, proof);
         this.#addingPasskey = false;
       });
     }

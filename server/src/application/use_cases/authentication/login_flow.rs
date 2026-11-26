@@ -140,10 +140,10 @@ fn parse_mfa_methods(methods: Option<&[String]>) -> Vec<MfaMethod> {
 
     if let Some(methods) = methods {
         for method in methods {
-            if let Some(method) = MfaMethod::parse(method) {
-                if !parsed.contains(&method) {
-                    parsed.push(method);
-                }
+            if let Some(method) = MfaMethod::parse(method)
+                && !parsed.contains(&method)
+            {
+                parsed.push(method);
             }
         }
     }
@@ -212,10 +212,6 @@ impl MfaGate {
     ) -> Result<MfaEngagement, DomainError> {
         let mut out = MfaEngagement::default();
 
-        if !(client.mfa_required() || force_mfa) {
-            return Ok(out);
-        }
-
         let tenant_id = client.tenant_id();
         let offers = |method: &MfaMethod| {
             client.allows_mfa_method(method) && session.accepts_mfa_method(method)
@@ -231,6 +227,17 @@ impl MfaGate {
             .filter(|e| *e.method() == MfaMethod::Webauthn)
             .collect();
         let has_webauthn = !webauthn_enrollments.is_empty();
+
+        // SECURITY: a user who set up an authenticator app or a passkey has asked for
+        // two-step sign-in. That holds for every application of the tenant, not only
+        // for the ones whose own policy requires it: otherwise the password alone
+        // still opened the account through any application that did not.
+        let user_opted_in = (has_totp && offers(&MfaMethod::Totp))
+            || (has_webauthn && offers(&MfaMethod::Webauthn));
+
+        if !(client.mfa_required() || force_mfa || user_opted_in) {
+            return Ok(out);
+        }
 
         if offers(&MfaMethod::Email) {
             out.available_mfa_methods

@@ -4,9 +4,9 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [sveltekit()],
   server: {
-    // Same default port the vanilla client documents, so a redirect_uri of
-    // http://localhost:5173/ works for both.
+    // Must match OAUTH_REDIRECT_URI exactly, so fail instead of silently moving to
+    // another port (the dashboard's optional `npm run dev` also defaults to 5173).
     port: 5173,
-    strictPort: false
+    strictPort: true
   }
 });

@@ -240,6 +240,11 @@ pub struct OAuthClient {
     // `allows_magic_link_login`).
     magic_link_enabled: bool,
 
+    // QR code sign-in: the hosted page shows a QR code that another device, where the
+    // user is (or gets) signed in, scans and approves. Off by default, like magic
+    // links. Ignored on an external-login-only client (see `allows_qr_login`).
+    qr_login_enabled: bool,
+
     // OIDC Back-Channel Logout 1.0 registration. When set, this RP is sent a signed
     // `logout_token` (server to server) whenever one of its users' sessions ends, so
     // it can end its own session too. Validated like a webhook URL (SSRF rules)
@@ -302,6 +307,7 @@ impl OAuthClient {
             login_appearance: None,
             external_login_only: false,
             magic_link_enabled: false,
+            qr_login_enabled: false,
             backchannel_logout_uri: None,
             backchannel_logout_session_required: false,
             allowed_languages,
@@ -361,6 +367,7 @@ impl OAuthClient {
             login_appearance: None,
             external_login_only: false,
             magic_link_enabled: false,
+            qr_login_enabled: false,
             backchannel_logout_uri: None,
             backchannel_logout_session_required: false,
             allowed_languages,
@@ -457,6 +464,11 @@ impl OAuthClient {
         self.magic_link_enabled = magic_link_enabled;
     }
 
+    // Set the QR-code sign-in policy. Same lifecycle as set_magic_link_enabled.
+    pub fn set_qr_login_enabled(&mut self, qr_login_enabled: bool) {
+        self.qr_login_enabled = qr_login_enabled;
+    }
+
     // Set/clear the back-channel logout registration. Same lifecycle as
     // set_magic_link_enabled: create, rehydration, and the update use case.
     pub fn set_backchannel_logout(&mut self, uri: Option<String>, session_required: bool) {
@@ -486,7 +498,7 @@ impl OAuthClient {
         self.allowed_grant_types.iter().any(|g| g == grant)
     }
 
-    pub fn filter_scopes<'a>(&self, requested: &'a [String]) -> Vec<String> {
+    pub fn filter_scopes(&self, requested: &[String]) -> Vec<String> {
         requested
             .iter()
             .filter(|s| self.allowed_scopes.iter().any(|allowed| allowed == *s))
@@ -559,6 +571,15 @@ impl OAuthClient {
     }
     pub fn magic_link_enabled(&self) -> bool {
         self.magic_link_enabled
+    }
+    pub fn qr_login_enabled(&self) -> bool {
+        self.qr_login_enabled
+    }
+    // QR code sign-in is offered only when the admin enabled it AND the client is not
+    // external-login-only: the phone approving a sign-in signs in with this client's
+    // own methods, which such a client limits to the external providers' redirects.
+    pub fn allows_qr_login(&self) -> bool {
+        self.qr_login_enabled && !self.external_login_only
     }
     pub fn backchannel_logout_uri(&self) -> Option<&str> {
         self.backchannel_logout_uri.as_deref()

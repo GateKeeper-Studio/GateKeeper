@@ -30,7 +30,7 @@ npm run dev                 # http://localhost:5180
 | Variable | Purpose |
 | --- | --- |
 | `IDP_BASE_URL` | Identity Provider base URL (server→server token/userinfo). |
-| `AUTH_UI_BASE_URL` | Hosted login UI (where the browser signs in). |
+| `AUTH_UI_BASE_URL` | Optional. Only for a login UI on another origin; by default the identity provider serves it. |
 | `OAUTH_TENANT_ID` | Tenant the client belongs to. |
 | `OAUTH_CLIENT_ID` | This app's registered client id. |
 | `OAUTH_CLIENT_SECRET` | This app's client secret (confidential client). |
@@ -43,6 +43,11 @@ npm run dev                 # http://localhost:5180
 ```bash
 ./scripts/register-client.sh <tenant_id> [admin_bearer_token]
 ```
+
+Without `admin_bearer_token` the script signs you in as a platform admin (email,
+password, and a two-step code if your account has one) through `POST /admin/login`.
+You can also create the client by hand in the console at
+`http://localhost:8080/console` (tenant → OAuth clients → New).
 
 Prints `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` to paste into `.env`.
 

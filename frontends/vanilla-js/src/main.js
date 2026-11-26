@@ -3,11 +3,15 @@ import './styles.css';
 const transactionKey = 'gatekeeper.public-oauth.transaction';
 const tokenKey = 'gatekeeper.public-oauth.tokens';
 
+const idpBaseUrl = trimTrailingSlash(
+  import.meta.env.VITE_GATEKEEPER_IDP_BASE_URL || 'http://localhost:8080'
+);
+
 const config = {
-  idpBaseUrl: trimTrailingSlash(import.meta.env.VITE_GATEKEEPER_IDP_BASE_URL || 'http://localhost:8080'),
-  authUiBaseUrl: trimTrailingSlash(
-    import.meta.env.VITE_GATEKEEPER_AUTH_UI_BASE_URL || 'http://localhost:5173'
-  ),
+  idpBaseUrl,
+  // The identity provider serves the hosted login UI itself; the variable is only for
+  // a login UI on another origin.
+  authUiBaseUrl: trimTrailingSlash(import.meta.env.VITE_GATEKEEPER_AUTH_UI_BASE_URL || idpBaseUrl),
   tenantId: import.meta.env.VITE_GATEKEEPER_TENANT_ID || '',
   clientId: import.meta.env.VITE_GATEKEEPER_CLIENT_ID || '',
   redirectUri: import.meta.env.VITE_GATEKEEPER_REDIRECT_URI || window.location.origin + '/',

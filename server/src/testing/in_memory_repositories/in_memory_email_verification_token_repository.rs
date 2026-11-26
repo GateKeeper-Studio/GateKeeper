@@ -18,6 +18,12 @@ pub struct InMemoryEmailVerificationTokenRepository {
     pub memory: Arc<InMemoryRepository<Uuid, EmailVerificationToken>>,
 }
 
+impl Default for InMemoryEmailVerificationTokenRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryEmailVerificationTokenRepository {
     pub fn new() -> Self {
         Self {
@@ -42,6 +48,18 @@ impl EmailVerificationTokenRepository for InMemoryEmailVerificationTokenReposito
             .filter(|t| t.user_id() == user_id && !t.is_consumed())
             .max_by_key(|t| t.created_at())
             .cloned())
+    }
+
+    async fn count_issued_since(
+        &self,
+        user_id: Uuid,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, DomainError> {
+        let data = self.memory.data.lock().unwrap();
+        Ok(data
+            .values()
+            .filter(|t| t.user_id() == user_id && t.created_at() >= since)
+            .count() as i64)
     }
 
     async fn add(&self, token: &EmailVerificationToken) -> Result<(), DomainError> {

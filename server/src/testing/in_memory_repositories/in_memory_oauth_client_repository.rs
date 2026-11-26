@@ -18,6 +18,12 @@ pub struct InMemoryOAuthClientRepository {
     pub memory: Arc<InMemoryRepository<Uuid, OAuthClient>>,
 }
 
+impl Default for InMemoryOAuthClientRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryOAuthClientRepository {
     pub fn new() -> Self {
         Self {
@@ -83,7 +89,7 @@ impl OAuthClientRepository for InMemoryOAuthClientRepository {
             .cloned()
             .collect();
         // Deterministic order (newest first), mirroring the DB query.
-        clients.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        clients.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
         let start = ((page.max(1) - 1) * page_size) as usize;
         Ok(clients
             .into_iter()

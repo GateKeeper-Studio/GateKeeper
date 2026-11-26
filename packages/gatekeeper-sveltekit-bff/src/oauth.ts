@@ -13,7 +13,8 @@ export const DEFAULT_AUTH_REQUEST_TTL_SECONDS = 1200;
 export function validateConfig(config: GateKeeperConfig): ResolvedGateKeeperConfig {
   const cfg: ResolvedGateKeeperConfig = {
     idpBaseUrl: config?.idpBaseUrl ?? '',
-    authUiBaseUrl: config?.authUiBaseUrl ?? '',
+    // The identity provider serves its own login UI unless told otherwise.
+    authUiBaseUrl: config?.authUiBaseUrl || config?.idpBaseUrl || '',
     tenantId: config?.tenantId ?? '',
     clientId: config?.clientId ?? '',
     clientSecret: config?.clientSecret,

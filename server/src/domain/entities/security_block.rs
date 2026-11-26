@@ -18,7 +18,7 @@ impl BlockType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_db(s: &str) -> Self {
         match s {
             "user" => BlockType::User,
             _ => BlockType::Ip,

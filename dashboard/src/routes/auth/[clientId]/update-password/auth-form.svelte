@@ -14,9 +14,13 @@
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { changePasswordApi } from '$lib/services/auth/change-password';
 	import { authorizeApi } from '$lib/services/auth/authorize';
+	import { redirectToClient } from '$lib/utils/continue-login';
+	import { approveQrSignIn, isQrApproval } from '$lib/utils/qr-approval';
 	import {
 		SessionClock,
+		clearPendingPasswordChange,
 		clearSession,
+		readPendingPasswordChange,
 		readSessionCode
 	} from '$lib/state/auth-session-expiry.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -33,9 +37,6 @@
 	const oidcState = searchParams.get('state') || '';
 	const email = searchParams.get('email') || '';
 	const codeChallenge = searchParams.get('code_challenge') || '';
-	const urlSessionCode = searchParams.get('session_code') || '';
-	const changePasswordCode = searchParams.get('change_password_code') || '';
-	const userId = searchParams.get('user_id') || '';
 
 	let password = $state('');
 	let confirmPassword = $state('');
@@ -64,13 +65,12 @@
 	}
 
 	/**
-	 * sessionStorage wins over the `session_code` in the URL: refreshing the session
-	 * rotates the code, and the URL — baked when this page was navigated to — would still
-	 * carry the dead one. The query param stays as a fallback for a cold landing where
-	 * storage was never populated.
+	 * The session and its change code live in this tab's sessionStorage, never in the
+	 * URL: an address lands in the browser history. Read at submit time, because
+	 * refreshing the session rotates its code.
 	 */
 	function currentSessionCode() {
-		return readSessionCode(clientId) || urlSessionCode;
+		return readSessionCode(clientId);
 	}
 
 	async function onSubmit(event: SubmitEvent) {
@@ -89,28 +89,47 @@
 			toast.error(m.auth_update_password_client_id_required());
 			return;
 		}
-		if (!changePasswordCode) {
+		const pendingChange = readPendingPasswordChange(clientId);
+		if (!pendingChange) {
 			toast.error(m.auth_update_password_change_code_required());
 			return;
 		}
-		if (!userId) {
-			toast.error(m.auth_update_password_user_id_required());
+		const sessionCode = currentSessionCode();
+		if (!sessionCode) {
+			clock.expireNow();
 			return;
 		}
 
 		isLoading = true;
 
+		// The server also checks the session passed its second factor: the temporary
+		// password alone cannot choose the next one.
 		const [err] = await changePasswordApi({
 			clientId,
 			newPassword: result.data.password,
-			changePasswordCode,
-			userId
+			changePasswordCode: pendingChange.code,
+			userId: pendingChange.userId,
+			sessionCode
 		});
 
 		if (err) {
 			console.error(err);
+			if (err.status === 401) {
+				clock.expireNow();
+				isLoading = false;
+				return;
+			}
 			toast.error(err.message);
 			isLoading = false;
+			return;
+		}
+		clearPendingPasswordChange(clientId);
+
+		// Signed in to approve a QR code: the session approves the other device instead
+		// of becoming a code here.
+		if (isQrApproval(searchParams)) {
+			const approval = await approveQrSignIn(clientId, currentSessionCode());
+			if (approval.kind === 'error') showError(approval.message || m.auth_generic_error());
 			return;
 		}
 
@@ -145,7 +164,7 @@
 		toast.success(m.auth_update_password_success());
 		clearSession(clientId);
 
-		window.location.href = `${redirectUri}?code=${authorizeData.authorizationCode}&state=${oidcState}&redirect_uri=${redirectUri}&client_id=${clientId}`;
+		redirectToClient(clientId, authorizeData);
 	}
 </script>
 

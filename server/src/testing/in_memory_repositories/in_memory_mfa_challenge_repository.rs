@@ -23,6 +23,12 @@ pub struct InMemoryMfaChallengeRepository {
     pub memory: Arc<InMemoryRepository<Uuid, MfaChallenge>>,
 }
 
+impl Default for InMemoryMfaChallengeRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryMfaChallengeRepository {
     pub fn new() -> Self {
         Self {
@@ -74,6 +80,25 @@ impl MfaChallengeRepository for InMemoryMfaChallengeRepository {
             .max_by_key(|c| c.created_at()))
     }
 
+    async fn find_active_by_user(
+        &self,
+        user_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+    ) -> Result<Option<MfaChallenge>, DomainError> {
+        Ok(self
+            .visible()
+            .into_iter()
+            .filter(|c| {
+                c.user_id() == user_id
+                    && c.auth_session_id().is_none()
+                    && c.purpose() == purpose
+                    && c.method() == method
+                    && !c.is_consumed()
+            })
+            .max_by_key(|c| c.created_at()))
+    }
+
     async fn add(&self, challenge: &MfaChallenge) -> Result<(), DomainError> {
         self.memory
             .draft
@@ -90,6 +115,25 @@ impl MfaChallengeRepository for InMemoryMfaChallengeRepository {
             .unwrap()
             .insert(challenge.id(), challenge.clone());
         Ok(())
+    }
+
+    async fn count_issued_since(
+        &self,
+        user_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, DomainError> {
+        Ok(self
+            .visible()
+            .into_iter()
+            .filter(|c| {
+                c.user_id() == user_id
+                    && c.purpose() == purpose
+                    && c.method() == method
+                    && c.created_at() >= since
+            })
+            .count() as i64)
     }
 
     async fn invalidate_active_by_user(

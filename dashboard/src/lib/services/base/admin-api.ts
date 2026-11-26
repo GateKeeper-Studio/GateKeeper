@@ -1,15 +1,12 @@
 import { ApiError } from '../types';
 
 /**
- * Client for the admin API, routed through this app's own server.
+ * Client for the admin API, through the identity provider's console bridge.
  *
- * Requests go to `/api/*` on this origin; `src/routes/api/[...path]/+server.ts`
- * attaches the IdP bearer token and forwards them. Nothing here touches a token,
- * because the browser no longer has one: they live in the server-side session
- * behind an httpOnly cookie (`$lib/server/session`).
- *
- * That also removes the refresh-and-retry dance this used to run client-side —
- * the proxy does it now, still single-flighted, in `$lib/server/idp`.
+ * Requests go to `/api/*` on this origin (the identity provider serves this app).
+ * The server resolves the httpOnly session cookie, mints a short-lived admin bearer
+ * token and hands the request to its admin API (server: `console_session.rs`).
+ * Nothing here touches a token, because the browser never has one.
  *
  * The exported shape matches `base/api.ts` deliberately, so the admin services
  * differ only in which client they import.
@@ -61,5 +58,8 @@ export const adminApi = {
 	put: <T>(path: string, body?: unknown, fetchFn: FetchFn = fetch) =>
 		request<T>('PUT', path, body, fetchFn),
 	delete: <T>(path: string, fetchFn: FetchFn = fetch) =>
-		request<T>('DELETE', path, undefined, fetchFn)
+		request<T>('DELETE', path, undefined, fetchFn),
+	// DELETE with a JSON body, for step-up actions that carry the current password.
+	deleteWith: <T>(path: string, body: unknown, fetchFn: FetchFn = fetch) =>
+		request<T>('DELETE', path, body, fetchFn)
 };

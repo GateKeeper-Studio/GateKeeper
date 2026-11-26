@@ -121,6 +121,10 @@ impl MfaEnrollmentRepository for DbMfaEnrollmentRepository {
         Ok(rows.into_iter().map(|r| reconstruct_row!(r)).collect())
     }
 
+    // SECURITY: `FOR UPDATE`. A code check reads this row, then writes back the last
+    // accepted step (replay guard) and the wrong-try counter that hangs off the user.
+    // The row lock makes the checks of one user's authenticator run one after the
+    // other, so parallel guesses cannot share one try and a code cannot pass twice.
     async fn find_totp_by_user_id(
         &self,
         user_id: Uuid,
@@ -133,6 +137,7 @@ impl MfaEnrollmentRepository for DbMfaEnrollmentRepository {
             passkey_json, credential_id, name, confirmed_at, last_used_at, created_at
           FROM mfa_enrollments
           WHERE user_id = $1 AND method = 'totp'
+          FOR UPDATE
         "#,
                 user_id
             ),

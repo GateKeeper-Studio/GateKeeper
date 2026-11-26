@@ -1,5 +1,8 @@
+pub mod in_memory_admin_invitation_repository;
+pub mod in_memory_admin_mfa_repository;
 pub mod in_memory_admin_refresh_token_repository;
 pub mod in_memory_admin_user_repository;
+pub mod in_memory_admin_web_session_repository;
 pub mod in_memory_audit_event_repository;
 pub mod in_memory_auth_session_repository;
 pub mod in_memory_authorization_code_repository;
@@ -22,6 +25,7 @@ pub mod in_memory_organization_repository;
 pub mod in_memory_password_change_token_repository;
 pub mod in_memory_password_reset_token_repository;
 pub mod in_memory_policy_acceptance_repository;
+pub mod in_memory_qr_login_request_repository;
 pub mod in_memory_refresh_token_repository;
 pub mod in_memory_risk_model_repository;
 pub mod in_memory_role_repository;
@@ -30,6 +34,7 @@ pub mod in_memory_signing_key_repository;
 pub mod in_memory_social_identity_repository;
 pub mod in_memory_tenant_repository;
 pub mod in_memory_tenant_risk_policy_repository;
+pub mod in_memory_trusted_device_repository;
 pub mod in_memory_user_repository;
 
 // Outbound events: transactional outbox + signed webhook delivery.

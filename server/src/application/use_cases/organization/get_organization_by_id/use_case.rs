@@ -35,6 +35,7 @@ impl UseCase {
             name: organization.name().to_string(),
             description: organization.description().map(str::to_string),
             is_active: organization.is_active(),
+            require_admin_mfa: organization.require_admin_mfa(),
             created_at: organization.created_at(),
             updated_at: organization.updated_at(),
         })

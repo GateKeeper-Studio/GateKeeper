@@ -29,8 +29,10 @@ use web_api::{
             oauth_client::{ClientType, MfaPolicy, OAuthClient},
             organization::Organization,
             outbox_event::OutboxEvent,
+            qr_login_request::{QrApprover, QrLoginRequest, QrLoginStatus, QrRequester},
             refresh_token::RefreshToken,
             tenant::Tenant,
+            trusted_device::TrustedDevice,
             user::User,
             webhook_delivery::WebhookDelivery,
             webhook_subscription::WebhookSubscription,
@@ -42,8 +44,9 @@ use web_api::{
             oauth_client_repository::OAuthClientRepository,
             organization_repository::OrganizationRepository,
             outbox_event_repository::OutboxEventRepository,
+            qr_login_request_repository::QrLoginRequestRepository,
             refresh_token_repository::RefreshTokenRepository, tenant_repository::TenantRepository,
-            user_repository::UserRepository,
+            trusted_device_repository::TrustedDeviceRepository, user_repository::UserRepository,
             webhook_delivery_repository::WebhookDeliveryRepository,
             webhook_subscription_repository::WebhookSubscriptionRepository,
         },
@@ -59,8 +62,11 @@ use web_api::{
                 oauth_client_repository::DbOAuthClientRepository,
                 organization_repository::DbOrganizationRepository,
                 outbox_event_repository::DbOutboxEventRepository,
+                qr_login_request_repository::DbQrLoginRequestRepository,
                 refresh_token_repository::DbRefreshTokenRepository,
-                tenant_repository::DbTenantRepository, user_repository::DbUserRepository,
+                tenant_repository::DbTenantRepository,
+                trusted_device_repository::DbTrustedDeviceRepository,
+                user_repository::DbUserRepository,
                 webhook_delivery_repository::DbWebhookDeliveryRepository,
                 webhook_subscription_repository::DbWebhookSubscriptionRepository,
             },
@@ -624,6 +630,402 @@ async fn magic_link_tokens_round_trip_and_die_with_their_session(pool: PgPool) {
     );
 }
 
+// QR code sign-in: the waiting session reads back as one, the client flag persists,
+// and every status change is a single conditional statement — two devices racing on
+// one code cannot both claim it, a claim names the only user who may decide, a
+// decision is taken once, and the approval is collected once. The request dies with
+// its session (the retention purge).
+#[sqlx::test(migrations = "./migrations")]
+async fn qr_login_requests_move_forward_once_and_die_with_their_session(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let mut client = seed_client(&pool, &tenant).await;
+    let user = seed_user(&pool, &tenant).await;
+    let other = seed_user(&pool, &tenant).await;
+
+    let clients = DbOAuthClientRepository::new(pool.clone());
+    client.set_qr_login_enabled(true);
+    clients.update(&client).await.unwrap();
+    let read_client = clients
+        .find_by_id(tenant.id(), client.id())
+        .await
+        .unwrap()
+        .expect("client");
+    assert!(read_client.qr_login_enabled());
+    assert!(read_client.allows_qr_login());
+
+    let sessions = DbAuthSessionRepository::new(pool.clone());
+    let mut session = login_session(&tenant, &client, "hash-qr");
+    session.await_qr_approval();
+    sessions.add(&session).await.unwrap();
+    let read = sessions
+        .find_by_token_hash(tenant.id(), "hash-qr")
+        .await
+        .unwrap()
+        .expect("QR session");
+    assert_eq!(read.primary_factor(), PrimaryFactor::QrCode);
+    assert!(read.is_awaiting_qr_approval());
+
+    let repo = DbQrLoginRequestRepository::new(pool.clone());
+    let now = Utc::now();
+    let request = QrLoginRequest::new(
+        tenant.id(),
+        client.id(),
+        session.id(),
+        "t".repeat(64),
+        QrRequester {
+            ip_address: Some("203.0.113.7".to_string()),
+            user_agent: Some("Mozilla/5.0".to_string()),
+            location: Some("São Paulo, SP, BR".to_string()),
+        },
+        now,
+        now + Duration::minutes(2),
+    );
+    repo.add(&request).await.unwrap();
+    let stored = repo
+        .find_by_id(request.id())
+        .await
+        .unwrap()
+        .expect("request");
+    assert_eq!(stored.status(), QrLoginStatus::Pending);
+    assert_eq!(
+        stored.requester().location.as_deref(),
+        Some("São Paulo, SP, BR")
+    );
+    assert_eq!(
+        repo.find_by_auth_session(session.id())
+            .await
+            .unwrap()
+            .map(|r| r.id()),
+        Some(request.id())
+    );
+
+    // Nothing can be decided or collected before a claim.
+    let claim = "c".repeat(64);
+    assert!(
+        !repo
+            .approve(
+                request.id(),
+                &claim,
+                user.id(),
+                false,
+                QrApprover::HostedPage,
+                now
+            )
+            .await
+            .unwrap()
+    );
+    assert!(!repo.complete(request.id(), now).await.unwrap());
+
+    // Claimed once, by the app of `user`.
+    let deadline = now + Duration::minutes(10);
+    assert!(
+        repo.claim(request.id(), &claim, Some(user.id()), now, deadline)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !repo
+            .claim(request.id(), &"d".repeat(64), None, now, deadline)
+            .await
+            .unwrap()
+    );
+
+    // Only the claim code and the scanning user decide.
+    assert!(
+        !repo
+            .approve(
+                request.id(),
+                &"d".repeat(64),
+                user.id(),
+                false,
+                QrApprover::SignedInApp,
+                now
+            )
+            .await
+            .unwrap()
+    );
+    assert!(
+        !repo
+            .approve(
+                request.id(),
+                &claim,
+                other.id(),
+                false,
+                QrApprover::SignedInApp,
+                now
+            )
+            .await
+            .unwrap()
+    );
+    assert!(!repo.deny(request.id(), &claim, None, now).await.unwrap());
+    assert!(
+        !repo
+            .deny(request.id(), &claim, Some(other.id()), now)
+            .await
+            .unwrap()
+    );
+    // Not after the deadline either.
+    assert!(
+        !repo
+            .approve(
+                request.id(),
+                &claim,
+                user.id(),
+                false,
+                QrApprover::SignedInApp,
+                deadline
+            )
+            .await
+            .unwrap()
+    );
+
+    assert!(
+        repo.approve(
+            request.id(),
+            &claim,
+            user.id(),
+            true,
+            QrApprover::SignedInApp,
+            now
+        )
+        .await
+        .unwrap()
+    );
+    assert!(
+        !repo
+            .deny(request.id(), &claim, Some(user.id()), now)
+            .await
+            .unwrap(),
+        "decided once"
+    );
+    let approved = repo.find_by_id(request.id()).await.unwrap().unwrap();
+    assert_eq!(approved.status(), QrLoginStatus::Approved);
+    assert_eq!(approved.approved_user_id(), Some(user.id()));
+    assert!(approved.approver_mfa_verified());
+    assert_eq!(approved.approved_via(), Some(QrApprover::SignedInApp));
+    assert_eq!(approved.scanned_by_user_id(), Some(user.id()));
+    assert!(approved.scanned_at().is_some() && approved.decided_at().is_some());
+
+    assert!(repo.complete(request.id(), now).await.unwrap());
+    assert!(
+        !repo.complete(request.id(), now).await.unwrap(),
+        "collected once"
+    );
+    assert_eq!(
+        repo.find_by_id(request.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .status(),
+        QrLoginStatus::Completed
+    );
+
+    // A hosted-page claim names no user: the claim code alone denies it.
+    let mut second_session = login_session(&tenant, &client, "hash-qr-2");
+    second_session.await_qr_approval();
+    sessions.add(&second_session).await.unwrap();
+    let second = QrLoginRequest::new(
+        tenant.id(),
+        client.id(),
+        second_session.id(),
+        "u".repeat(64),
+        QrRequester::default(),
+        now,
+        now + Duration::minutes(2),
+    );
+    repo.add(&second).await.unwrap();
+    assert!(
+        repo.claim(second.id(), &claim, None, now, deadline)
+            .await
+            .unwrap()
+    );
+    assert!(repo.deny(second.id(), &claim, None, now).await.unwrap());
+    assert_eq!(
+        repo.find_by_id(second.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .status(),
+        QrLoginStatus::Denied
+    );
+
+    // The CHECKs hold the status machine's invariants.
+    let unclaimed = sqlx::query(
+        "UPDATE qr_login_requests SET status = 'scanned', claim_hash = NULL WHERE id = $1",
+    )
+    .bind(second.id())
+    .execute(&pool)
+    .await;
+    assert!(unclaimed.is_err(), "past pending, a claim is required");
+
+    // One code per waiting session; and the row dies with it.
+    let duplicate = QrLoginRequest::new(
+        tenant.id(),
+        client.id(),
+        session.id(),
+        "v".repeat(64),
+        QrRequester::default(),
+        now,
+        now + Duration::minutes(2),
+    );
+    assert!(repo.add(&duplicate).await.is_err());
+    sqlx::query("DELETE FROM auth_sessions WHERE id = $1")
+        .bind(session.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(repo.find_by_id(request.id()).await.unwrap().is_none());
+}
+
+// Trusted devices: scoped to tenant AND user on every read and delete, one row per
+// (user, key), and gone with their user. A QR approval may name the trusted device.
+#[sqlx::test(migrations = "./migrations")]
+async fn trusted_devices_are_scoped_to_their_user_and_die_with_them(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let user = seed_user(&pool, &tenant).await;
+    let other = seed_user(&pool, &tenant).await;
+    let repo = DbTrustedDeviceRepository::new(pool.clone());
+    let now = Utc::now();
+
+    let device = TrustedDevice::new(
+        tenant.id(),
+        user.id(),
+        "Pixel 8".to_string(),
+        "BKey".to_string(),
+        true,
+        now,
+    );
+    repo.add(&device).await.unwrap();
+    let read = repo
+        .find(tenant.id(), user.id(), device.id())
+        .await
+        .unwrap()
+        .expect("device");
+    assert_eq!(read.name(), "Pixel 8");
+    assert_eq!(read.public_key(), "BKey");
+    assert!(read.counts_as_second_factor());
+    assert!(read.last_used_at().is_none());
+
+    // Another user's id, or another tenant's, finds nothing and deletes nothing.
+    assert!(
+        repo.find(tenant.id(), other.id(), device.id())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        repo.find(Uuid::now_v7(), user.id(), device.id())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !repo
+            .delete(tenant.id(), other.id(), device.id())
+            .await
+            .unwrap()
+    );
+
+    assert!(repo.has_key(user.id(), "BKey").await.unwrap());
+    assert!(!repo.has_key(other.id(), "BKey").await.unwrap());
+    let duplicate = TrustedDevice::new(
+        tenant.id(),
+        user.id(),
+        "Again".to_string(),
+        "BKey".to_string(),
+        false,
+        now,
+    );
+    assert!(
+        repo.add(&duplicate).await.is_err(),
+        "one row per (user, key)"
+    );
+    // The same key may belong to two accounts (one phone, two accounts).
+    let shared = TrustedDevice::new(
+        tenant.id(),
+        other.id(),
+        "Shared".to_string(),
+        "BKey".to_string(),
+        false,
+        now,
+    );
+    repo.add(&shared).await.unwrap();
+
+    repo.record_use(device.id(), now).await.unwrap();
+    assert!(
+        repo.find(tenant.id(), user.id(), device.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .last_used_at()
+            .is_some()
+    );
+
+    let second = TrustedDevice::new(
+        tenant.id(),
+        user.id(),
+        "iPhone".to_string(),
+        "BKey2".to_string(),
+        false,
+        now,
+    );
+    repo.add(&second).await.unwrap();
+    assert_eq!(
+        repo.count_for_user(tenant.id(), user.id()).await.unwrap(),
+        2
+    );
+    let listed: Vec<String> = repo
+        .list_for_user(tenant.id(), user.id())
+        .await
+        .unwrap()
+        .iter()
+        .map(|d| d.name().to_string())
+        .collect();
+    assert_eq!(listed, ["Pixel 8", "iPhone"]);
+
+    assert!(
+        repo.delete(tenant.id(), user.id(), second.id())
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        repo.delete_all_for_user(tenant.id(), user.id())
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        repo.count_for_user(tenant.id(), other.id()).await.unwrap(),
+        1,
+        "the other account keeps its own"
+    );
+
+    // Gone with their user.
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(other.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        repo.count_for_user(tenant.id(), other.id()).await.unwrap(),
+        0
+    );
+
+    // Blank names are refused by the database too.
+    let blank = sqlx::query(
+        "INSERT INTO trusted_devices (id, tenant_id, user_id, name, public_key, counts_as_second_factor, created_at)
+         VALUES ($1, $2, $3, '  ', 'k', false, now())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(tenant.id())
+    .bind(user.id())
+    .execute(&pool)
+    .await;
+    assert!(blank.is_err());
+}
+
 // Restarting a ceremony replaces only that session's challenge, never one running in
 // another session of the same user.
 #[sqlx::test(migrations = "./migrations")]
@@ -673,6 +1075,74 @@ async fn mfa_challenges_are_invalidated_per_session(pool: PgPool) {
 
 async fn begin(pool: &PgPool) -> SharedTx {
     Arc::new(Mutex::new(Some(pool.begin().await.expect("begin"))))
+}
+
+// SECURITY regression: wrong guesses sent in parallel must each count. The verify use
+// cases read the session, read the challenge, and write `attempts + 1` back; without
+// the row lock taken by `find_by_token_hash` every parallel guess read the same
+// count, so a burst of guesses used up one of the five tries.
+#[sqlx::test(migrations = "./migrations")]
+async fn parallel_wrong_guesses_are_each_counted(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let client = seed_client(&pool, &tenant).await;
+    let user = seed_user(&pool, &tenant).await;
+
+    let mut session = login_session(&tenant, &client, "hash-guess");
+    session.authenticate(user.id(), Utc::now());
+    DbAuthSessionRepository::new(pool.clone())
+        .add(&session)
+        .await
+        .unwrap();
+    let challenge = MfaChallenge::new_email_otp(
+        tenant.id(),
+        user.id(),
+        Some(session.id()),
+        MfaChallengePurpose::Login,
+        "code-hash".to_string(),
+        Utc::now() + Duration::minutes(5),
+    );
+    DbMfaChallengeRepository::new(pool.clone())
+        .add(&challenge)
+        .await
+        .unwrap();
+
+    const GUESSES: i32 = 8;
+    let mut guesses = Vec::new();
+    for _ in 0..GUESSES {
+        let pool = pool.clone();
+        let (tenant_id, session_id) = (tenant.id(), session.id());
+        guesses.push(tokio::spawn(async move {
+            let tx = begin(&pool).await;
+            DbAuthSessionRepository::with_tx(Arc::clone(&tx))
+                .find_by_token_hash(tenant_id, "hash-guess")
+                .await
+                .unwrap()
+                .unwrap();
+            let challenges = DbMfaChallengeRepository::with_tx(Arc::clone(&tx));
+            let mut challenge = challenges
+                .find_active_by_session(session_id, &MfaMethod::Email)
+                .await
+                .unwrap()
+                .unwrap();
+            // Give the other guesses time to read the same row if nothing stops them.
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            challenge.register_failed_attempt();
+            challenges.update(&challenge).await.unwrap();
+            let transaction = tx.lock().await.take().unwrap();
+            transaction.commit().await.unwrap();
+        }));
+    }
+    for guess in guesses {
+        guess.await.unwrap();
+    }
+
+    let stored = DbMfaChallengeRepository::new(pool.clone())
+        .find_by_id(tenant.id(), challenge.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.attempts(), GUESSES);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -949,7 +1419,7 @@ async fn a_signed_out_session_reaches_the_app_as_a_verifiable_logout_token(pool:
 
     let tick = dispatch_pending_events::use_case::UseCase::new(
         factory,
-        Arc::new(ReqwestWebhookSender::new(5)),
+        Arc::new(ReqwestWebhookSender::new(5, true)),
         Arc::clone(&cipher),
         Arc::new(JwtSigningService::new(Arc::clone(&cipher))),
         issuer.clone(),
@@ -1244,7 +1714,7 @@ async fn a_promoted_model_scores_real_logins_through_the_hybrid_engine(pool: PgP
             }),
             ip_history: web_api::domain::repositories::login_event_repository::IpHistory {
                 attempts: 10,
-                failed: if fraud { 8 } else { (i % 2) as i64 },
+                failed: if fraud { 8 } else { i % 2 },
             },
             geo_available: false,
             ..FeatureFacts::default()
@@ -1341,4 +1811,861 @@ async fn a_promoted_model_scores_real_logins_through_the_hybrid_engine(pool: PgP
         decisions,
         vec![RiskDecision::Allow, RiskDecision::AllowWithMfa]
     );
+}
+
+// ── Admin console sessions (docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md) ──────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_console_sessions_round_trip_and_clear_expired_rows(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::{admin_user::AdminUser, admin_web_session::AdminWebSession},
+            repositories::{
+                admin_user_repository::AdminUserRepository,
+                admin_web_session_repository::AdminWebSessionRepository,
+            },
+        },
+        infraestructure::database::repositories::{
+            admin_user_repository::DbAdminUserRepository,
+            admin_web_session_repository::DbAdminWebSessionRepository,
+        },
+    };
+
+    let organization = Organization::new(format!("org-{}", Uuid::now_v7()), None, true);
+    DbOrganizationRepository::new(pool.clone())
+        .add(&organization)
+        .await
+        .unwrap();
+    let admin = AdminUser::new(
+        organization.id(),
+        format!("admin-{}@example.com", Uuid::now_v7()),
+        "Ada".to_string(),
+        "hash".to_string(),
+        "argon2id".to_string(),
+    );
+    DbAdminUserRepository::new(pool.clone())
+        .create(&admin)
+        .await
+        .unwrap();
+
+    let sessions = DbAdminWebSessionRepository::new(pool.clone());
+    let now = Utc::now();
+
+    // An already-expired session, then a live one: adding the live one clears it.
+    let stale = AdminWebSession::reconstruct(
+        Uuid::now_v7(),
+        admin.id(),
+        "a".repeat(64),
+        now - Duration::hours(13),
+        now - Duration::hours(13),
+        now - Duration::hours(1),
+    );
+    sqlx::query(
+        "INSERT INTO admin_web_sessions (id, admin_id, token_hash, created_at, last_seen_at, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(stale.id())
+    .bind(stale.admin_id())
+    .bind(stale.token_hash())
+    .bind(stale.created_at())
+    .bind(stale.last_seen_at())
+    .bind(stale.expires_at())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let live = AdminWebSession::new(admin.id(), "b".repeat(64), now, Duration::hours(12));
+    sessions.add(&live).await.unwrap();
+    assert!(
+        sessions
+            .find_by_token_hash(&"a".repeat(64))
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let found = sessions
+        .find_by_token_hash(&"b".repeat(64))
+        .await
+        .unwrap()
+        .expect("live session");
+    assert_eq!(found.id(), live.id());
+    assert_eq!(found.admin_id(), admin.id());
+
+    // `touch` only ever moves the clock forward (replicas may touch out of order).
+    let later = now + Duration::minutes(5);
+    sessions.touch(live.id(), later).await.unwrap();
+    sessions.touch(live.id(), now).await.unwrap();
+    let touched = sessions
+        .find_by_token_hash(&"b".repeat(64))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        touched.last_seen_at().timestamp_micros(),
+        later.timestamp_micros()
+    );
+
+    // Deleting is idempotent; deleting the admin deletes its sessions.
+    sessions
+        .delete_by_token_hash(&"missing".repeat(8))
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM admin_users WHERE id = $1")
+        .bind(admin.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        sessions
+            .find_by_token_hash(&"b".repeat(64))
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_console_tour_version_only_goes_up_and_leaves_the_account_alone(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::admin_user::AdminUser,
+            repositories::admin_user_repository::AdminUserRepository,
+        },
+        infraestructure::database::repositories::admin_user_repository::DbAdminUserRepository,
+    };
+
+    let organization = Organization::new(format!("org-{}", Uuid::now_v7()), None, true);
+    DbOrganizationRepository::new(pool.clone())
+        .add(&organization)
+        .await
+        .unwrap();
+    let admins = DbAdminUserRepository::new(pool.clone());
+    let admin = AdminUser::new(
+        organization.id(),
+        format!("admin-{}@example.com", Uuid::now_v7()),
+        "Ada".to_string(),
+        "hash".to_string(),
+        "argon2id".to_string(),
+    );
+    admins.create(&admin).await.unwrap();
+    let load = || async { admins.find_by_id(admin.id()).await.unwrap().unwrap() };
+    assert_eq!(load().await.console_tour_version(), 0);
+
+    admins.record_console_tour(admin.id(), 2).await.unwrap();
+    assert_eq!(load().await.console_tour_version(), 2);
+
+    // An older console in another tab cannot bring an outdated tour back.
+    admins.record_console_tour(admin.id(), 1).await.unwrap();
+    let reloaded = load().await;
+    assert_eq!(reloaded.console_tour_version(), 2);
+    // A console preference, not an account change.
+    assert_eq!(reloaded.updated_at(), None);
+
+    // The sign-in lookup carries it too.
+    let by_email = admins.find_by_email(admin.email()).await.unwrap().unwrap();
+    assert_eq!(by_email.console_tour_version(), 2);
+}
+
+// ── Platform-admin account security ─────────────────────────────────────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_account_security_statements_are_atomic_and_conditional(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::{
+                admin_mfa::AdminMfa, admin_refresh_token::AdminRefreshToken, admin_user::AdminUser,
+                admin_web_session::AdminWebSession,
+            },
+            repositories::{
+                admin_mfa_repository::AdminMfaRepository,
+                admin_refresh_token_repository::AdminRefreshTokenRepository,
+                admin_user_repository::AdminUserRepository,
+                admin_web_session_repository::AdminWebSessionRepository,
+            },
+        },
+        infraestructure::database::repositories::{
+            admin_mfa_repository::DbAdminMfaRepository,
+            admin_refresh_token_repository::DbAdminRefreshTokenRepository,
+            admin_user_repository::DbAdminUserRepository,
+            admin_web_session_repository::DbAdminWebSessionRepository,
+        },
+    };
+
+    let organization = Organization::new(format!("org-{}", Uuid::now_v7()), None, true);
+    DbOrganizationRepository::new(pool.clone())
+        .add(&organization)
+        .await
+        .unwrap();
+    let admins = DbAdminUserRepository::new(pool.clone());
+    let new_admin = |email: &str| {
+        AdminUser::new(
+            organization.id(),
+            email.to_string(),
+            "Ada".to_string(),
+            "hash".to_string(),
+            "argon2id".to_string(),
+        )
+    };
+    let me = new_admin(" Me@Example.COM ");
+    let colleague = new_admin("colleague@example.com");
+    admins.create(&me).await.unwrap();
+    admins.create(&colleague).await.unwrap();
+    let now = Utc::now();
+
+    // Emails are stored lowercased; the database refuses anything else.
+    let found = admins
+        .find_by_email("me@example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.id(), me.id());
+    assert!(found.can_sign_in());
+    let mixed_case = sqlx::query("UPDATE admin_users SET email = 'Me@example.com' WHERE id = $1")
+        .bind(me.id())
+        .execute(&pool)
+        .await;
+    assert!(mixed_case.is_err(), "the lowercase CHECK holds");
+
+    // Failed sign-ins: counted atomically, the fifth locks and restarts the count.
+    let lock_until = now + Duration::minutes(15);
+    for expected in 1..5 {
+        assert!(
+            !admins
+                .register_failed_sign_in(me.id(), 5, lock_until)
+                .await
+                .unwrap()
+        );
+        let stored = admins.find_by_id(me.id()).await.unwrap().unwrap();
+        assert_eq!(stored.failed_sign_in_count(), expected);
+    }
+    assert!(
+        admins
+            .register_failed_sign_in(me.id(), 5, lock_until)
+            .await
+            .unwrap()
+    );
+    let locked = admins.find_by_id(me.id()).await.unwrap().unwrap();
+    assert!(locked.is_locked(now));
+    assert_eq!(locked.failed_sign_in_count(), 0);
+    admins
+        .record_successful_sign_in(me.id(), now)
+        .await
+        .unwrap();
+    let cleared = admins.find_by_id(me.id()).await.unwrap().unwrap();
+    assert!(!cleared.is_locked(now) && cleared.failed_sign_in_count() == 0);
+
+    // A suspended organization shows on the account.
+    sqlx::query("UPDATE organizations SET is_active = false WHERE id = $1")
+        .bind(organization.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        !admins
+            .find_by_id(me.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .can_sign_in()
+    );
+    sqlx::query("UPDATE organizations SET is_active = true WHERE id = $1")
+        .bind(organization.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Two admins deactivating themselves at the same moment: exactly one succeeds.
+    let (a, b) = tokio::join!(
+        admins.deactivate_unless_last_active(&me, now),
+        admins.deactivate_unless_last_active(&colleague, now),
+    );
+    assert_eq!(
+        [a.unwrap(), b.unwrap()]
+            .iter()
+            .filter(|done| **done)
+            .count(),
+        1,
+        "the organization keeps one active admin"
+    );
+    sqlx::query("UPDATE admin_users SET is_active = true")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Refresh rotation is compare-and-set: the second rotation of one token fails.
+    let tokens = DbAdminRefreshTokenRepository::new(pool.clone());
+    let original = AdminRefreshToken::new(me.id(), "r".repeat(64), now + Duration::days(1));
+    tokens.add(&original).await.unwrap();
+    let mut first = original.clone();
+    let successor = first.rotate("s".repeat(64), now + Duration::days(1), now);
+    let mut second = original.clone();
+    let rival = second.rotate("t".repeat(64), now + Duration::days(1), now);
+    assert!(tokens.rotate(&first, &successor).await.unwrap());
+    assert!(!tokens.rotate(&second, &rival).await.unwrap());
+    assert!(
+        tokens
+            .find_by_token_hash(&"t".repeat(64))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let expired = AdminRefreshToken::new(me.id(), "e".repeat(64), now - Duration::seconds(1));
+    tokens.add(&expired).await.unwrap();
+    assert_eq!(tokens.delete_expired(now).await.unwrap(), 1);
+
+    // Console sessions: end all but the current one; sign-out names the admin.
+    let sessions = DbAdminWebSessionRepository::new(pool.clone());
+    let current = AdminWebSession::new(me.id(), "c".repeat(64), now, Duration::hours(1));
+    let other = AdminWebSession::new(me.id(), "o".repeat(64), now, Duration::hours(1));
+    sessions.add(&current).await.unwrap();
+    sessions.add(&other).await.unwrap();
+    assert_eq!(
+        sessions
+            .delete_all_for_admin(me.id(), Some(current.id()))
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sessions
+            .delete_by_token_hash(&"c".repeat(64))
+            .await
+            .unwrap(),
+        Some(me.id())
+    );
+    assert_eq!(
+        sessions
+            .delete_by_token_hash(&"c".repeat(64))
+            .await
+            .unwrap(),
+        None
+    );
+
+    // Second factor: pending until confirmed, never replaced once enabled, each
+    // TOTP step and recovery code accepted once.
+    let factors = DbAdminMfaRepository::new(pool.clone());
+    assert!(
+        factors
+            .save_pending(&AdminMfa::pending(me.id(), "v1:seed-a".into(), now))
+            .await
+            .unwrap()
+    );
+    assert!(
+        factors
+            .save_pending(&AdminMfa::pending(me.id(), "v1:seed-b".into(), now))
+            .await
+            .unwrap()
+    );
+    let hashes = vec!["h1".to_string(), "h2".to_string()];
+    assert!(factors.confirm(me.id(), 10, &hashes, now).await.unwrap());
+    assert!(!factors.confirm(me.id(), 11, &hashes, now).await.unwrap());
+    assert!(
+        !factors
+            .save_pending(&AdminMfa::pending(me.id(), "v1:seed-c".into(), now))
+            .await
+            .unwrap()
+    );
+    let enabled = factors.find(me.id()).await.unwrap().unwrap();
+    assert!(enabled.is_enabled());
+    assert_eq!(enabled.totp_secret_enc(), "v1:seed-b");
+
+    assert!(
+        !factors.record_totp_step(me.id(), 10, now).await.unwrap(),
+        "replay"
+    );
+    assert!(factors.record_totp_step(me.id(), 11, now).await.unwrap());
+    assert!(
+        factors
+            .consume_recovery_code(me.id(), "h1", now)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !factors
+            .consume_recovery_code(me.id(), "h1", now)
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        factors
+            .find(me.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .recovery_code_hashes(),
+        ["h2".to_string()]
+    );
+    assert!(
+        factors
+            .replace_recovery_codes(me.id(), &["h3".to_string()], now)
+            .await
+            .unwrap()
+    );
+    factors.delete(me.id()).await.unwrap();
+    assert!(factors.find(me.id()).await.unwrap().is_none());
+    assert!(
+        !factors
+            .replace_recovery_codes(me.id(), &hashes, now)
+            .await
+            .unwrap()
+    );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_invitations_and_the_admin_list(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::{
+                admin_invitation::AdminInvitation, admin_mfa::AdminMfa, admin_user::AdminUser,
+            },
+            errors::DomainError,
+            repositories::{
+                admin_invitation_repository::AdminInvitationRepository,
+                admin_mfa_repository::AdminMfaRepository,
+                admin_user_repository::AdminUserRepository,
+            },
+        },
+        infraestructure::database::repositories::{
+            admin_invitation_repository::DbAdminInvitationRepository,
+            admin_mfa_repository::DbAdminMfaRepository,
+            admin_user_repository::DbAdminUserRepository,
+        },
+    };
+
+    let mut organization = Organization::new(format!("org-{}", Uuid::now_v7()), None, true);
+    let organizations = DbOrganizationRepository::new(pool.clone());
+    organizations.add(&organization).await.unwrap();
+    organization.set_require_admin_mfa(true);
+    organizations.update(&organization).await.unwrap();
+    let stored = organizations
+        .find_by_id(organization.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(stored.require_admin_mfa());
+
+    let admins = DbAdminUserRepository::new(pool.clone());
+    let admin = |email: &str| {
+        AdminUser::new(
+            organization.id(),
+            email.to_string(),
+            "Ada".to_string(),
+            "hash".to_string(),
+            "argon2id".to_string(),
+        )
+    };
+    let me = admin("me@example.com");
+    admins.create(&me).await.unwrap();
+    let loaded = admins.find_by_id(me.id()).await.unwrap().unwrap();
+    assert!(
+        loaded.organization_requires_mfa(),
+        "policy joined onto the account"
+    );
+    let now = Utc::now();
+    admins
+        .record_successful_sign_in(me.id(), now)
+        .await
+        .unwrap();
+    assert!(
+        admins
+            .find_by_id(me.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .last_sign_in_at()
+            .is_some()
+    );
+
+    // The list shows who has a second factor.
+    let factors = DbAdminMfaRepository::new(pool.clone());
+    factors
+        .save_pending(&AdminMfa::pending(me.id(), "v1:seed".into(), now))
+        .await
+        .unwrap();
+    factors.confirm(me.id(), 1, &[], now).await.unwrap();
+
+    // Invitations: re-inviting revokes the open one (the partial unique index allows
+    // only one open invitation per email), and accepting is single-use.
+    let invitations = DbAdminInvitationRepository::new(pool.clone());
+    let invite = |hash: &str| {
+        AdminInvitation::new(
+            organization.id(),
+            "New@Example.com",
+            hash.repeat(64),
+            me.id(),
+            Utc::now(),
+            Duration::hours(72),
+        )
+    };
+    let first = invite("a");
+    invitations.create_replacing_open(&first).await.unwrap();
+    let second = invite("b");
+    invitations.create_replacing_open(&second).await.unwrap();
+    let open = invitations
+        .list_open(organization.id(), Utc::now())
+        .await
+        .unwrap();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].id(), second.id());
+    let replaced = invitations
+        .find_by_token_hash(&"a".repeat(64))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(replaced.revoked_at().is_some());
+
+    let newcomer = admin("new@example.com");
+    assert!(
+        !invitations
+            .accept(first.id(), &newcomer, Utc::now())
+            .await
+            .unwrap(),
+        "revoked"
+    );
+    assert!(
+        invitations
+            .accept(second.id(), &newcomer, Utc::now())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !invitations
+            .accept(second.id(), &admin("new@example.com"), Utc::now())
+            .await
+            .unwrap()
+    );
+    assert!(
+        admins
+            .find_by_email("new@example.com")
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    // A taken email rolls the claim back: the invitation stays open.
+    let third = AdminInvitation::new(
+        organization.id(),
+        "me@example.com",
+        "c".repeat(64),
+        me.id(),
+        Utc::now(),
+        Duration::hours(72),
+    );
+    invitations.create_replacing_open(&third).await.unwrap();
+    let clash = invitations
+        .accept(third.id(), &admin("me@example.com"), Utc::now())
+        .await;
+    assert!(matches!(clash, Err(DomainError::Conflict(_))));
+    let still_open = invitations
+        .find_by_token_hash(&"c".repeat(64))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(still_open.is_open(Utc::now()));
+    assert!(
+        invitations
+            .revoke(third.id(), organization.id(), Utc::now())
+            .await
+            .unwrap()
+    );
+    assert!(
+        !invitations
+            .revoke(third.id(), organization.id(), Utc::now())
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        invitations
+            .delete_expired(Utc::now() + Duration::hours(73))
+            .await
+            .unwrap(),
+        3
+    );
+
+    // The admin list, oldest first; deactivate, then reactivate in the organization.
+    let list = admins
+        .list_by_organization(organization.id())
+        .await
+        .unwrap();
+    assert_eq!(
+        list.iter()
+            .map(|a| (a.email.as_str(), a.mfa_enabled))
+            .collect::<Vec<_>>(),
+        [("me@example.com", true), ("new@example.com", false)]
+    );
+    let new_id = list[1].id;
+    let new_admin = admins.find_by_id(new_id).await.unwrap().unwrap();
+    assert!(
+        admins
+            .deactivate_unless_last_active(&new_admin, now)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !admins
+            .reactivate(new_id, Uuid::now_v7(), now)
+            .await
+            .unwrap(),
+        "other org"
+    );
+    assert!(
+        admins
+            .reactivate(new_id, organization.id(), now)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !admins
+            .reactivate(new_id, organization.id(), now)
+            .await
+            .unwrap(),
+        "already active"
+    );
+}
+
+// ── Admin filter screens: custom plans (executor::run_custom_plan!) ─────────────
+
+#[sqlx::test(migrations = "./migrations")]
+async fn filter_queries_return_the_right_rows_on_pool_and_in_a_unit_of_work(pool: PgPool) {
+    use web_api::{
+        domain::repositories::{
+            audit_event_repository::{AuditEventFilter, AuditEventRepository},
+            login_event_repository::{LoginEventFilter, LoginEventRepository},
+        },
+        infraestructure::database::repositories::{
+            audit_event_repository::DbAuditEventRepository,
+            login_event_repository::DbLoginEventRepository,
+        },
+    };
+
+    let tenant = seed_tenant(&pool, &cipher(), "pepper").await;
+    let other = seed_tenant(&pool, &cipher(), "pepper").await;
+    let alice = Uuid::now_v7();
+    for (tenant_id, user_id, ip) in [
+        (tenant.id(), alice, "10.0.0.1"),
+        (tenant.id(), alice, "10.0.0.2"),
+        (tenant.id(), Uuid::now_v7(), "10.0.0.1"),
+        (other.id(), alice, "10.0.0.1"),
+    ] {
+        sqlx::query(
+            "INSERT INTO login_events (id, tenant_id, user_id, ip_address, credentials_valid, success,
+                                       risk_level, decision, created_at)
+             VALUES ($1, $2, $3, $4, TRUE, TRUE, 'LOW', 'ALLOW', now())",
+        )
+        .bind(Uuid::now_v7())
+        .bind(tenant_id)
+        .bind(user_id)
+        .bind(ip)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO audit_events (id, tenant_id, actor_type, actor_id, action, outcome, created_at)
+             VALUES ($1, $2, 'user', $3, 'user.login', 'success', now())",
+        )
+        .bind(Uuid::now_v7())
+        .bind(tenant_id)
+        .bind(user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let by_user = LoginEventFilter {
+        user_id: Some(alice),
+        ..Default::default()
+    };
+    let by_ip = LoginEventFilter {
+        ip_address: Some("10.0.0.1".to_string()),
+        ..Default::default()
+    };
+    let by_actor = AuditEventFilter {
+        actor_id: Some(alice),
+        ..Default::default()
+    };
+
+    // On the pool: each call runs in its own short transaction.
+    let events = DbLoginEventRepository::new(pool.clone());
+    assert_eq!(
+        events
+            .list(tenant.id(), &by_user, 1, 50)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(events.count(tenant.id(), &by_ip).await.unwrap(), 2);
+    let audit = DbAuditEventRepository::new(pool.clone());
+    assert_eq!(
+        audit
+            .find_by_tenant(tenant.id(), &by_actor, 1, 50)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        audit
+            .quantity_by_tenant(tenant.id(), &by_actor)
+            .await
+            .unwrap(),
+        2
+    );
+
+    // The setting is SET LOCAL: it never outlives that transaction on a pooled connection.
+    for _ in 0..3 {
+        let mode: String = sqlx::query_scalar("SHOW plan_cache_mode")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(mode, "auto");
+    }
+
+    // Inside a Unit of Work's transaction.
+    let tx = begin(&pool).await;
+    let events = DbLoginEventRepository::with_tx(Arc::clone(&tx));
+    assert_eq!(events.count(tenant.id(), &by_user).await.unwrap(), 2);
+    let audit = DbAuditEventRepository::with_tx(Arc::clone(&tx));
+    assert_eq!(
+        audit
+            .quantity_by_tenant(other.id(), &by_actor)
+            .await
+            .unwrap(),
+        1
+    );
+    tx.lock().await.take().unwrap().rollback().await.unwrap();
+}
+
+// An admin reset's temporary password: it round-trips its expiry, the conditional
+// burn lets exactly one sign-in through, and a copy read before the burn cannot
+// revive it when saved (another flow updating the user), while a new password
+// replaces it.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_temporary_password_burns_once_and_stays_burned(pool: PgPool) {
+    use web_api::domain::{
+        entities::user_credentials::UserCredentials, repositories::user_repository::UserRepository,
+    };
+
+    let tenant = seed_tenant(&pool, &cipher(), "pepper-temporary").await;
+    let mut user = seed_user(&pool, &tenant).await;
+    let users = DbUserRepository::new(pool.clone());
+    let expires_at = Utc::now() + Duration::hours(24);
+    user.update_credentials(UserCredentials::temporary(
+        user.id(),
+        "temporary-hash".to_string(),
+        "argon2".to_string(),
+        expires_at,
+    ));
+    users.update(&user).await.expect("save temporary password");
+
+    let stale = users
+        .find_by_id_with_credentials(user.id())
+        .await
+        .unwrap()
+        .unwrap();
+    let stored = stale.credentials().unwrap();
+    assert!(stored.should_change_password());
+    let stored_expiry = stored.temporary_password_expires_at().unwrap();
+    assert!((stored_expiry - expires_at).num_milliseconds().abs() < 1);
+
+    let now = Utc::now();
+    assert!(users.burn_temporary_password(user.id(), now).await.unwrap());
+    assert!(!users.burn_temporary_password(user.id(), now).await.unwrap());
+
+    // Saving the copy read before the burn keeps it burned.
+    users.update(&stale).await.expect("save stale copy");
+    let after = users
+        .find_by_id_with_credentials(user.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!after.credentials().unwrap().accepts_password_at(Utc::now()));
+
+    // The user's own new password is not temporary.
+    let mut changed = after.clone();
+    changed.update_credentials(UserCredentials::new(
+        user.id(),
+        "chosen-hash".to_string(),
+        "argon2".to_string(),
+        false,
+    ));
+    users.update(&changed).await.expect("save new password");
+    let chosen = users
+        .find_by_id_with_credentials(user.id())
+        .await
+        .unwrap()
+        .unwrap();
+    let chosen = chosen.credentials().unwrap();
+    assert_eq!(chosen.temporary_password_expires_at(), None);
+    assert!(!chosen.should_change_password());
+}
+
+// Step-up codes: the issued-code counter that bounds resends sees only this user's
+// step-up codes in the window, used or not, and the purpose round-trips.
+#[sqlx::test(migrations = "./migrations")]
+async fn step_up_codes_are_counted_per_user_purpose_and_window(pool: PgPool) {
+    use web_api::domain::repositories::mfa_challenge_repository::MfaChallengeRepository;
+
+    let tenant = seed_tenant(&pool, &cipher(), "pepper-step-up").await;
+    let user = seed_user(&pool, &tenant).await;
+    let other = seed_user(&pool, &tenant).await;
+    let challenges = DbMfaChallengeRepository::new(pool.clone());
+    let code = |user_id, purpose| {
+        MfaChallenge::new_email_otp(
+            tenant.id(),
+            user_id,
+            None,
+            purpose,
+            "code-hash".to_string(),
+            Utc::now() + Duration::minutes(10),
+        )
+    };
+
+    let before = Utc::now() - Duration::seconds(1);
+    let first = code(user.id(), MfaChallengePurpose::StepUp);
+    challenges.add(&first).await.unwrap();
+    challenges
+        .invalidate_active_by_user(user.id(), &MfaChallengePurpose::StepUp, &MfaMethod::Email)
+        .await
+        .unwrap();
+    challenges
+        .add(&code(user.id(), MfaChallengePurpose::StepUp))
+        .await
+        .unwrap();
+    // Not counted: another purpose, another user.
+    challenges
+        .add(&code(user.id(), MfaChallengePurpose::Enroll))
+        .await
+        .unwrap();
+    challenges
+        .add(&code(other.id(), MfaChallengePurpose::StepUp))
+        .await
+        .unwrap();
+
+    let count = |since| {
+        let challenges = &challenges;
+        let user_id = user.id();
+        async move {
+            challenges
+                .count_issued_since(
+                    user_id,
+                    &MfaChallengePurpose::StepUp,
+                    &MfaMethod::Email,
+                    since,
+                )
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(count(before).await, 2);
+    assert_eq!(count(Utc::now() + Duration::seconds(1)).await, 0);
+
+    let stored = challenges
+        .find_by_id(tenant.id(), first.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(*stored.purpose(), MfaChallengePurpose::StepUp);
+    assert!(stored.is_consumed());
 }

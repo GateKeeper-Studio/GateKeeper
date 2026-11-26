@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE authorization_codes\n          SET consumed_at = $2\n          WHERE id = $1 AND consumed_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8e4c16855523417c07ddc0d737da27549f067cf5d17e16318d5b4e758de16985"
+}

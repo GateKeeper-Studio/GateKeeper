@@ -3,7 +3,8 @@ import { resolve } from '$app/paths';
 
 import { authorizeApi } from '$lib/services/auth/authorize';
 import { EMfaType, type LoginResponse } from '$lib/services/auth/login';
-import { storeSession } from '$lib/state/auth-session-expiry.svelte';
+import { storePendingPasswordChange, storeSession } from '$lib/state/auth-session-expiry.svelte';
+import { approveQrSignIn, isQrApproval } from '$lib/utils/qr-approval';
 
 export type ContinueLoginContext = {
 	clientId: string;
@@ -40,16 +41,19 @@ export async function continueAfterLogin(
 		loginData.sessionExpiresAt,
 		loginData.sessionAbsoluteExpiresAt
 	);
+	// A temporary password signed in: the change code waits beside the session (never
+	// in a URL) for whichever page comes after the second factor.
+	const mustChangePassword = !!(loginData.changePasswordCode && loginData.userId);
+	if (mustChangePassword) {
+		storePendingPasswordChange(clientId, {
+			code: loginData.changePasswordCode!,
+			userId: loginData.userId!
+		});
+	}
 
 	const urlParams = new URLSearchParams(ctx.oidcParams);
 	urlParams.set('mfa_auth_app_required', 'true');
 	urlParams.set('email', ctx.email);
-	if (loginData.changePasswordCode) {
-		urlParams.set('change_password_code', loginData.changePasswordCode);
-	}
-	if (loginData.userId) {
-		urlParams.set('user_id', loginData.userId);
-	}
 	if (loginData.availableMfaMethods?.length) {
 		urlParams.set('available_mfa_methods', loginData.availableMfaMethods.join(','));
 	}
@@ -86,14 +90,19 @@ export async function continueAfterLogin(
 		return { kind: 'navigated' };
 	}
 
-	if (loginData.changePasswordCode && loginData.userId) {
-		urlParams.set('session_code', loginData.sessionCode);
+	if (mustChangePassword) {
 		await goto(
 			resolve(`/auth/[clientId]/update-password?${urlParams.toString()}${mfaSuffix}`, {
 				clientId
 			})
 		);
 		return { kind: 'navigated' };
+	}
+
+	// Signed in to approve a QR code: the session approves the other device instead of
+	// becoming a code here.
+	if (isQrApproval(ctx.oidcParams)) {
+		return approveQrSignIn(clientId, loginData.sessionCode);
 	}
 
 	const redirectUri = ctx.oidcParams.get('redirect_uri') || '/';
@@ -126,14 +135,36 @@ export async function continueAfterLogin(
 		return { kind: 'error', message: null };
 	}
 
+	redirectToClient(clientId, authorizeData);
+	return { kind: 'navigated' };
+}
+
+/**
+ * Hands the authorization code to the relying party and leaves the hosted page.
+ *
+ * SECURITY: the address and the `state` are the ones the IdP answered with. It kept
+ * them in the session, checked against the client's registered redirect URIs when the
+ * sign-in started. The page's own `redirect_uri` parameter is never the target: it
+ * comes from the address bar (or, after a social sign-in, from the URL fragment), which
+ * anyone can write a link for.
+ */
+export function redirectToClient(
+	clientId: string,
+	authorized: { authorizationCode: string; redirectUri: string; state: string }
+): void {
+	const { redirectUri } = authorized;
+	// A registration made before these schemes were refused must not run as script here.
+	if (/^\s*(javascript|data|vbscript|blob|file):/i.test(redirectUri)) {
+		throw new Error('refusing to navigate to this redirect URI');
+	}
 	const params = new URLSearchParams({
-		code: authorizeData.authorizationCode,
-		state: oidcState,
+		code: authorized.authorizationCode,
+		state: authorized.state,
 		redirect_uri: redirectUri,
 		client_id: clientId
 	});
-	window.location.href = `${redirectUri}?${params.toString()}`;
-	return { kind: 'navigated' };
+	const separator = redirectUri.includes('?') ? '&' : '?';
+	window.location.href = `${redirectUri}${separator}${params.toString()}`;
 }
 
 const MFA_TYPES = [EMfaType.MfaWebauthn, EMfaType.MfaApp, EMfaType.MfaEmail];

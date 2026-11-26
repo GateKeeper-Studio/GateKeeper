@@ -91,7 +91,7 @@ impl GroupRepository for InMemoryGroupRepository {
             .cloned()
             .collect();
         // Newest first, matching the DB ordering.
-        groups.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        groups.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
         Ok(groups
             .into_iter()
             .skip(((page - 1) * page_size) as usize)
@@ -207,7 +207,7 @@ impl GroupRepository for InMemoryGroupRepository {
             .iter()
             .filter_map(|u| data.get(u).cloned())
             .collect();
-        users.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        users.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
 
         Ok(users
             .into_iter()

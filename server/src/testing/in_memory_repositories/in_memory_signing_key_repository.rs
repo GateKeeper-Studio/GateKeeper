@@ -18,6 +18,12 @@ pub struct InMemorySigningKeyRepository {
     pub memory: Arc<InMemoryRepository<Uuid, SigningKey>>,
 }
 
+impl Default for InMemorySigningKeyRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemorySigningKeyRepository {
     pub fn new() -> Self {
         Self {

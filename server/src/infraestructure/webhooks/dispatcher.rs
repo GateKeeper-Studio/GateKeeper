@@ -36,8 +36,10 @@ pub fn spawn_dispatcher(
 ) -> (JoinHandle<()>, watch::Sender<bool>) {
     let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
 
-    let sender: Arc<dyn WebhookSender> =
-        Arc::new(ReqwestWebhookSender::new(config.webhook_timeout_seconds));
+    let sender: Arc<dyn WebhookSender> = Arc::new(ReqwestWebhookSender::new(
+        config.webhook_timeout_seconds,
+        config.webhook_allow_private_targets,
+    ));
     let secret_cipher: Arc<dyn SecretCipher> = Arc::new(AesGcmSecretCipher::from_config(config));
 
     let uow_factory: Arc<dyn UnitOfWorkFactory> = Arc::new(DbUnitOfWorkFactory::new(

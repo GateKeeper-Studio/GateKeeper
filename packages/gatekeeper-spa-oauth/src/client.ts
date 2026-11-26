@@ -45,9 +45,11 @@ function resolveConfig(config: GateKeeperSpaConfig): ResolvedSpaConfig {
   const defaultRedirect =
     typeof window !== 'undefined' && window.location ? `${window.location.origin}/` : '';
 
+  const idpBaseUrl = trimTrailingSlash(config.idpBaseUrl ?? '');
   const cfg: ResolvedSpaConfig = {
-    idpBaseUrl: trimTrailingSlash(config.idpBaseUrl ?? ''),
-    authUiBaseUrl: trimTrailingSlash(config.authUiBaseUrl ?? ''),
+    idpBaseUrl,
+    // The identity provider serves its own login UI unless told otherwise.
+    authUiBaseUrl: trimTrailingSlash(config.authUiBaseUrl || idpBaseUrl),
     tenantId: config.tenantId ?? '',
     clientId: config.clientId ?? '',
     redirectUri: config.redirectUri ?? defaultRedirect,

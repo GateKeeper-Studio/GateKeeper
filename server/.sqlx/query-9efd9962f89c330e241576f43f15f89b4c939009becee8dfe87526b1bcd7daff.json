@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM admin_web_sessions WHERE token_hash = $1 RETURNING admin_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "admin_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "admin_web_sessions",
+            "name": "admin_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9efd9962f89c330e241576f43f15f89b4c939009becee8dfe87526b1bcd7daff"
+}

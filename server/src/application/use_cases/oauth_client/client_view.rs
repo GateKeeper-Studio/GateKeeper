@@ -65,6 +65,7 @@ pub struct ClientView {
     pub external_login_only: bool,
     // Magic link login is switched on for this client.
     pub magic_link_enabled: bool,
+    pub qr_login_enabled: bool,
     // OIDC Back-Channel Logout registration (null = not notified).
     pub backchannel_logout_uri: Option<String>,
     pub backchannel_logout_session_required: bool,
@@ -101,6 +102,7 @@ impl ClientView {
                 .map(LoginAppearanceView::from_domain),
             external_login_only: client.external_login_only(),
             magic_link_enabled: client.magic_link_enabled(),
+            qr_login_enabled: client.qr_login_enabled(),
             backchannel_logout_uri: client.backchannel_logout_uri().map(str::to_string),
             backchannel_logout_session_required: client.backchannel_logout_session_required(),
             allowed_languages: client.allowed_languages().to_vec(),

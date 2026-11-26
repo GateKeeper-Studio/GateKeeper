@@ -9,16 +9,17 @@ version = 2
 # exceptions here with a justification comment (the "exception register", §24).
 # Full rationale + review dates live in docs/MEMORY-SAFETY.md.
 ignore = [
-    # rsa "Marvin Attack" timing sidechannel. No fix published upstream. Pulled in
-    # transitively by jsonwebtoken's rust_crypto backend, but this IdP signs/verifies
-    # ONLY ES256 (per-tenant) and HS256 (admin) JWTs — the RSA code path is never
-    # exercised. Re-evaluate when RustCrypto/RSA ships a constant-time release.
-    "RUSTSEC-2023-0071",
     # proc-macro-error2 unmaintained. Build-time proc-macro dependency of
     # validator_derive; it is not present in the runtime binary. No security impact.
     # Drops when `validator` migrates off it.
     "RUSTSEC-2026-0173",
+    # chrono unmaintained. Informational: no vulnerability, no patched release. It is
+    # used throughout (DateTime<Utc>, the sqlx `chrono` feature); moving to jiff/time
+    # is a migration of its own. Revisit with that migration.
+    "RUSTSEC-2026-0543",
 ]
+# (RUSTSEC-2026-0459, libsqlite3-sys, is accepted in .cargo/audit.toml only: the
+# crate sits in Cargo.lock but is never built, so cargo-deny does not report it.)
 
 [bans]
 # Duplicate versions bloat the graph and multiply transitive unsafe/audit surface.

@@ -21,7 +21,6 @@ bootstrapApplication(AppComponent, {
     provideRouter([/* ... */]),
     provideGateKeeper({
       idpBaseUrl: 'http://localhost:8080',
-      authUiBaseUrl: 'http://localhost:5173',
       tenantId: '<tenant-uuid>',
       clientId: '<public-client-id>',
       redirectUri: 'http://localhost:5177/'

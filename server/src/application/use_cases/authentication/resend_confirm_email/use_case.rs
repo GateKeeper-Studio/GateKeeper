@@ -13,6 +13,10 @@ use crate::{
     utils::oauth_crypto::{generate_numeric_code, sha256_hex},
 };
 
+// Codes one account may be issued (registration included) per
+// `VERIFICATION_CODE_TTL_MINUTES`. Rows live at least that long, so the count is exact.
+pub const MAX_CODES_PER_WINDOW: i64 = 3;
+
 pub struct UseCase {
     unit_of_work_factory: Arc<dyn UnitOfWorkFactory>,
     templated_email: Arc<TemplatedEmailSender>,
@@ -66,13 +70,33 @@ impl UseCase {
             _ => return Ok(()),
         };
 
-        // Consume any existing active code so there is never more than one live code
-        // per user at a time.
-        if let Some(mut old) = uow
+        // Read (and lock) the live code first, so two resends for one account run one
+        // after the other and the count below is exact.
+        let live = uow
             .email_verification_token_repository()
             .find_active_by_user_id(user.id())
-            .await?
-        {
+            .await?;
+
+        // SECURITY: every new code comes with a fresh set of wrong tries, so an
+        // unlimited resend is an unlimited guess at a six-digit code (and a way to
+        // flood someone's inbox). Past the limit nothing is sent and the live code
+        // stays as it is; the answer is the same `Ok` as always.
+        let now = Utc::now();
+        let recent = uow
+            .email_verification_token_repository()
+            .count_issued_since(
+                user.id(),
+                now - Duration::minutes(VERIFICATION_CODE_TTL_MINUTES),
+            )
+            .await?;
+        if recent >= MAX_CODES_PER_WINDOW {
+            tracing::warn!(user_id = %user.id(), "confirmation code not resent: limit reached");
+            return Ok(());
+        }
+
+        // Consume any existing active code so there is never more than one live code
+        // per user at a time.
+        if let Some(mut old) = live {
             old.consume(Utc::now());
             uow.email_verification_token_repository()
                 .update(&old)

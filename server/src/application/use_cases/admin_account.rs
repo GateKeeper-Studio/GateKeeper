@@ -5,4 +5,5 @@
 pub mod change_password;
 pub mod deactivate_account;
 pub mod get_profile;
+pub mod record_console_tour;
 pub mod update_profile;

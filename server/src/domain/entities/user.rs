@@ -44,6 +44,7 @@ impl User {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn reconstruct(
         id: Uuid,
         email: String,

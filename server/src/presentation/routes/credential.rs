@@ -27,7 +27,10 @@ use axum::{Router, routing::post};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 
 use crate::presentation::{
-    handlers::{admin_auth_handler, authentication_handler, mfa_handler},
+    handlers::{
+        admin_auth_handler, admin_organization_handler, authentication_handler,
+        console_session_handler, mfa_handler, qr_login_handler,
+    },
     middleware::client_ip::ClientIpKeyExtractor,
     routes::AppState,
 };
@@ -58,10 +61,23 @@ pub(super) fn router() -> Router<AppState> {
         // cannot sit behind the admin layer. It is also the highest-privilege
         // credential in the system.
         .route("/admin/login", post(admin_auth_handler::login))
+        // The admin console's sign-in (cookie session, when this server serves the
+        // dashboard). The same password check as /admin/login, so the same bucket.
+        .route("/session", post(console_session_handler::sign_in))
         // Refresh an admin session (rotate refresh token → new access token). It
         // authenticates via the refresh token itself, so it sits OUTSIDE the admin
         // layer — and a guessable opaque token is worth rate-limiting too.
         .route("/admin/refresh", post(admin_auth_handler::refresh))
+        // An admin invitation link: look it up, then accept it with a new password.
+        // The link token is the credential, so both sit in this bucket.
+        .route(
+            "/admin/invitations/lookup",
+            post(admin_organization_handler::lookup_invitation),
+        )
+        .route(
+            "/admin/invitations/accept",
+            post(admin_organization_handler::accept_invitation),
+        )
         // ── Self-service authentication (registration + email confirmation) ───────
         .route(
             "/authentication/register",
@@ -101,6 +117,24 @@ pub(super) fn router() -> Router<AppState> {
         .route(
             "/v1/auth/magic-link/redeem",
             post(authentication_handler::redeem_magic_link),
+        )
+        // QR code sign-in. Asking for a code opens a session, so it is bounded like
+        // the other sign-in starts; the scanning device presents the code's token,
+        // then its claim code, and both are credentials. The browser's polling sits
+        // in the public router: it authenticates with its session code, and a poll
+        // every two seconds would exhaust this bucket.
+        .route("/v1/auth/qr-login", post(qr_login_handler::start))
+        .route(
+            "/v1/auth/qr-login/scan",
+            post(qr_login_handler::scan_on_hosted_page),
+        )
+        .route(
+            "/v1/auth/qr-login/approve",
+            post(qr_login_handler::approve_on_hosted_page),
+        )
+        .route(
+            "/v1/auth/qr-login/deny",
+            post(qr_login_handler::deny_on_hosted_page),
         )
         .route(
             "/v1/auth/verify-mfa/email/send",

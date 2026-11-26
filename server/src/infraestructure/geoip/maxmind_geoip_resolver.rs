@@ -68,27 +68,26 @@ impl GeoIpResolver for MaxmindGeoIpResolver {
 
         let mut location = GeoLocation::default();
 
-        if let Ok(result) = self.city.lookup(addr) {
-            if let Ok(Some(city)) = result.decode::<geoip2::City>() {
-                location.country_code = city.country.iso_code.map(str::to_string);
-                location.region = city
-                    .subdivisions
-                    .first()
-                    .and_then(|s| s.iso_code)
-                    .map(str::to_string);
-                location.city = city.city.names.english.map(str::to_string);
-                location.latitude = city.location.latitude;
-                location.longitude = city.location.longitude;
-            }
+        if let Ok(result) = self.city.lookup(addr)
+            && let Ok(Some(city)) = result.decode::<geoip2::City>()
+        {
+            location.country_code = city.country.iso_code.map(str::to_string);
+            location.region = city
+                .subdivisions
+                .first()
+                .and_then(|s| s.iso_code)
+                .map(str::to_string);
+            location.city = city.city.names.english.map(str::to_string);
+            location.latitude = city.location.latitude;
+            location.longitude = city.location.longitude;
         }
 
-        if let Some(asn_reader) = &self.asn {
-            if let Ok(result) = asn_reader.lookup(addr) {
-                if let Ok(Some(asn)) = result.decode::<geoip2::Asn>() {
-                    location.asn = asn.autonomous_system_number.map(|n| n as i32);
-                    location.isp = asn.autonomous_system_organization.map(str::to_string);
-                }
-            }
+        if let Some(asn_reader) = &self.asn
+            && let Ok(result) = asn_reader.lookup(addr)
+            && let Ok(Some(asn)) = result.decode::<geoip2::Asn>()
+        {
+            location.asn = asn.autonomous_system_number.map(|n| n as i32);
+            location.isp = asn.autonomous_system_organization.map(str::to_string);
         }
 
         // Nothing resolved ⇒ behave like "no data" so callers don't record empty geo.

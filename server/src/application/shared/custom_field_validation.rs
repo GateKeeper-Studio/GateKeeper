@@ -144,13 +144,13 @@ fn validate_one(definition: &CustomFieldDefinition, value: &Value) -> Result<Val
             let Value::Number(n) = value else {
                 return Err(type_error(definition, "a number"));
             };
-            if let Some(f) = n.as_f64() {
-                if !f.is_finite() {
-                    return Err(DomainError::Validation(format!(
-                        "'{}' must be a finite number",
-                        any_label(definition)
-                    )));
-                }
+            if let Some(f) = n.as_f64()
+                && !f.is_finite()
+            {
+                return Err(DomainError::Validation(format!(
+                    "'{}' must be a finite number",
+                    any_label(definition)
+                )));
             }
             Ok(Value::Number(n.clone()))
         }

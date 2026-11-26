@@ -1,8 +1,29 @@
 # Proposed issues — GateKeeper
 
+## Checklist
+
+Checked against the code on 2026-11-16.
+
+- [ ] SAML 2.0 Service Provider for enterprise clients
+- [ ] SCIM 2.0 for automatic user/group provisioning
+- [ ] Organization-level identity federation ("bring your own IdP")
+- [x] Statistical/ML risk scoring beyond deterministic rules
+- [ ] SIEM integration (security event export)
+- [x] Passwordless login with a passkey as the primary factor
+  - [x] Follow-up: step-up for passwordless accounts
+- [x] Magic link login via e-mail
+- [ ] Device Authorization Grant (RFC 8628)
+- [x] Active session management per user (list + revocation)
+- [x] OIDC Back-Channel Logout
+- [ ] Row-Level Security in PostgreSQL by tenant_id
+- [ ] Bulk audit log export (CSV/JSON)
+- [ ] Native mobile SDKs (iOS/Android) and React Native
+
 ---
 
 ## [Feature] SAML 2.0 Service Provider for enterprise clients
+
+**Status:** not started. Nothing SAML-related exists yet; external federation is OIDC only.
 
 **Context:** today GateKeeper only federates identity via OIDC (`external_identity_provider_client`). Many B2B (enterprise) clients require SAML 2.0 as an SP.
 
@@ -21,6 +42,8 @@
 
 ## [Feature] SCIM 2.0 for automatic user/group provisioning
 
+**Status:** not started. No `/scim` routes; users and groups are managed through the admin API and dashboard only.
+
 **Context:** today users and groups are managed manually via the dashboard or the admin API. Enterprise clients expect automatic provisioning/deprovisioning from their own IdP (Okta, Azure AD, Google Workspace).
 
 **Proposal:** a SCIM 2.0 endpoint (`/scim/v2/Users`, `/scim/v2/Groups`) per tenant, authenticated via a dedicated service token (not the 15-minute admin token used by the dashboard).
@@ -38,6 +61,8 @@
 
 ## [Feature] Organization-level identity federation ("bring your own IdP")
 
+**Status:** not started. Federation is still configured per OAuth client; there is no home realm discovery.
+
 **Context:** today external federation is configured per OAuth *client* (`oauth_client/external_provider`). There's no way for an entire organization to delegate authentication to its own Entra ID/Okta, valid across all of the org's clients.
 
 **Proposal:** a new `organization_identity_provider` entity, resolved before the login screen when the e-mail domain matches an org with federation enabled (home realm discovery).
@@ -53,6 +78,8 @@
 
 ## [Feature] Statistical/ML risk scoring beyond deterministic rules
 
+**Status:** implemented — see [`RISK-SCORING.md`](RISK-SCORING.md). `HybridRiskEngine` behind the existing port (`RISK_SCORING=hybrid`; per tenant `rules`/`shadow`/`hybrid`), logistic regression over identifier-free features, exact per-feature explanations stored and shown, can only add step-up MFA. Dataset = admin labels + weak step-up MFA outcomes; `train_risk_model` CLI trains candidates with quality gates, manual promote/rollback, drift report, 90-day staleness fallback.
+
 **Context:** `fraud-specification.md` itself already lists this as "out of scope for the MVP, part of the advanced roadmap." The current risk engine (`default_risk_engine.rs`) is rule-based and explainable.
 
 **Proposal:** add a second `RiskEngine` (the port already exists in `application/ports/risk_engine.rs`) that combines the current rules with a statistical score (e.g. simple logistic regression over features already collected: login velocity, geo, IP reputation).
@@ -65,11 +92,11 @@
 - Any model needs a training dataset and an update process — define this before starting, or the feature goes stale quickly.
 - Watch out for bias/false positives from geolocation (e.g. users on a corporate VPN) — the spec already calls for being "safe against excessive false positives."
 
-**Status:** implemented — see [`RISK-SCORING.md`](RISK-SCORING.md). `HybridRiskEngine` behind the existing port (`RISK_SCORING=hybrid`; per tenant `rules`/`shadow`/`hybrid`), logistic regression over identifier-free features, exact per-feature explanations stored and shown, can only add step-up MFA. Dataset = admin labels + weak step-up MFA outcomes; `train_risk_model` CLI trains candidates with quality gates, manual promote/rollback, drift report, 90-day staleness fallback.
-
 ---
 
 ## [Feature] SIEM integration (security event export)
+
+**Status:** not started. Security events stay in `audit_events` / `login_events`; no exporter port.
 
 **Context:** cited as out of scope for the MVP in `fraud-specification.md`. Today security events stay only in the internal database/audit log.
 
@@ -86,7 +113,7 @@
 
 ## [Feature] Passwordless login with a passkey as the primary factor
 
-**Status:** implemented — see [`FLOWS-AUTHENTICATION.md` → Passwordless login](FLOWS-AUTHENTICATION.md#passwordless-login-a-passkey-as-the-primary-factor). Email-first through `login`; eligible = accounts with no password and a confirmed passkey; recovery = forgot-password reset + a last-passkey deletion guard. Open follow-up: step-up for passwordless accounts.
+**Status:** implemented — see [`FLOWS-AUTHENTICATION.md` → Passwordless login](FLOWS-AUTHENTICATION.md#passwordless-login-a-passkey-as-the-primary-factor). Email-first through `login`; eligible = accounts with no password and a confirmed passkey; recovery = forgot-password reset + a last-passkey deletion guard. Follow-up done: step-up for passwordless accounts — erasure, removing a sign-in method and adding a passkey need a fresh passkey assertion (or an emailed code when the account has no passkey either), opened by `POST /me/step-up`; see [`FLOWS-AUTHENTICATION.md` → Step-up](FLOWS-AUTHENTICATION.md#step-up-post-mestep-up-step_upstart--step_upconfirm).
 
 **Context:** WebAuthn already exists, but only as a second MFA factor (`start_webauthn_login`, `verify_webauthn`). Passkey-first (no password) is now standard in several modern IdPs.
 
@@ -120,6 +147,8 @@
 
 ## [Feature] Device Authorization Grant (RFC 8628)
 
+**Status:** not started. No `device_code` grant or device verification page.
+
 **Context:** there's currently no flow for CLIs, TV apps, or IoT devices without a full browser.
 
 **Proposal:** implement the `device_code` grant type as a new use case under `application/use_cases/oauth/`, analogous to the existing `token_exchange`, reusing `TokenIssuer`/`token_policy.rs` (already centralized after C2).
@@ -150,6 +179,8 @@
 
 ## [Feature] OIDC Back-Channel Logout
 
+**Status:** implemented — see [`FLOWS-OAUTH2-OIDC.md` → Logout](FLOWS-OAUTH2-OIDC.md#8-logout-rp-initiated-and-back-channel). Every path that ends sessions enqueues a back-channel logout in its own transaction; delivery reuses the outbox, the delivery table, retries and the HTTP client, but sends a `logout+jwt` minted per attempt (no HMAC: the JWT signature is the spec's authentication, and there is no recoverable per-client secret). New `/oauth/logout` (RP-Initiated Logout) signs the user out of every app when called from a live session; ID tokens carry `sid`.
+
 **Context:** today logout is per-client. There's no propagation of logout across all of a user's OAuth clients at once (e.g. a user logs out of the dashboard but stays "logged in" on another partner app).
 
 **Proposal:** implement back-channel logout per the OIDC spec, using the existing outbox/webhook sender (`webhook_sender.rs`) as the delivery mechanism — it's conceptually the same reliable-delivery problem the user webhooks already solve.
@@ -160,11 +191,11 @@
 **Points of attention:**
 - The `logout_token` must be its own signed JWT (the spec requires it) — don't directly reuse the user-webhook event format, only the delivery infrastructure.
 
-**Status:** implemented — see [`FLOWS-OAUTH2-OIDC.md` → Logout](FLOWS-OAUTH2-OIDC.md#8-logout-rp-initiated-and-back-channel). Every path that ends sessions enqueues a back-channel logout in its own transaction; delivery reuses the outbox, the delivery table, retries and the HTTP client, but sends a `logout+jwt` minted per attempt (no HMAC: the JWT signature is the spec's authentication, and there is no recoverable per-client secret). New `/oauth/logout` (RP-Initiated Logout) signs the user out of every app when called from a live session; ID tokens carry `sid`.
-
 ---
 
 ## [Feature] Row-Level Security in PostgreSQL by tenant_id
+
+**Status:** not started. Tenant isolation is application-level only (`WHERE tenant_id = …`); no RLS policies in the migrations.
 
 **Context:** `ARCHITECTURE-REVIEW.md` itself (item S8) already flagged this as pending: "Row-Level Security is not added" as a second barrier of isolation, beyond the application-level `WHERE tenant_id = ...` clauses.
 
@@ -181,6 +212,8 @@
 
 ## [Feature] Bulk audit log export (CSV/JSON)
 
+**Status:** not started. `GET /tenants/{tenant_id}/audit-events` is paginated only. (Per-user data export for LGPD/GDPR exists, `…/users/{user_id}/data-export`, but that is not an audit export.)
+
 **Context:** today `list_audit_events` exists but only paginated for UI viewing — there's no bulk export for compliance/external audit purposes.
 
 **Proposal:** an endpoint that runs the same `list_audit_events` query without UI pagination, but streamed (avoiding loading everything into memory), serialized to CSV or JSON.
@@ -195,6 +228,8 @@
 ---
 
 ## [Feature] Native mobile SDKs (iOS/Android) and React Native
+
+**Status:** not started. `packages/` is web-only. The server side is ready: redirect URIs already accept custom schemes and loopback `http` (`oauth_client/validation.rs`), and PKCE S256 is mandatory.
 
 **Context:** current SDK coverage (`packages/`) is web-only: SPA (React/Vue/Angular/AngularJS) and BFF (Next.js/Remix/SvelteKit). There's nothing for native mobile.
 

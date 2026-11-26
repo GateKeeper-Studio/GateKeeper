@@ -25,11 +25,13 @@ use crate::domain::{
         password_change_token_repository::PasswordChangeTokenRepository,
         password_reset_token_repository::PasswordResetTokenRepository,
         policy_acceptance_repository::PolicyAcceptanceRepository,
+        qr_login_request_repository::QrLoginRequestRepository,
         refresh_token_repository::RefreshTokenRepository, role_repository::RoleRepository,
         security_block_repository::SecurityBlockRepository,
         signing_key_repository::SigningKeyRepository,
         social_identity_repository::SocialIdentityRepository, tenant_repository::TenantRepository,
-        tenant_risk_policy_repository::TenantRiskPolicyRepository, user_repository::UserRepository,
+        tenant_risk_policy_repository::TenantRiskPolicyRepository,
+        trusted_device_repository::TrustedDeviceRepository, user_repository::UserRepository,
         webhook_delivery_repository::WebhookDeliveryRepository,
         webhook_subscription_repository::WebhookSubscriptionRepository,
     },
@@ -57,6 +59,8 @@ pub trait UnitOfWork: Send + Sync {
     fn mfa_challenge_repository(&self) -> Arc<dyn MfaChallengeRepository>;
     fn password_reset_token_repository(&self) -> Arc<dyn PasswordResetTokenRepository>;
     fn magic_link_token_repository(&self) -> Arc<dyn MagicLinkTokenRepository>;
+    fn qr_login_request_repository(&self) -> Arc<dyn QrLoginRequestRepository>;
+    fn trusted_device_repository(&self) -> Arc<dyn TrustedDeviceRepository>;
     fn password_change_token_repository(&self) -> Arc<dyn PasswordChangeTokenRepository>;
     fn email_provider_repository(&self) -> Arc<dyn EmailProviderRepository>;
     // External (social) identity providers + their sign-in artifacts: per-client

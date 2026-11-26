@@ -1,7 +1,7 @@
-import { env } from '$env/dynamic/public';
 import { ApiError, type Result } from '../types';
 
-const BASE_URL = env.PUBLIC_API_BASE_URL ?? 'http://localhost:8080';
+// Same origin: the identity provider serves this app.
+const BASE_URL = '';
 
 export type TokenResponse = {
 	access_token: string;
@@ -50,7 +50,10 @@ export async function exchangeCodeForToken(
 			} catch {
 				// keep empty
 			}
-			return [null, new ApiError(res.status, { error: data.error ?? 'token_error', message: data.message })];
+			return [
+				null,
+				new ApiError(res.status, { error: data.error ?? 'token_error', message: data.message })
+			];
 		}
 		return [(await res.json()) as TokenResponse, null];
 	} catch (error) {

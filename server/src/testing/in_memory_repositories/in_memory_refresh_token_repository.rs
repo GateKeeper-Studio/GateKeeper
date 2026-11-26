@@ -20,6 +20,12 @@ pub struct InMemoryRefreshTokenRepository {
     pub memory: Arc<InMemoryRepository<Uuid, RefreshToken>>,
 }
 
+impl Default for InMemoryRefreshTokenRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl InMemoryRefreshTokenRepository {
     pub fn new() -> Self {
         Self {
@@ -175,7 +181,7 @@ impl RefreshTokenRepository for InMemoryRefreshTokenRepository {
                 })
             })
             .collect();
-        out.sort_by(|a, b| b.last_used_at.cmp(&a.last_used_at));
+        out.sort_by_key(|e| std::cmp::Reverse(e.last_used_at));
         Ok(out)
     }
 

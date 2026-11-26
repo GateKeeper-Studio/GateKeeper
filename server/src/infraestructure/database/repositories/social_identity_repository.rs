@@ -94,6 +94,44 @@ impl SocialIdentityRepository for DbSocialIdentityRepository {
         Ok(())
     }
 
+    async fn find_by_user(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<SocialIdentity>, DomainError> {
+        let rows = run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          SELECT id, user_id, tenant_id, provider, provider_subject, email, created_at, updated_at
+          FROM social_identities
+          WHERE user_id = $1 AND tenant_id = $2
+          ORDER BY created_at
+        "#,
+                user_id,
+                tenant_id
+            ),
+            fetch_all
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                SocialIdentity::reconstruct(
+                    r.id,
+                    r.user_id,
+                    r.tenant_id,
+                    ExternalProviderKind::from_db(&r.provider),
+                    r.provider_subject,
+                    r.email,
+                    r.created_at,
+                    r.updated_at,
+                )
+            })
+            .collect())
+    }
+
     async fn find_providers_for_users(
         &self,
         user_ids: &[Uuid],

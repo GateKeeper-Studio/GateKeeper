@@ -65,7 +65,9 @@ two calls so they can't be tampered with.
    `mfa_enrollment_required` + `enrollable_methods`).
 7. If the credentials are flagged `should_change_password` (e.g. an admin-issued
    temporary password), mint a one-time `change_password_code` the SPA must redeem at
-   `/v1/auth/change-password` first.
+   `/v1/auth/change-password` first. A temporary password from an admin reset or an
+   admin-created account is burned here (§4): expired or already used, it failed at
+   step 3 like a wrong password.
 
 ### Step 2 — MFA verification (only if required)
 The SPA calls the matching `/v1/auth/verify-mfa/*` endpoint (§2). On success the
@@ -171,10 +173,11 @@ configured, require WebAuthn", and every later step is the existing one.
 - **Rolling deploys** — upgrade every server replica before exposing the hosted
   page's passkey button: an older replica's email/TOTP verifier does not know about
   `primary_factor`.
-- **Open follow-up** — step-up for passwordless accounts: `confirm_current_password`
-  passes for an account with no password, and enrolling a passkey needs only the
-  `account`-scoped token. A stolen token could therefore plant a passkey; notify on
-  enrollment / require recent authentication before relying on this broadly.
+- **Step-up for passwordless accounts** — an account with no password proves itself
+  with a fresh passkey assertion (or, with no passkey either, an emailed code) before
+  it is erased, loses a sign-in method or gains a passkey. A stolen `account` token
+  therefore cannot plant a passkey, which on such an account would sign in on its
+  own. See §2, "Step-up".
 
 ### Magic link login (a one-time link by email)
 
@@ -270,6 +273,205 @@ the link is redeemed: same session, same MFA gate, same `authorize`.
   reads `primary_factor = 'magic_link'` as `passkey` (it fails closed), so such a
   sign-in cannot complete there.
 
+### QR code sign-in (approve from another device)
+
+On clients where an admin turns it on (`oauth_clients.qr_login_enabled`, off by
+default; never on an external-login-only client), the hosted sign-in page offers
+"Sign in with a QR code", like a game launcher's "scan with the mobile app". The browser
+that wants to sign in shows a code; another device scans it, shows the user which
+browser is asking, and approves or denies. From the approval on it is the same flow as
+a password login: same session, same risk scoring, same MFA gate, same `authorize`.
+
+Two kinds of device can approve:
+
+- **The hosted approval page.** A phone camera opens the code's URL,
+  `{public origin}/auth/{client_id}/qr-approve#{requestId}.{token}`. The user signs in
+  there with this client's own methods (password, passkey; magic links and providers
+  are hidden because they leave the page), and that completed sign-in is the approval.
+- **An app the user is already signed in to** — the "scan with the app" case. With an
+  access token carrying the `account` scope, it calls `POST /me/qr-login/scan` with the
+  two values from the URL fragment, shows what is asking, then `POST
+  /me/qr-login/approve` with the claim code the scan returned **and a proof**: the
+  signature of one of the user's **trusted devices** (below; nothing to type), or the
+  account's current password. `/deny` needs only the claim code.
+
+```
+  Browser (sign-in page)                Provider                    Phone / app
+     │ 1. POST /v1/auth/qr-login { …frozen request }
+     │                                    │ start: client offers it? request valid? IP gate
+     │                                    │ · AuthSession primary_factor = qr_code, NO user
+     │  ← 201 { url, sessionCode, … }     │ · qr_login_requests row (token hash), 2 min
+     │◀───────────────────────────────────│
+     │ draws the QR code; polls every 2 s │
+     │ 2. POST /v1/auth/qr-login/status { requestId, sessionCode } → pending
+     │                                    │                            │ 3. camera opens the URL
+     │                                    │  POST …/qr-login/scan      │    (or the app scans)
+     │                                    │◀── { requestId, token } ───│
+     │                                    │ · first scan claims it: pending → scanned,
+     │                                    │   claim code (hash), 10 min to decide
+     │                                    │── { claimCode, app, device, location } ──▶│
+     │ … → scanned                        │                            │ 4. user checks it,
+     │                                    │                            │    signs in (hosted page)
+     │                                    │  POST …/qr-login/approve   │
+     │                                    │◀── { claimCode, sessionCode | token } ───│
+     │                                    │ · scanned → approved (user, via, mfa passed?)
+     │                                    │ · the phone's session is burned (proof only)
+     │ 5. status → approved               │
+     │                                    │ · approved → completed (exactly once)
+     │                                    │ · bind user, risk-score THIS browser, rotate the
+     │  ← { login-shaped response, email }│   code, MFA gate, forced change, audit the LOGIN
+     │◀───────────────────────────────────│
+     │ 6. "Continue as <email>?" — the user confirms it is their account
+     │ 7. MFA page or authorize → redirect to the RP (continueAfterLogin)
+```
+
+- **It can only ever sign in the browser that asked.** The browser's half is its login
+  session: only that page holds the session code it polls with, and the completed
+  sign-in spends the authorization request frozen in it, with the RP's own PKCE
+  verifier. The approving device never gets a code; on the hosted page its own sign-in
+  (with a random, discarded PKCE challenge) is burned when it approves.
+- **Two secrets, both hashed.** The QR token (256 bits, in the code) only lets the first
+  device that presents it claim the request: `pending → scanned` is one conditional
+  `UPDATE`, so a second scan of the same code — someone photographing the screen — is
+  refused. The claim code (256 bits) goes to that device only, and deciding needs it. A
+  claim made by an app also names the app's user: only that user can decide. Every
+  status change is a single conditional statement (`QrLoginRequestRepository`), so two
+  devices, or a deny racing an approve, cannot both win, and the browser collects an
+  approval once.
+- **Short-lived.** A code can be scanned for 2 minutes; the browser shows a new one by
+  itself while the page is in view (up to five in a row). After a scan the user has 10
+  minutes to decide (time to sign in on the phone), never past the browser's session,
+  which lives for the scan, the decision and one more minute.
+- **The secret is in the fragment**, so it stays out of server, proxy and `Referer`
+  logs; the approval page removes it from the address bar and sets
+  `referrer: no-referrer`.
+- **What the approver is shown.** The app's name, the asking browser (parsed from its
+  User-Agent, e.g. "Chrome · Windows"), its approximate location (GeoIP, when
+  configured) and when it asked. Not its IP address: the scanner may not be the person
+  who asked. Audit rows keep both sides' request context.
+- **A stolen token is not enough.** An app approves with its access token AND the
+  account's current password: a bearer token says nothing about who holds it, and
+  without the password a stolen 15-minute token could be turned into a full sign-in
+  (with its own refresh token) on the thief's browser. A wrong password denies the
+  request, so every guess costs a new code, which the strict rate limit bounds; a
+  password is only checked against a code this user really claimed.
+- **Second factor.** QR approval is the primary factor (`primary_factor = qr_code`; any
+  second factor can follow it). If the approving sign-in on the hosted page passed a
+  second factor, the client's MFA policy is satisfied by it and the browser is not asked
+  for another one (`approver_mfa_verified`). A risk-forced step-up is different: the
+  risk engine judged the browser itself (a new device, another country — what a relayed
+  code looks like), so the browser is asked for a second factor whatever the phone
+  passed. An app's approval never counts as a second factor (a token and a password are
+  not one): the client's MFA policy applies to the browser as after a password.
+- **The browser confirms the account.** Whoever approves decides which account the
+  browser signs in to, so someone who photographs the code could approve it with their
+  OWN account and sign the user's browser in as them (to collect what the user then
+  types). The browser therefore shows the approved email and continues only when the
+  user confirms; "Not my account" drops that sign-in and shows a new code.
+- **Risk is scored for the browser.** The completing poll evaluates the risk engine with
+  the browser's own IP and User-Agent; `BLOCK_TEMPORARILY` refuses the sign-in and
+  burns its session. Asking for a code goes through the same pre-authentication IP
+  gate as a password login.
+- **Audit.** `user.login.qr_approved` / `user.login.qr_denied` when the device decides
+  (`metadata.via` = `hosted_page` | `signed_in_app`, plus the requester's location and
+  IP), then `user.login.success` / `user.login.failure` with `metadata.method =
+  "qr_code"` when the browser completes, in the same transaction.
+- **Rate limits.** Asking for a code, scanning and deciding are in the strict credential
+  bucket. The browser's polling is on the global one: it authenticates with its session
+  code, and a poll every two seconds would exhaust the strict bucket.
+- **Limits — the phishing model.** Like every "scan to sign in" scheme, it can be relayed:
+  a phishing site can show a victim the QR code of the attacker's own browser, and a
+  victim who approves it signs the attacker in. What stands in the way is what the
+  approver is shown (which app, which browser, where — the location is what gives a
+  relay away, when GeoIP is configured), the explicit warning on the approval screen,
+  the 2-minute code, and risk scoring of the completing browser, whose step-up asks the
+  attacker for a second factor the phone's approval does not answer for. It is not
+  phishing-resistant the way a passkey is: browsers already offer a QR code for
+  passkeys stored on a phone ("use a phone or tablet", the WebAuthn hybrid transport),
+  and that flow checks over Bluetooth that the phone is physically near the computer.
+  For high-assurance tenants prefer passkeys, or keep this off.
+- **Rolling deploys** — upgrade every replica before enabling the flag: an older binary
+  reads `primary_factor = 'qr_code'` as `passkey` (it fails closed), so such a sign-in
+  cannot complete there.
+
+#### Trusted devices (approve with a key in the phone, not a password)
+
+A phone app the user is signed in to can register a key pair from the phone's secure
+hardware (iOS Secure Enclave, Android Keystore / StrongBox). From then on it approves
+QR codes by signing them: no password to type, and a stolen access token alone cannot
+approve anything, because the private key never leaves the phone. The app should create
+the key so that using it needs the user's fingerprint or face (iOS
+`.biometryCurrentSet`, Android `setUserAuthenticationRequired(true)`); the server cannot
+check that, so it is the app's job.
+
+- **Algorithm.** ES256 only (ECDSA P-256, SHA-256), the curve every phone's secure
+  hardware offers. Public keys are accepted as SPKI DER (Android `getEncoded()`) or a
+  SEC1 point (iOS `SecKeyCopyExternalRepresentation`); signatures as DER (both
+  platforms' default) or raw `r‖s` (WebCrypto); base64 in either alphabet. Keys are
+  stored as the uncompressed point (`utils/device_key.rs`).
+- **What is signed** — plain text, `\n` between lines, UTF-8, signed as is (the
+  signature hashes it):
+
+  | Purpose | Message |
+  |---|---|
+  | Registration | `gatekeeper.trusted-device.register.v1` / `{user id — the ID token's sub}` / `{publicKey exactly as sent}` |
+  | Approving a QR code | `gatekeeper.qr-login.approve.v1` / `{requestId — from the code}` / `{claimCode — from the scan}` |
+
+  Each starts with its own label, so a signature for one purpose cannot be used for the
+  other. The claim code is random and single-use, so an approval signature cannot be
+  replayed.
+- **Registering** — `POST /me/trusted-devices` with an `account`-scoped token and
+  `{name, publicKey, signature, currentPassword, mfaCode?}`. The password is required (a
+  token alone may not add a way in); the signature proves the app holds the private key.
+  It sits behind the strict rate limit. An account without a password cannot register
+  one. At most 10 per user; the same key twice is refused (409).
+- **Second factor.** A device's approvals satisfy the client's MFA policy when it was
+  registered with a current authenticator-app code (`mfaCode`, replay-guarded like at
+  sign-in), or when the user had no second factor at all then: the device becomes one.
+  Otherwise it only replaces the password, and the browser it approves is still asked
+  for a second factor. `countsAsSecondFactor` in the response says which. A risk-forced
+  step-up on the browser applies either way.
+- **Approving** — `POST /me/qr-login/approve` with `{requestId, claimCode, deviceId,
+  signature}`. The device must be the token user's. An unknown or removed device, or a
+  signature that does not verify, **denies the request** (401): every forgery attempt
+  costs a new code. `approved_via = trusted_device`; the audit row names the device; the
+  device's `lastUsedAt` is updated.
+- **Removing** — the user: `GET /me/trusted-devices`, `DELETE
+  /me/trusted-devices/{id}`. A tenant admin, for a lost phone: `GET|DELETE
+  /tenants/{t}/users/{u}/trusted-devices[/{id}]`. Changing or resetting the password,
+  "sign out everywhere" and erasure remove every device of the user in the same
+  transaction: a device trusted under an old password must not outlive it. Audit:
+  `user.trusted_device.registered` / `user.trusted_device.revoked`.
+- **Limits.** No key attestation yet: the server trusts that the key is in secure
+  hardware and gated by biometrics because the app says so. A malicious or compromised
+  app could register a software key. Relay phishing (see below) is not solved by a
+  device key either: the user can still be tricked into approving an attacker's code.
+
+### Social sign-in and the second factor
+
+A social sign-in (Google, GitHub) is a first factor, like a password. The callback
+(`GET /v1/auth/oauth-provider/{provider}/callback`) runs the same `MfaGate` as a password
+sign-in. A second factor is due when the client requires MFA, when the risk engine
+decides `ALLOW_WITH_MFA`, or when the user has a confirmed authenticator app or passkey
+the client allows.
+
+- **No factor due:** the callback mints the authorization code and redirects to the
+  client's `redirect_uri` (as before).
+- **A factor due:** no code is minted. The callback opens an MFA-pending `AuthSession`
+  that holds the client's frozen authorization request, and redirects to the hosted page
+  `{AUTH_UI_BASE_URL}/auth/{client_id}/external-continue#payload=<base64url JSON>`. The
+  payload (in the fragment, so it reaches no server) is the same answer `login` gives,
+  plus the account's email and the OIDC parameters. The page stores the session and
+  continues exactly as after a password: MFA screen, then `POST /v1/auth/authorize`.
+
+Anyone can write a link to that page, so nothing in the payload decides the outcome:
+the session code works only if the IdP issued it, the IdP checks the second factor, and
+the final redirect goes to the `redirect_uri` and `state` the IdP kept in the session
+(`redirectToClient`), not to the ones in the payload.
+
+The same rule now holds on every hosted page: after `authorize`, the browser is sent to
+the address in the answer, never to the page's own `redirect_uri` parameter.
+
 ### External-provider-only clients (`external_login_only`)
 
 A client can be configured to authenticate **only** through its external identity
@@ -344,6 +546,38 @@ TOTP secrets are encrypted at rest (AES-256-GCM); WebAuthn uses `webauthn-rs` wi
 the relying-party config resolved from `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` /
 `WEBAUTHN_ADDITIONAL_ORIGINS` (see [`ARCHITECTURE.md`](ARCHITECTURE.md) §10).
 
+### Step-up (`POST /me/step-up`, `step_up/start` + `step_up/confirm`)
+
+A sensitive self-service action asks for fresh proof that the caller is the account's
+owner, so a stolen `account` token alone does nothing harmful:
+
+| Action | Who must prove it |
+|---|---|
+| `DELETE /me` (erasure) | every account |
+| `DELETE /me/mfa/methods/{id}` | every account |
+| `POST /me/mfa/webauthn/start` (adding a passkey) | accounts without a password: there a passkey signs in on its own. With a password it is only a second factor |
+
+The proof depends on the account, and `POST /me/step-up` says which (strict per-IP
+rate limit, like trusted-device registration):
+
+- **a password** → `{"method":"password"}`: send `{"current_password": "…"}`. Never a
+  password awaiting a forced change (`UserCredentials::proves_account_owner`).
+- **no password, a passkey** → `{"method":"passkey","challengeId","options"}`: run the
+  WebAuthn assertion and send `{"step_up": {"challenge_id", "assertion"}}`. Such an
+  account may not fall back to a code: whoever holds a stolen token and the mailbox
+  would pass without the passkey.
+- **neither (social only)** → `{"method":"email","challengeId","expiresAt"}`: a 6-digit
+  code went to the verified address (`step_up_code` template, which also warns the
+  user); send `{"step_up": {"challenge_id", "code"}}`. At most 3 codes per 15 minutes;
+  an unverified address gets none.
+
+Each ceremony is an `mfa_challenges` row with purpose `step_up` and no session: single
+use, 5 minutes (passkey) or 10 (code), 5 wrong tries (each persisted before the
+refusal), and a new one replaces the previous one of its kind. A missing or wrong
+proof is `403 step_up_required`, whose `error_description` names what to send. The
+SDKs' `collectStepUp(ask)` runs the whole exchange (`ask` supplies the password or
+the code).
+
 Beyond MFA, the same `require_auth` surface exposes **`GET /me/security/login-events`**
 — a user's *own* recent sign-in activity (location, device, risk level, decision) drawn
 from the login-event history, so they can spot unfamiliar logins. Identity is pinned to
@@ -373,7 +607,9 @@ external-login-only client (§1).
 |---|---|---|
 | `POST /v1/auth/forgot-password` | `forgot_password` | Email a reset link to `AUTH_UI_BASE_URL/auth/{client_id}/change-password` |
 | `POST /v1/auth/reset-password` | `reset_password` | Set a new password from the emailed token |
-| `POST /v1/auth/change-password` | `change_password` | Complete a forced change (admin-issued temp password) using the `change_password_code` from login |
+| `POST /v1/auth/change-password` | `change_password` | Complete a forced change (admin-issued temp password) using the `change_password_code` from login and the sign-in's `session_code` |
+| `POST /tenants/{tenant_id}/users/{user_id}/password-reset` (admin) | `tenant_user/reset_user_password` | Email the user a single-use temporary password |
+| `POST /tenants/{tenant_id}/users` (admin) | `tenant_user/create_tenant_user` | Create a user and email the welcome email with a single-use temporary password |
 
 Reset and change tokens are single-use, stored hashed, and short-lived; issuing a new
 one invalidates any earlier live token for that user. A pending forced change blocks
@@ -382,31 +618,218 @@ tokens. All three endpoints are refused for an external-login-only client (§1) 
 is no password to reset, and a token minted before the flag was turned on is refused
 rather than redeemed.
 
+**The forced change needs the second factor.** `change_password` also takes the
+`session_code` of the sign-in that minted the code (password, magic link, QR or social
+sign-in all mint one for a pending change), and refuses (401, like `authorize`) unless
+that session is alive, belongs to this client and user, and is past its second factor. The `change_password_code` is
+returned by login before MFA runs, so without this check whoever knew the temporary
+password could choose the account's next password without the user's second factor.
+The hosted pages keep the code in `sessionStorage` beside the session, never in a URL
+(an address lands in the browser history), and the passkey MFA page also leads to the
+change.
+
+### Admin password reset
+
+An admin (tenant admin, or a platform admin of the tenant's organization) presses
+**Reset password** on a user's Security tab. `reset_user_password`:
+
+1. Authorizes the actor for the tenant (`actor.authorize_tenant_admin_for`). Refuses a
+   deactivated account and one without a password (passkey or social only: giving it
+   one would change how it signs in).
+2. Refuses before changing anything when the tenant has no active default email
+   provider, outside development: the email would be dropped and the user locked out.
+   Development hands it to the transport, which prints it to the log.
+3. Generates the temporary password on the server (`generate_temporary_password`:
+   16 symbols from a 31-symbol alphabet without look-alikes, about 79 bits, e.g.
+   `K7QM-4TZP-WXRB-9HNC`), stores only its Argon2id hash as
+   `UserCredentials::temporary`: `should_change_pass` plus
+   `temporary_password_expires_at` = now + `TEMPORARY_PASSWORD_TTL_HOURS` (24 h).
+4. Closes what the old password opened, in the same transaction: back-channel logout
+   for every session, refresh tokens revoked, sign-ins in progress (`auth_sessions`)
+   deleted, trusted devices deleted, live change codes and forgot-password links
+   invalidated. Records `user.password.admin_reset` (actor, user, expiry; never the
+   password).
+5. Commits, then emails the password with the `temporary_password` template. A failed
+   delivery returns the error; resetting again replaces the password.
+
+The admin never sees the password: not in the response (`{ userId, email,
+temporaryPasswordExpiresAt }`), the audit row or the logs. The email carries no link,
+so it teaches nobody to follow links that ask for a password.
+
+The temporary password then:
+
+- **signs in once.** Login burns it with one conditional statement
+  (`UserRepository::burn_temporary_password`: `UPDATE … WHERE
+  temporary_password_expires_at > now`), so of two sign-ins racing with it only one
+  gets through. After that, and after expiry, it fails exactly like a wrong password
+  (same Argon2 work, same error). A save of a copy read before the burn cannot revive
+  it: with the same hash, the user upsert keeps the earlier expiry.
+- **still asks for the second factor**, and only then lets the user choose a new
+  password (above). Changing it ends every session again.
+- **proves nothing at a step-up.** While a change is pending,
+  `UserCredentials::proves_account_owner` is false: `current_password` on `/me`, a QR
+  approval with a password and a trusted-device registration all refuse it.
+
+If the user signs in with it and abandons the change, the admin resets again.
+
+### Admin-created accounts
+
+`create_tenant_user` gives a new account its first password the same way: the server
+generates it, stores it as `UserCredentials::temporary` with
+`NEW_ACCOUNT_PASSWORD_TTL_HOURS` (72 h: the user may not know the account exists yet)
+and emails it with the `account_created` template after the commit. Everything above
+about the temporary password holds: single use, expiry, the second factor, the forced
+change, no step-up. Differences from a reset:
+
+- The request has no password. A body that still carries `temporary_password` is
+  refused (400), so a script that used to pick one learns it no longer does instead of
+  believing the account opens with it.
+- No email provider (outside development) refuses the creation before anything is
+  written.
+- A failed delivery after the commit is not an error, because the account exists: the
+  answer says `temporary_password_emailed: false` and the console tells the admin to
+  send a new one with **Reset password**. Both answers carry
+  `temporary_password_expires_at`, never the password.
+
 ---
 
 ## 5. Platform-admin authentication
 
-Admins are global (organization-scoped, not tenant-scoped) and use **HS256** tokens
-(15-minute TTL, `typ: "admin"`, `kid` header) signed with `ADMIN_TOKEN_SIGNING_KEY`
-(`AdminTokenService`). The key rotates without logging admins out: the previous key in
-`ADMIN_TOKEN_PREVIOUS_SIGNING_KEY` keeps verifying for one token lifetime. These endpoints live
-**outside** the admin guard (they're how an admin *gets* a token):
+Platform admins belong to an organization (not a tenant) and administer every tenant
+of it. They sign in two ways, both through one `AdminAuthenticator`
+(`application/services/admin_authenticator.rs`), so the rules below hold for both:
 
 | Endpoint | Use case | Purpose |
 |---|---|---|
-| `POST /admin/login` | `admin_login` | Verify admin password (Argon2 + `ADMIN_PASSWORD_PEPPER`; an unknown admin pays a dummy verification so timing does not reveal it) → issue access token + refresh token |
-| `POST /admin/refresh` | `admin_refresh` | Rotate the refresh token → new access token |
-| `POST /admin/logout` | `admin_logout` | Revoke the refresh-token family (server-side sign-out) |
+| `POST /session` (+ `GET`, `DELETE`) | `admin_web_session::{start,resolve,end}` | **The console.** Opens an httpOnly cookie session; `/api/*` turns it into a per-request admin token. See [`SERVING-THE-DASHBOARD-FROM-THE-SERVER.md`](SERVING-THE-DASHBOARD-FROM-THE-SERVER.md) |
+| `POST /admin/login` | `admin_login` | **API clients.** Access token + refresh token |
+| `POST /admin/refresh` | `admin_refresh` | Rotate the refresh token (compare-and-set: of two concurrent refreshes with one token, one wins) → new access token |
+| `POST /admin/logout` | `admin_logout` | Revoke the refresh-token family |
 
-Bootstrap the first admin from the CLI:
+Access tokens are **HS256** (15-minute TTL, `typ: "admin"`, `kid` header) signed with
+`ADMIN_TOKEN_SIGNING_KEY` (`AdminTokenService`); the previous key in
+`ADMIN_TOKEN_PREVIOUS_SIGNING_KEY` keeps verifying for one token lifetime, so the key
+rotates without signing anyone out.
+
+### Sign-in rules
+
+- **Generic failures.** Unknown email, wrong password, deactivated account, suspended
+  organization and locked account all answer `401 {"error":"invalid credentials"}`, and
+  each costs one Argon2 verification (a dummy one when there is no usable account), so
+  neither the answer nor its timing reveals which admin emails exist or their state.
+- **Emails are case-insensitive.** Stored trimmed and lowercased (a database CHECK holds
+  it); lookups normalize the same way.
+- **Per-account lock.** 5 consecutive failures (wrong password or wrong code, at sign-in
+  or at a step-up) lock the account for 15 minutes, then the count restarts; a successful
+  sign-in clears it. This is what stops a password spray spread over many IPs, which the
+  per-IP rate limit (the strict credential bucket) cannot see. Audited as
+  `admin.account.locked`.
+- **Suspended organization.** `organizations.is_active = false` stops its admins at
+  sign-in, refresh and on the next console request. Only the system can change it; the
+  console's own admins cannot (`PUT /admin/me/organization` refuses it).
+- **Second factor.** An admin with two-step verification on who sends the right password
+  without a code gets `401 {"error":"mfa_required"}` (audited `admin.login.mfa_required`)
+  and repeats the request with `mfaCode` (console) / `mfa_code` (API): a 6-digit TOTP code
+  or a recovery code. A wrong code is `401 {"error":"invalid_mfa_code"}` and counts toward
+  the lock. `mfa_required` is only ever returned for a right password. Nothing is stored
+  between the two requests.
+
+### Two-step verification (`/admin/me/mfa*`)
+
+| Endpoint | Needs | Effect |
+|---|---|---|
+| `GET /admin/me/mfa` | — | `{totpEnabled, enabledAt, recoveryCodesRemaining}` |
+| `POST /admin/me/mfa/totp` | `current_password` | New seed (sealed with `SecretPurpose::AdminTotpSeed`, bound to the admin id), pending until confirmed; returns the seed and `otpauth://` URL once. Refused while a factor is on |
+| `POST /admin/me/mfa/totp/confirm` | `code` | Turns it on; returns 10 recovery codes once (`XXXXX-XXXXX`, 50 bits each, stored as SHA-256) |
+| `POST /admin/me/mfa/recovery-codes` | `current_password` | Replaces every recovery code |
+| `DELETE /admin/me/mfa` | `current_password` + `code` | Turns it off (a never-confirmed enrollment needs only the password) |
+
+TOTP is RFC 6238 (SHA-1, 30 s, 6 digits, ±1 step). The last accepted step is stored and
+the write is conditional, so a code cannot be replayed, not even by two concurrent
+requests; a recovery code is removed from the array in the same conditional statement.
+Responses carrying a seed or codes are `Cache-Control: no-store`. An unreadable seed
+(lost encryption key) still lets the admin in with a recovery code;
+`repair_encrypted_secrets --apply` deletes the factor so they can enroll again.
+
+### The admin's own account (`/admin/me*`)
+
+- **Password change** needs the current password and a new one that meets the admin
+  policy (12–128 characters, not the email, not the current one;
+  `application/shared/admin_password_policy.rs`). It then **ends every other session**:
+  every refresh-token family and every console session except the one making the request.
+- **Email change** needs `current_password` (it is the sign-in identifier); a name-only
+  change does not.
+- **Deactivation** (`DELETE /admin/me`) needs `current_password`, ends every session, and
+  is refused for the last active admin of the organization. The check runs under a lock on
+  the organization row, so two admins deactivating themselves at the same moment cannot
+  leave it with none. Another admin of the organization can reactivate it (below).
+- **Console guided tour** (`PUT /admin/me/console-tour`, body `{ "version": <1..1000> }`)
+  records the highest tour version the admin has finished or closed, in
+  `admin_users.console_tour_version` (`GREATEST`, never lowered). `GET /session` returns it
+  as `consoleTourVersion`, so the first-visit tour follows the admin across browsers and
+  devices. It is a UI preference, not account data: no `current_password`, no step-up, no
+  audit event, and it never stamps `updated_at`. See
+  [Serving the dashboard](SERVING-THE-DASHBOARD-FROM-THE-SERVER.md#console-guided-tour).
+
+### Requiring two-step verification (`PUT /admin/organization/mfa-policy`)
+
+`organizations.require_admin_mfa` makes the second factor mandatory for every admin of
+the organization. Turning it on needs `current_password` and two-step verification on the
+acting admin's own account; both directions are audited
+(`organization.admin_mfa_policy.updated`).
+
+An admin without a second factor in such an organization still signs in, but every token
+minted for them (`/admin/login`, `/admin/refresh`, each console request) carries
+`mfa_setup: true`, and `require_admin` then answers everything except
+`GET /admin/me/profile`, `GET /admin/me/organization`, `GET /admin/me/mfa`,
+`POST /admin/me/mfa/totp` and `POST /admin/me/mfa/totp/confirm` with
+`403 {"error":"mfa_setup_required"}`. The flag is recomputed on every console request,
+so turning the policy on restricts open sessions at once and enrolling lifts the
+restriction at once (a bearer token keeps its flag until it expires, ≤ 15 min).
+`GET /session` reports it as `mfaSetupRequired`; the console then shows only
+`/login/two-step`. The check costs a query only in organizations that require it.
+
+### Managing the organization's admins (`/admin/organization/*`)
+
+All admins of an organization are equal (there are no admin roles). Each action is
+authorized as the caller's own organization (`Actor::authorize_organization`), needs the
+acting admin's `current_password` where it changes anything about an account, and is
+audited with the colleague as the resource.
+
+| Endpoint | Effect |
+|---|---|
+| `GET /admin/organization/admins` | Every admin: status, two-step on/off, locked, last sign-in |
+| `POST /admin/organization/admins/{id}/deactivate` | Deactivates a colleague and ends all their sessions; refused for yourself (use `DELETE /admin/me`) and for the last active admin |
+| `POST /admin/organization/admins/{id}/reactivate` | Reactivates a colleague (also clears any sign-in lock) |
+| `DELETE /admin/organization/admins/{id}/mfa` | Recovery for a colleague who lost their authenticator and recovery codes: removes the factor and ends their sessions |
+| `GET /admin/organization/invitations` | Open invitations |
+| `POST /admin/organization/invitations` | `{email, current_password}` → a one-time link `<origin>/login/invite#<token>`, shown once (256-bit token, only its SHA-256 stored, 72 h). Re-inviting an email replaces its open link; an email that is already an admin is a 409 |
+| `DELETE /admin/organization/invitations/{id}` | Withdraws an invitation |
+
+The link is handed over out of band (there is no platform-level email sender). Its token
+is in the URL fragment, which browsers never send to a server, so it stays out of access
+logs; the invitation page removes it from the address bar on load. The invitee then uses
+two public endpoints in the strict credential rate-limit bucket:
+`POST /admin/invitations/lookup {token}` (which email and organization; any unusable link
+is the same 404) and `POST /admin/invitations/accept {token, name, password}`. Accepting
+claims the invitation and creates the admin in one transaction, so a link creates at most
+one admin; the password policy applies, and the new admin signs in normally.
+
+### Bootstrapping an admin
 
 ```bash
-cargo run --bin create_admin -- <email> <password> [organization_id]
+cargo run --bin create_admin -- <email> [organization_id]          # prompts for the password twice
+printf '%s\n' "$PASSWORD" | cargo run --bin create_admin -- <email>  # or reads it from stdin
 ```
 
-It hashes with the same `ADMIN_PASSWORD_PEPPER` (legacy: `JWT_SECRET`) the running API verifies against, and
-attaches the admin to the given organization (or a find-or-created "Default
-Organization").
+The password is never taken from the command line (shell history, `ps`); the old
+`<email> <password> [organization_id]` form still works with a warning. It must meet the
+admin password policy. The hash uses the same `ADMIN_PASSWORD_PEPPER` (legacy:
+`JWT_SECRET`) the running API verifies against, and the admin is attached to the given
+organization (or a find-or-created "Default Organization").
+
+Expired admin refresh tokens, console sessions and invitations are removed by the
+retention purge.
 
 ---
 
@@ -421,7 +844,9 @@ Organization").
   `admin.access_denied` audit events on failure. Without the scope checks, any OAuth
   client of a tenant received tokens that opened these APIs.
 - Destructive self-service calls (`DELETE /me`, `DELETE /me/mfa/methods/{id}`) also
-  need `{"current_password": "..."}` in the body (step-up, `step_up_required` 403).
+  need a step-up in the body: `{"current_password": "..."}`, or for an account without
+  a password the `step_up` proof from `POST /me/step-up` (§2, `step_up_required` 403).
+  Adding a passkey to an account without a password needs it too.
 
 Token verification picks the right path automatically:
 
@@ -453,8 +878,9 @@ cannot pick its own IP.
 
 | Credential | TTL | Storage |
 |---|---|---|
-| Auth session (`session_code`) | 10 min (15 min while waiting for a magic link) | hash only |
+| Auth session (`session_code`) | 10 min (15 min while waiting for a magic link, 13 for a QR approval) | hash only |
 | Magic sign-in link | 15 min | hash only, single-use, same browser only |
+| QR sign-in code / claim code | 2 min to scan / 10 min to decide | hash only, first scan claims it |
 | Email OTP (MFA) | 10 min | hash only |
 | WebAuthn challenge | 5 min | opaque state |
 | Authorization code | 60 s | hash only, single-use |

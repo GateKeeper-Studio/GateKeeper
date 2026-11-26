@@ -14,13 +14,18 @@ use crate::{
             admin_account::{
                 change_password as admin_change_password,
                 deactivate_account as admin_deactivate_account, get_profile as admin_get_profile,
+                record_console_tour as admin_record_console_tour,
                 update_profile as admin_update_profile,
             },
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
+            admin_mfa, admin_organization,
+            admin_web_session::{
+                end as console_end, resolve as console_resolve, start as console_start,
+            },
             authentication::{
-                authorize_session, change_password, confirm_current_password, confirm_email,
-                external_login, forgot_password, login, redeem_magic_link, refresh_session,
-                register, request_magic_link, resend_confirm_email, reset_password,
+                authorize_session, change_password, confirm_email, external_login, forgot_password,
+                login, redeem_magic_link, refresh_session, register, request_magic_link,
+                resend_confirm_email, reset_password,
             },
             compliance::{
                 erase_user, export_user_data, list_audit_events, list_required_documents,
@@ -64,6 +69,7 @@ use crate::{
                 rotate_oauth_client_secret, update_oauth_client,
             },
             organization::{get_organization_by_id, update_organization},
+            qr_login,
             role::{
                 assign_role_users, create_role, delete_role_by_id, get_role_by_id, list_role_users,
                 list_roles, list_user_roles, unassign_role_user, update_role_by_id,
@@ -74,6 +80,7 @@ use crate::{
                 update_risk_policy,
             },
             session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
+            step_up,
             tenant::{
                 create_tenant, delete_tenant_by_id, get_tenant_by_id, list_tenants,
                 update_tenant_appearance, update_tenant_by_id,
@@ -84,10 +91,11 @@ use crate::{
                 reorder_tenant_custom_fields, update_tenant_custom_field_by_id,
             },
             tenant_user::{
-                create_tenant_user, delete_tenant_user_by_id, get_tenant_user_by_id,
-                list_tenant_users, update_tenant_user_by_id,
-                update_tenant_user_custom_field_values,
+                create_tenant_user, delete_tenant_user_by_id, get_authentication_methods,
+                get_tenant_user_by_id, list_tenant_users, reset_user_password,
+                update_tenant_user_by_id, update_tenant_user_custom_field_values,
             },
+            trusted_device,
             webhook_subscription::{
                 create_webhook_subscription, delete_webhook_subscription,
                 get_webhook_subscription_by_id, list_webhook_deliveries,
@@ -95,7 +103,7 @@ use crate::{
             },
         },
     },
-    presentation::middleware::auth::Authenticator,
+    presentation::middleware::{auth::Authenticator, console_session::ConsoleSettings},
 };
 
 // Tenant records (organization-scoped).
@@ -119,10 +127,14 @@ pub struct TenantUserUseCases {
     pub create_tenant_user: Arc<create_tenant_user::use_case::UseCase>,
     pub list_tenant_users: Arc<list_tenant_users::use_case::UseCase>,
     pub get_tenant_user_by_id: Arc<get_tenant_user_by_id::use_case::UseCase>,
+    // How a user can sign in (password, passkeys, social accounts, second factors).
+    pub get_authentication_methods: Arc<get_authentication_methods::use_case::UseCase>,
     pub update_tenant_user_by_id: Arc<update_tenant_user_by_id::use_case::UseCase>,
     pub update_tenant_user_custom_field_values:
         Arc<update_tenant_user_custom_field_values::use_case::UseCase>,
     pub delete_tenant_user_by_id: Arc<delete_tenant_user_by_id::use_case::UseCase>,
+    // Emails the user a single-use temporary password; the admin never sees it.
+    pub reset_user_password: Arc<reset_user_password::use_case::UseCase>,
 }
 
 // Per-tenant custom profile fields.
@@ -217,7 +229,29 @@ pub struct AuthenticationUseCases {
     pub redeem_magic_link: Arc<redeem_magic_link::use_case::UseCase>,
     pub reset_password: Arc<reset_password::use_case::UseCase>,
     pub change_password: Arc<change_password::use_case::UseCase>,
-    pub confirm_current_password: Arc<confirm_current_password::use_case::UseCase>,
+}
+
+// QR code sign-in: the browser's code (start, poll) and the scanning device's side
+// (scan, decide), for both the hosted approval page and signed-in apps (/me).
+pub struct QrLoginUseCases {
+    pub start: Arc<qr_login::start::use_case::UseCase>,
+    pub poll: Arc<qr_login::poll::use_case::UseCase>,
+    pub scan: Arc<qr_login::scan::use_case::UseCase>,
+    pub decide: Arc<qr_login::decide::use_case::UseCase>,
+}
+
+// Step-up before sensitive self-service actions: the proof an account gives
+// (password, passkey assertion, emailed code) and its check.
+pub struct StepUpUseCases {
+    pub start: Arc<step_up::start::use_case::UseCase>,
+    pub confirm: Arc<step_up::confirm::use_case::UseCase>,
+}
+
+// Trusted devices: phone apps whose key approves QR code sign-ins.
+pub struct TrustedDeviceUseCases {
+    pub register: Arc<trusted_device::register::use_case::UseCase>,
+    pub list: Arc<trusted_device::list::use_case::UseCase>,
+    pub revoke: Arc<trusted_device::revoke::use_case::UseCase>,
 }
 
 // MFA challenges during sign-in, and self-service enrollment.
@@ -305,6 +339,29 @@ pub struct AdminUseCases {
     pub update_my_profile: Arc<admin_update_profile::use_case::UseCase>,
     pub change_my_password: Arc<admin_change_password::use_case::UseCase>,
     pub deactivate_my_account: Arc<admin_deactivate_account::use_case::UseCase>,
+    // The console's guided tour, seen (`/admin/me/console-tour`).
+    pub record_my_console_tour: Arc<admin_record_console_tour::use_case::UseCase>,
+    // The admin's own second factor (`/admin/me/mfa*`).
+    pub get_my_mfa: Arc<admin_mfa::get_status::use_case::UseCase>,
+    pub start_my_totp: Arc<admin_mfa::start_totp::use_case::UseCase>,
+    pub confirm_my_totp: Arc<admin_mfa::confirm_totp::use_case::UseCase>,
+    pub disable_my_mfa: Arc<admin_mfa::disable::use_case::UseCase>,
+    pub regenerate_my_recovery_codes: Arc<admin_mfa::regenerate_recovery_codes::use_case::UseCase>,
+    // The admins of an organization managing each other (`/admin/organization/*`)
+    // and accepting an invitation (`/admin/invitations/*`).
+    pub list_admins: Arc<admin_organization::list_admins::use_case::UseCase>,
+    pub set_admin_active: Arc<admin_organization::set_admin_active::use_case::UseCase>,
+    pub reset_admin_mfa: Arc<admin_organization::reset_admin_mfa::use_case::UseCase>,
+    pub invite_admin: Arc<admin_organization::invite_admin::use_case::UseCase>,
+    pub list_invitations: Arc<admin_organization::list_invitations::use_case::UseCase>,
+    pub revoke_invitation: Arc<admin_organization::revoke_invitation::use_case::UseCase>,
+    pub lookup_invitation: Arc<admin_organization::lookup_invitation::use_case::UseCase>,
+    pub accept_invitation: Arc<admin_organization::accept_invitation::use_case::UseCase>,
+    pub set_mfa_policy: Arc<admin_organization::set_mfa_policy::use_case::UseCase>,
+    // The admin console's cookie session (`/session` and the `/api` bridge).
+    pub console_sign_in: Arc<console_start::use_case::UseCase>,
+    pub console_resolve: Arc<console_resolve::use_case::UseCase>,
+    pub console_sign_out: Arc<console_end::use_case::UseCase>,
 }
 
 #[derive(Clone)]
@@ -320,6 +377,9 @@ pub struct AppState {
     pub consents: Arc<ConsentUseCases>,
     pub sessions: Arc<SessionUseCases>,
     pub authentication: Arc<AuthenticationUseCases>,
+    pub qr_login: Arc<QrLoginUseCases>,
+    pub trusted_devices: Arc<TrustedDeviceUseCases>,
+    pub step_up: Arc<StepUpUseCases>,
     pub mfa: Arc<MfaUseCases>,
     pub webhooks: Arc<WebhookUseCases>,
     pub email: Arc<EmailUseCases>,
@@ -333,4 +393,6 @@ pub struct AppState {
     pub auth: Arc<Authenticator>,
     /// Readiness of hard dependencies, for `/ready`.
     pub health: Arc<dyn HealthCheck>,
+    /// The admin console's cookie session: allowed origin and cookie flavour.
+    pub console: Arc<ConsoleSettings>,
 }

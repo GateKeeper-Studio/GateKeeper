@@ -3,7 +3,6 @@
 	import { useQueryClient } from '@tanstack/svelte-query';
 
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import LoadingSpinner from '$lib/components/loading-spinner.svelte';
@@ -18,7 +17,6 @@
 
 	let name = $state(organization.name);
 	let description = $state(organization.description ?? '');
-	let isActive = $state(organization.isActive);
 
 	let error = $state('');
 	let isLoading = $state(false);
@@ -35,8 +33,7 @@
 
 		const [, err] = await updateMyOrganization({
 			name: name.trim(),
-			description: description.trim() || null,
-			isActive
+			description: description.trim() || null
 		});
 		isLoading = false;
 
@@ -69,14 +66,6 @@
 			bind:value={description}
 		/>
 	</div>
-
-	<label class="flex items-center gap-2 text-sm">
-		<Checkbox bind:checked={isActive} />
-		{m.settings_organization_active_label()}
-		<span class="text-muted-foreground"
-			>{m.settings_organization_active_helper()}</span
-		>
-	</label>
 
 	<div class="flex justify-end">
 		<Button type="submit" disabled={isLoading} class="w-fit">

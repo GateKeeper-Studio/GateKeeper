@@ -9,6 +9,8 @@ pub struct Response {
     pub name: String,
     pub description: Option<String>,
     pub is_active: bool,
+    // Every admin must use two-step verification.
+    pub require_admin_mfa: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
 }

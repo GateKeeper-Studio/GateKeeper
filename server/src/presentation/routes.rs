@@ -7,6 +7,9 @@
 //   - `me.rs`         — behind `require_auth` (`account` scope);
 //   - `credential.rs` — public credential endpoints, strict rate limit;
 //   - `public.rs`     — OAuth/OIDC protocol, public flows, health/readiness.
+// Plus, when the server serves the dashboard (UI_DIR), `crate::presentation::ui`
+// (the static SPA) and `/api/*`, the admin router again behind the console's
+// cookie bridge (`middleware::console_session`).
 // This file merges them and applies the app-wide layers. The state they share is
 // built by `crate::bootstrap`.
 mod admin;
@@ -17,22 +20,30 @@ mod public;
 use std::sync::Arc;
 
 use axum::{
-    Router,
+    Json, Router,
     extract::Request,
-    http::{HeaderValue, header},
+    http::{HeaderValue, StatusCode, header},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 
-use crate::presentation::middleware::{
-    auth::{capture_client_context, request_id},
-    client_ip::{ClientIpKeyExtractor, TrustedProxies},
-    metrics::track_metrics,
-};
 pub use crate::presentation::state::AppState;
+use crate::presentation::{
+    middleware::{
+        auth::{capture_client_context, request_id},
+        client_ip::{ClientIpKeyExtractor, TrustedProxies},
+        console_session::console_api_bridge,
+        metrics::track_metrics,
+    },
+    ui::{self, UiAssets},
+};
 
-pub fn router(state: AppState, trusted_proxies: Arc<TrustedProxies>) -> Router {
+pub fn router(
+    state: AppState,
+    trusted_proxies: Arc<TrustedProxies>,
+    ui_assets: Option<Arc<UiAssets>>,
+) -> Router {
     // Everything else: 200 up front, then one every 100ms (~600/min sustained). A
     // dashboard fan-out issues many parallel reads, so this must not be tight; it
     // exists to blunt scraping and accidental hammering, not to shape normal traffic.
@@ -52,15 +63,36 @@ pub fn router(state: AppState, trusted_proxies: Arc<TrustedProxies>) -> Router {
     // `/metrics` is NOT on this router: it is served on its own internal listener
     // (METRICS_PORT, see `main.rs`), so exposing the API does not expose the registry.
 
-    admin_router
+    // The admin console calls the admin API as `/api/<admin path>` with its session
+    // cookie. The bridge turns the cookie into a bearer token, then the very same
+    // admin routes (and `require_admin`) handle it. Only the admin surface is nested:
+    // `/api/me`, `/api/v1/...` and every other path do not exist.
+    let console_api = admin::router(&state).layer(middleware::from_fn_with_state(
+        state.clone(),
+        console_api_bridge,
+    ));
+
+    let api = admin_router
         .merge(me_router)
         .merge(public_router)
         .merge(credential_router)
-        .with_state(state)
+        .nest("/api", console_api)
+        // A JSON 404, set here so the rate limiter below covers unknown paths too.
+        .fallback(not_found)
         // Baseline request-rate ceiling for everything else. Generous — it exists to
         // blunt scraping and accidental hammering, not to shape normal traffic; the
         // credential endpoints carry their own far stricter bucket above.
-        .layer(GovernorLayer::new(global_rate_limit))
+        .layer(GovernorLayer::new(global_rate_limit));
+
+    // The dashboard's static files sit outside the global rate limiter: a cold page
+    // load fetches dozens of chunks, which must not spend the API budget of every
+    // admin behind the same NAT.
+    let app = match ui_assets {
+        Some(assets) => api.merge(ui::router(assets)),
+        None => api,
+    };
+
+    app.with_state(state)
         // Security headers on every response (OAuth Security BCP / RFC 9700): defends
         // clickjacking of the login/consent UI (#15), referrer token leakage (#11), and
         // enforces HTTPS at the browser (#19).
@@ -83,6 +115,10 @@ pub fn router(state: AppState, trusted_proxies: Arc<TrustedProxies>) -> Router {
 // Applies hardening headers to all responses. Cheap and dependency-free; does not
 // touch Cache-Control so the token endpoint keeps its `no-store` and discovery/JWKS
 // stay cacheable.
+//
+// The dashboard's documents set their own CSP and X-Frame-Options (`ui.rs`), so
+// those two are only filled in when absent; every other response, the whole API
+// included, gets the strict `default-src 'none'`.
 async fn security_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
@@ -90,18 +126,29 @@ async fn security_headers(request: Request, next: Next) -> Response {
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
-    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    headers
+        .entry(header::X_FRAME_OPTIONS)
+        .or_insert(HeaderValue::from_static("DENY"));
     headers.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),
     );
-    headers.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static("default-src 'none'; frame-ancestors 'none'"),
-    );
+    headers
+        .entry(header::CONTENT_SECURITY_POLICY)
+        .or_insert(HeaderValue::from_static(
+            "default-src 'none'; frame-ancestors 'none'",
+        ));
     headers.insert(
         header::STRICT_TRANSPORT_SECURITY,
         HeaderValue::from_static("max-age=63072000; includeSubDomains"),
     );
     response
+}
+
+async fn not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({ "error": "not found" })),
+    )
+        .into_response()
 }

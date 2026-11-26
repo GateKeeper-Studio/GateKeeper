@@ -26,11 +26,17 @@ docker compose up -d gatekeeper-db-rust      # PostgreSQL on localhost:5432
 cp .env.example .env                         # APP_ENV=development: local defaults
 set -a && source .env && set +a
 cargo run                                    # API on :8080, metrics on :9090
-cargo run --bin create_admin -- admin@example.com 'a-strong-password'
+cargo run --bin create_admin -- admin@example.com   # asks for the password (12+ characters)
 ```
 
 The server applies pending migrations at startup. Check it with
 `curl localhost:8080/ready` and `curl localhost:8080/.well-known/openid-configuration`.
+
+The build checks every SQL query against `DATABASE_URL`, so the database must already
+have the newest migrations: run `sqlx migrate run` before building. A database created
+before the migrations were squashed cannot be migrated by the CLI; migrate it once with
+`SQLX_OFFLINE=true cargo run -- --migrate-only` (builds from the committed `.sqlx`
+cache), then build as usual.
 
 ## Commands
 
@@ -38,7 +44,7 @@ The server applies pending migrations at startup. Check it with
 |---|---|
 | `cargo run` | Start the API (`PORT`, default 8080). |
 | `cargo run -- --migrate-only` | Deploy job: apply migrations, re-seal secrets, exit. |
-| `cargo run --bin create_admin -- <email> <password> [organization_id]` | Create a platform admin. |
+| `cargo run --bin create_admin -- <email> [organization_id]` | Create a platform admin (password from the prompt or stdin). |
 | `cargo run --bin repair_encrypted_secrets [-- --apply \| --reseal]` | Report or repair secrets that the current key cannot read. |
 | `cargo test` | Unit tests (in-memory, no database at run time). |
 | `cargo test --features db-tests` | Repository tests against a real PostgreSQL (needs `CREATEDB`). |
@@ -64,6 +70,28 @@ the server refuses to start until the production settings are complete.
 | `SECRETS_ENCRYPTION_KEY` | AES-256-GCM key for secrets at rest (rotate with `SECRETS_ENCRYPTION_PREVIOUS_KEYS`). |
 | `TRUSTED_PROXIES` | Reverse proxies and BFFs whose `X-Forwarded-For` is trusted. |
 | `METRICS_PORT` | Internal Prometheus port (default 9090, `off` to disable). |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_PORT` | Optional HTTPS listener (default port 8443) next to HTTP, for local development. |
+
+### HTTPS on the local network (phones, passkeys)
+
+Browsers only offer passkeys (WebAuthn) and some other APIs on HTTPS, or on
+`localhost`. A phone that opens `http://192.168.x.x:8080` gets neither, so testing QR
+sign-in approval or passkeys on a phone needs HTTPS:
+
+1. `scripts/dev-tls.sh` creates a local certificate authority (once) and a certificate
+   for `<your-ip-with-dashes>.sslip.io`, a public DNS name that resolves to your LAN IP
+   (passkeys need a host name, not an IP). Everything goes to `server/.dev-tls/`
+   (git-ignored; it holds private keys). The CA is name-constrained to `sslip.io`,
+   `nip.io`, `localhost` and private IP ranges.
+2. Put the lines it prints in `.env` and restart: the server keeps HTTP on `PORT` and
+   adds HTTPS on `TLS_PORT`.
+3. Trust `server/.dev-tls/gatekeeper-dev-ca.crt` once on each device: on Android,
+   Settings > Security & privacy > More security settings > Encryption & credentials >
+   Install a certificate > CA certificate; for Chrome on Linux, the `certutil` line the
+   script prints. Never share `ca.key`.
+
+Open everything (console included) at `https://<ip-with-dashes>.sslip.io:8443`.
+Passkeys made on `localhost` belong to another relying party and do not work there.
 
 ## Architecture
 
@@ -80,7 +108,7 @@ bootstrap.rs ─▶ everything                   (composition root)
 | `src/infraestructure/` | SQLx repositories, Unit of Work, crypto, email, GeoIP, webhooks, config. |
 | `src/presentation/` | Axum handlers, routers (one file per protection level), middleware, `ApiError`. |
 | `src/bootstrap.rs` | Builds infrastructure and use cases from `AppConfig`, returns the router. |
-| `migrations/` | SQL migrations (paired `.up.sql` / `.down.sql`). |
+| `migrations/` | SQL migrations: the squashed baseline `20261110000000_initial_schema.sql`, then later changes (paired `.up.sql` / `.down.sql`). |
 | `tests/` | PostgreSQL repository tests (`db-tests` feature). |
 
 Each request passes through the client-IP, request-id, metrics and security-header

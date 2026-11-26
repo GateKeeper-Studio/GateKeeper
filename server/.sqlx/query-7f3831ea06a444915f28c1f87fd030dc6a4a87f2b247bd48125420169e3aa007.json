@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE admin_invitations\n          SET revoked_at = $3\n          WHERE organization_id = $1 AND email = $2\n            AND accepted_at IS NULL AND revoked_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7f3831ea06a444915f28c1f87fd030dc6a4a87f2b247bd48125420169e3aa007"
+}

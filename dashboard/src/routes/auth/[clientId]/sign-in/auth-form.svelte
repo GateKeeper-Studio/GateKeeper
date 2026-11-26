@@ -5,7 +5,10 @@
 	import { toast } from 'svelte-sonner';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import MailIcon from '@lucide/svelte/icons/mail';
+	import QrCodeIcon from '@lucide/svelte/icons/qr-code';
+	import ScanQrCodeIcon from '@lucide/svelte/icons/scan-qr-code';
 
+	import * as Alert from '$lib/components/ui/alert/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -24,6 +27,7 @@
 	import { SessionClock, storeSession } from '$lib/state/auth-session-expiry.svelte';
 	import { saveMagicLinkBinding } from '$lib/state/magic-link-binding';
 	import { continueAfterLogin, type ContinueLoginOutcome } from '$lib/utils/continue-login';
+	import { isQrApproval } from '$lib/utils/qr-approval';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { client }: { client: ClientAuthData | null } = $props();
@@ -37,11 +41,22 @@
 	const noSignInMethod = $derived(externalOnly && (client?.oauthProviders.length ?? 0) === 0);
 	// Passwordless login: an account with no password signs in with its passkey alone.
 	const passkeyEnabled = $derived(!externalOnly && (client?.passkeyLoginEnabled ?? false));
-	// Magic link login: "email me a sign-in link".
-	const magicLinkEnabled = $derived(!externalOnly && (client?.magicLinkLoginEnabled ?? false));
-
 	const clientId = page.params.clientId as string;
 	const searchParams = page.url.searchParams;
+
+	// Signing in on this device to approve a QR code shown on another one. The sign-in
+	// must finish on THIS page's flow, so the ways out of it are not offered: a magic
+	// link opens another tab, a provider redirects to the app, sign-up starts over.
+	const approvingQr = isQrApproval(searchParams);
+	// Magic link login: "email me a sign-in link".
+	const magicLinkEnabled = $derived(
+		!externalOnly && !approvingQr && (client?.magicLinkLoginEnabled ?? false)
+	);
+	// QR code sign-in: show a code that another device approves.
+	const qrLoginEnabled = $derived(
+		!externalOnly && !approvingQr && (client?.qrLoginEnabled ?? false)
+	);
+	const providers = $derived(approvingQr ? [] : (client?.oauthProviders ?? []));
 
 	const redirectUri = searchParams.get('redirect_uri') || '/';
 	const responseType = searchParams.get('response_type') || '';
@@ -329,6 +344,14 @@
 		<ErrorAlert message={error} title={m.auth_error_title()} />
 	{/if}
 
+	{#if approvingQr}
+		<Alert.Root>
+			<ScanQrCodeIcon class="size-5" />
+			<Alert.Title class="font-bold">{m.signin_qr_approval_title()}</Alert.Title>
+			<Alert.Description>{m.signin_qr_approval_description()}</Alert.Description>
+		</Alert.Root>
+	{/if}
+
 	{#if noSignInMethod}
 		<ErrorAlert message={m.signin_no_method_configured()} title={m.auth_error_title()} />
 	{/if}
@@ -376,7 +399,7 @@
 						</a>
 					{/if}
 
-					{#if client?.canSelfSignUp}
+					{#if client?.canSelfSignUp && !approvingQr}
 						<a
 							href={resolve(`/auth/[clientId]/sign-up?${urlParams.toString()}`, {
 								clientId
@@ -413,6 +436,18 @@
 				</Button>
 			{/if}
 
+			{#if qrLoginEnabled}
+				<Button
+					variant="outline"
+					class="flex w-full items-center justify-center gap-2"
+					disabled={isLoading || clock.phase === 'expired'}
+					href={resolve(`/auth/[clientId]/qr-sign-in?${urlParams.toString()}`, { clientId })}
+				>
+					<QrCodeIcon class="size-4" />
+					{m.signin_with_qr_code()}
+				</Button>
+			{/if}
+
 			{#if magicLinkEnabled}
 				<Button
 					type="button"
@@ -428,7 +463,7 @@
 		</form>
 	{/if}
 
-	{#if client && client.oauthProviders.length > 0}
+	{#if providers.length > 0}
 		<!-- The divider separates the credential form from the provider buttons. With
 		     no form above it there is nothing to separate, so it is dropped. -->
 		{#if !externalOnly}
@@ -445,7 +480,7 @@
 			</div>
 		{/if}
 
-		{#each client.oauthProviders as provider (provider.id)}
+		{#each providers as provider (provider.id)}
 			<div class="flex flex-col gap-1">
 				<Button
 					variant="outline"

@@ -13,6 +13,8 @@ pub enum SecretPurpose {
     WebhookSecret,
     SigningKey,
     TenantPepper,
+    // A platform admin's TOTP seed. Bound to the admin id, not a tenant.
+    AdminTotpSeed,
 }
 
 impl SecretPurpose {
@@ -24,6 +26,7 @@ impl SecretPurpose {
             SecretPurpose::WebhookSecret => "webhook_secret",
             SecretPurpose::SigningKey => "signing_key",
             SecretPurpose::TenantPepper => "tenant_pepper",
+            SecretPurpose::AdminTotpSeed => "admin_totp_seed",
         }
     }
 }
@@ -31,6 +34,8 @@ impl SecretPurpose {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SecretContext {
     pub purpose: SecretPurpose,
+    // The owner the secret is bound to: a tenant id, or for `AdminTotpSeed` the
+    // admin id.
     pub tenant_id: Uuid,
 }
 

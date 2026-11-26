@@ -53,9 +53,9 @@ const EMAIL_CODE: &str = "123456";
 
 #[derive(Clone, Copy, PartialEq)]
 enum Opened {
-    ByPassword,
-    ByPasskeyOnly,
-    ByMagicLink,
+    Password,
+    PasskeyOnly,
+    MagicLink,
 }
 
 struct Ctx {
@@ -116,12 +116,12 @@ fn setup(opened: Opened) -> Ctx {
 
     let mut session = new_session(tenant_id, &client, RAW_SESSION_CODE);
     match opened {
-        Opened::ByPassword => {
+        Opened::Password => {
             session.authenticate(user_id, Utc::now());
             session.require_mfa();
         }
-        Opened::ByPasskeyOnly => session.identify_for_passkey(user_id),
-        Opened::ByMagicLink => {
+        Opened::PasskeyOnly => session.identify_for_passkey(user_id),
+        Opened::MagicLink => {
             session.await_magic_link();
             session.authenticate(user_id, Utc::now());
             session.require_mfa();
@@ -232,7 +232,7 @@ async fn send_email_otp(ctx: &Ctx) -> Result<(), DomainError> {
 
 #[tokio::test]
 async fn send_email_otp_sends_a_code_for_a_password_session() {
-    let ctx = setup(Opened::ByPassword);
+    let ctx = setup(Opened::Password);
 
     send_email_otp(&ctx).await.unwrap();
 
@@ -244,7 +244,7 @@ async fn send_email_otp_sends_a_code_for_a_password_session() {
 
 #[tokio::test]
 async fn send_email_otp_refuses_a_passkey_session() {
-    let ctx = setup(Opened::ByPasskeyOnly);
+    let ctx = setup(Opened::PasskeyOnly);
 
     assert_refused(send_email_otp(&ctx).await);
 
@@ -254,7 +254,7 @@ async fn send_email_otp_refuses_a_passkey_session() {
 
 #[tokio::test]
 async fn send_email_otp_refuses_a_magic_link_session() {
-    let ctx = setup(Opened::ByMagicLink);
+    let ctx = setup(Opened::MagicLink);
 
     assert_refused(send_email_otp(&ctx).await);
 
@@ -276,7 +276,7 @@ async fn verify_email_otp(ctx: &Ctx) -> Result<verify_email_otp::response::Respo
 
 #[tokio::test]
 async fn verify_email_otp_clears_a_password_session() {
-    let ctx = setup(Opened::ByPassword);
+    let ctx = setup(Opened::Password);
     seed_email_challenge(&ctx);
 
     verify_email_otp(&ctx).await.unwrap();
@@ -286,7 +286,7 @@ async fn verify_email_otp_clears_a_password_session() {
 
 #[tokio::test]
 async fn verify_email_otp_refuses_a_passkey_session_even_with_the_right_code() {
-    let ctx = setup(Opened::ByPasskeyOnly);
+    let ctx = setup(Opened::PasskeyOnly);
     seed_email_challenge(&ctx);
 
     assert_refused(verify_email_otp(&ctx).await);
@@ -296,7 +296,7 @@ async fn verify_email_otp_refuses_a_passkey_session_even_with_the_right_code() {
 
 #[tokio::test]
 async fn verify_email_otp_refuses_a_magic_link_session_even_with_the_right_code() {
-    let ctx = setup(Opened::ByMagicLink);
+    let ctx = setup(Opened::MagicLink);
     seed_email_challenge(&ctx);
 
     assert_refused(verify_email_otp(&ctx).await);
@@ -322,7 +322,7 @@ async fn verify_totp(ctx: &Ctx) -> Result<verify_totp::response::Response, Domai
 
 #[tokio::test]
 async fn verify_totp_refuses_a_passkey_session_even_with_the_right_code() {
-    let ctx = setup(Opened::ByPasskeyOnly);
+    let ctx = setup(Opened::PasskeyOnly);
 
     assert_refused(verify_totp(&ctx).await);
 
@@ -333,7 +333,7 @@ async fn verify_totp_refuses_a_passkey_session_even_with_the_right_code() {
 
 #[tokio::test]
 async fn verify_totp_still_clears_a_password_session() {
-    let ctx = setup(Opened::ByPassword);
+    let ctx = setup(Opened::Password);
 
     verify_totp(&ctx).await.unwrap();
 
@@ -342,7 +342,7 @@ async fn verify_totp_still_clears_a_password_session() {
 
 #[tokio::test]
 async fn verify_totp_clears_a_magic_link_session() {
-    let ctx = setup(Opened::ByMagicLink);
+    let ctx = setup(Opened::MagicLink);
 
     verify_totp(&ctx).await.unwrap();
 
@@ -368,7 +368,7 @@ async fn start_webauthn(
 
 #[tokio::test]
 async fn start_webauthn_issues_a_session_bound_challenge_for_a_passkey_session() {
-    let ctx = setup(Opened::ByPasskeyOnly);
+    let ctx = setup(Opened::PasskeyOnly);
 
     let response = start_webauthn(&ctx, RAW_SESSION_CODE).await.unwrap();
 
@@ -386,7 +386,7 @@ async fn start_webauthn_issues_a_session_bound_challenge_for_a_passkey_session()
 async fn start_webauthn_replaces_only_this_sessions_ceremony() {
     // Anyone who knows the email can open a passkey session; restarting the
     // ceremony there must not cancel the real user's sign-in in another session.
-    let ctx = setup(Opened::ByPasskeyOnly);
+    let ctx = setup(Opened::PasskeyOnly);
 
     let other_code = "raw-session-code-other";
     let client_id = session(&ctx).pending_client_id();

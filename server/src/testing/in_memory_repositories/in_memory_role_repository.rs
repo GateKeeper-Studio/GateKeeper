@@ -80,7 +80,7 @@ impl RoleRepository for InMemoryRoleRepository {
             .filter(|r| r.tenant_id() == tenant_id)
             .cloned()
             .collect();
-        roles.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        roles.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
         Ok(roles
             .into_iter()
             .skip(((page - 1) * page_size) as usize)
@@ -196,7 +196,7 @@ impl RoleRepository for InMemoryRoleRepository {
             .iter()
             .filter_map(|u| data.get(u).cloned())
             .collect();
-        users.sort_by(|a, b| b.created_at().cmp(&a.created_at()));
+        users.sort_by_key(|e| std::cmp::Reverse(e.created_at()));
 
         Ok(users
             .into_iter()

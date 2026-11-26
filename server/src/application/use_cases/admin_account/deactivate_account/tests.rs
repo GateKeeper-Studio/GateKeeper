@@ -1,86 +1,98 @@
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use chrono::{Duration, Utc};
 
     use crate::{
         application::use_cases::admin_account::deactivate_account::{
             command::Command, use_case::UseCase,
         },
-        domain::entities::{admin_refresh_token::AdminRefreshToken, admin_user::AdminUser},
-        testing::in_memory_repositories::{
-            in_memory_admin_refresh_token_repository::InMemoryAdminRefreshTokenRepository,
-            in_memory_admin_user_repository::InMemoryAdminUserRepository,
+        domain::{
+            entities::{
+                admin_refresh_token::AdminRefreshToken, admin_web_session::AdminWebSession,
+            },
+            errors::DomainError,
         },
+        testing::admin_fixture::{AdminFixture, PASSWORD},
     };
 
-    fn admin(org: uuid::Uuid, email: &str) -> AdminUser {
-        AdminUser::new(
-            org,
-            email.to_string(),
-            "Ada Admin".to_string(),
-            "hash".to_string(),
-            "argon2id".to_string(),
+    fn use_case(f: &AdminFixture) -> UseCase {
+        UseCase::new(
+            f.admins.clone(),
+            f.authenticator.clone(),
+            f.refresh_tokens.clone(),
+            f.web_sessions.clone(),
         )
     }
 
-    #[tokio::test]
-    async fn deactivates_and_revokes_sessions() {
-        let org = uuid::Uuid::now_v7();
-        let admins = Arc::new(InMemoryAdminUserRepository::new());
-        let tokens = Arc::new(InMemoryAdminRefreshTokenRepository::new());
+    fn command(f: &AdminFixture, password: Option<&str>) -> Command {
+        Command {
+            admin_id: f.admin.id(),
+            current_password: password.map(str::to_string),
+        }
+    }
 
-        // Two active admins, so deactivating one is allowed.
-        let me = admin(org, "me@example.com");
-        let my_id = me.id();
-        admins.admins.lock().unwrap().push(me);
-        admins
-            .admins
+    #[tokio::test]
+    async fn deactivates_and_ends_every_session() {
+        let f = AdminFixture::new();
+        f.add_colleague("colleague@example.com");
+        let now = Utc::now();
+        f.refresh_tokens
+            .tokens
             .lock()
             .unwrap()
-            .push(admin(org, "peer@example.com"));
+            .push(AdminRefreshToken::new(
+                f.admin.id(),
+                "refresh".into(),
+                now + Duration::days(1),
+            ));
+        f.web_sessions
+            .sessions
+            .lock()
+            .unwrap()
+            .push(AdminWebSession::new(
+                f.admin.id(),
+                "session".into(),
+                now,
+                Duration::hours(1),
+            ));
 
-        // A live session for the admin being deactivated.
-        tokens.tokens.lock().unwrap().push(AdminRefreshToken::new(
-            my_id,
-            "token-hash".to_string(),
-            Utc::now() + Duration::days(30),
-        ));
-
-        UseCase::new(admins.clone(), tokens.clone())
-            .execute(Command { admin_id: my_id })
+        use_case(&f)
+            .execute(command(&f, Some(PASSWORD)))
             .await
             .unwrap();
 
-        let stored = admins
-            .admins
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|a| a.id() == my_id)
-            .cloned()
-            .unwrap();
-        assert!(!stored.is_active());
-        assert!(tokens.tokens.lock().unwrap()[0].revoked_at().is_some());
+        assert!(!f.stored().is_active());
+        assert!(
+            f.refresh_tokens.tokens.lock().unwrap()[0]
+                .revoked_at()
+                .is_some()
+        );
+        assert!(f.web_sessions.sessions.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn requires_the_current_password() {
+        let f = AdminFixture::new();
+        f.add_colleague("colleague@example.com");
+        let result = use_case(&f).execute(command(&f, None)).await;
+        assert!(matches!(result, Err(DomainError::StepUpRequired(_))));
+        assert!(f.stored().is_active());
     }
 
     #[tokio::test]
     async fn refuses_to_deactivate_the_last_active_admin() {
-        let org = uuid::Uuid::now_v7();
-        let admins = Arc::new(InMemoryAdminUserRepository::new());
-        let tokens = Arc::new(InMemoryAdminRefreshTokenRepository::new());
+        let f = AdminFixture::new();
+        let result = use_case(&f).execute(command(&f, Some(PASSWORD))).await;
+        assert!(matches!(result, Err(DomainError::AccessDenied(_))));
+        assert!(f.stored().is_active());
+    }
 
-        let only = admin(org, "only@example.com");
-        let id = only.id();
-        admins.admins.lock().unwrap().push(only);
-
-        let result = UseCase::new(admins.clone(), tokens)
-            .execute(Command { admin_id: id })
-            .await;
-
-        assert!(result.is_err());
-        // Still active — the guard blocked the change.
-        assert!(admins.admins.lock().unwrap()[0].is_active());
+    #[tokio::test]
+    async fn an_inactive_admin_is_an_idempotent_success() {
+        let f = AdminFixture::new();
+        let mut inactive = f.stored();
+        inactive.deactivate();
+        *f.admins.admins.lock().unwrap().first_mut().unwrap() = inactive;
+        use_case(&f).execute(command(&f, None)).await.unwrap();
     }
 }

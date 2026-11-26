@@ -3,83 +3,93 @@
 Standalone SvelteKit application for platform administration, hosted authentication, and
 tenant-aware legal pages.
 
+## How it runs
+
+The dashboard is a **static single-page app served by the identity provider itself**
+(`adapter-static`, `ssr = false`). There is no Node server in production: the Rust server
+serves `build/` from its `UI_DIR` and is the only origin the browser talks to. See
+[`server/docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md`](../server/docs/SERVING-THE-DASHBOARD-FROM-THE-SERVER.md).
+
+| Path | What |
+|---|---|
+| `/console/*` | Admin console |
+| `/login` | Admin sign-in |
+| `/auth/[clientId]/*` | Hosted end-user login (sign-in, sign-up, MFA, magic link, password flows) |
+| `/terms`, `/privacy` | Legal pages |
+
 ## Development
 
+The Rust server serves this app (`UI_DIR=../dashboard/build` in `server/.env`); no Node
+server runs. Node is only the build tool, because Svelte files have to be compiled:
+
 ```sh
-cp .env.example .env
-npm install
-npm run dev
+npm install                 # once
+npm run build:watch         # rebuilds build/ on every save (~15-20 s)
+# in another terminal:
+cd ../server && cargo run   # serves http://localhost:8080/console
 ```
 
-The dashboard uses `http://localhost:5173`. The public website runs independently on
-`http://localhost:5174`.
+`npm run build` (and every watch rebuild) also writes `build/_app/route-preloads.json`
+(`scripts/route-preloads.mjs`): the modules each route needs. The server turns it into
+`<link rel="modulepreload">` tags on the page, so a route's modules load in parallel
+instead of one import wave at a time. `app.html` paints a skeleton (a sign-in card on
+hosted login pages) before any JavaScript runs; `routes/+layout.svelte` removes it once
+the app is on screen.
+
+Save a file, wait for `[build:watch] build/ updated`, refresh the browser. Each rebuild is a
+fresh `vite build` into a temporary directory, swapped into `build/` only when it
+succeeded (`scripts/build-watch.mjs`), and the server picks the new build up by itself; it
+never needs a restart for UI changes.
+
+For hot reload instead, `npm run dev` runs Vite on http://localhost:5173 and proxies the
+identity provider's paths (`/api`, `/session`, `/v1`, `/oauth`, `/.well-known`,
+`/authentication`) to the Rust server (`GATEKEEPER_SERVER_URL`, default
+`http://localhost:8080`), which then needs `AUTH_UI_BASE_URL=http://localhost:5173`.
 
 ## Validation
 
 ```sh
-npm run check
+npm run check      # also refuses server-only SvelteKit files (scripts/assert-static.mjs)
 npm run build
 ```
 
 ## Authentication architecture
 
-The dashboard is a **backend-for-frontend**: the browser never holds an identity-provider
-token.
+The browser never holds an identity-provider token.
 
-- Signing in posts to this app's own `/session` endpoint. The server exchanges the
-  credentials with the IdP, keeps the access **and** refresh tokens in a server-side
-  session (`src/lib/server/session.ts`), and returns only an `httpOnly; Secure;
-  SameSite=Lax` cookie plus the admin's display name.
-- Admin API calls go to `/api/*` on this origin. `src/routes/api/[...path]/+server.ts`
-  attaches the bearer token and forwards to the IdP, refreshing once (single-flight) on a
-  401. The client wrapper is `src/lib/services/base/admin-api.ts`. Admin access tokens
-  live 15 minutes, so this refresh is the normal path, not an edge case.
-- `(dashboard)/+layout.server.ts` refuses unauthenticated requests **before** anything
-  renders. There is no client-side-only guard.
+- Signing in posts to `/session` on the identity provider. It verifies the password (same
+  check and rate limit as `/admin/login`), opens a console session and returns the admin's
+  display identity plus an `HttpOnly; SameSite=Strict` cookie (`__Host-gk_admin`, `Secure`,
+  over HTTPS). The session row holds only the hash of the cookie value.
+- Two-step verification: when the admin has an authenticator app, `/session` answers
+  `401 {"error":"mfa_required"}` to a right password without a code, and the sign-in page
+  asks for the code (or a recovery code) and posts the same credentials again with
+  `mfaCode`. Admins turn it on in Settings → Account (QR code rendered in the browser by
+  `qrcode`; the seed and recovery codes are shown once and dropped when the dialog closes).
+  Changing the sign-in email, deactivating, and every two-step change ask for the current
+  password.
+- Settings → Organization lists the organization's admins (invite by one-time link,
+  deactivate/reactivate, reset a lost second factor) and can require two-step
+  verification of everyone. An admin who must still set it up is sent to `/login/two-step`
+  by the console guard. The invitation link opens `/login/invite#<token>`.
+- Admin API calls go to `/api/<admin path>` (client: `src/lib/services/base/admin-api.ts`).
+  The server checks that the request is same-origin, resolves the cookie, mints a
+  short-lived admin access token and hands the request to its unchanged admin API. There
+  is no refresh dance: a token is minted per request.
+- `routes/console/+layout.ts` sends signed-out visitors to `/login`. That guard is UX; the
+  protection is that every piece of data comes from `/api/*`, which the server refuses
+  without a live session.
 
-The hosted end-user auth flow under `/auth/[clientId]` is deliberately **not** proxied — it
-calls the IdP directly from the browser via `src/lib/services/base/api.ts`. Those requests
-carry no long-lived credential, and routing them through this server would make every
-interactive login arrive at the IdP wearing this server's IP, blinding its risk engine
-(new country, impossible travel, velocity) and collapsing the per-IP credential rate limit
-onto a single key.
+The hosted end-user auth flow under `/auth/[clientId]` calls the identity provider's public
+endpoints (`src/lib/services/base/api.ts`) on the same origin, so its risk engine and per-IP
+rate limits see the user's real address.
 
-Sessions live in an in-process `Map`. Restarting the dashboard signs every admin out, and
-running more than one instance needs sticky sessions or a shared store.
+Environment (see `.env.example`):
 
-## Deployment
-
-Built with `@sveltejs/adapter-node`, so it runs as a long-lived Node process:
-
-```sh
-npm ci
-npm run build
-node build          # honours PORT, HOST and ORIGIN
-```
-
-Put a TLS-terminating reverse proxy in front of it. Three things depend on that proxy:
-
-- the session cookie is `Secure`, so it is only sent over HTTPS (browsers make an
-  exception for `localhost`);
-- `Strict-Transport-Security` only means anything over HTTPS;
-- the proxy must **overwrite** `X-Forwarded-For` rather than pass it through, since the
-  BFF forwards that address to the IdP, where it keys rate limiting and audit records.
-  The IdP believes that header only from peers in its `TRUSTED_PROXIES` setting, so list
-  this dashboard server's address there (locally: `127.0.0.1/32,::1/128`).
-
-Set `ORIGIN` to the public URL so SvelteKit's CSRF origin check accepts form posts.
-
-Required environment (see `.env.example`):
-
-| Variable | Scope | Purpose |
+| Variable | When | Purpose |
 |---|---|---|
-| `IDP_BASE_URL` | server only | Where the BFF reaches the IdP |
-| `SESSION_SECRET` | server only | Signs the session cookie; ≥32 chars |
-| `PUBLIC_API_BASE_URL` | browser | IdP URL for the end-user auth flow |
-| `PUBLIC_WEBSITE_BASE_URL` | browser | Public landing/docs origin |
-
-The API server's `AUTH_UI_BASE_URL`, WebAuthn origin, and CORS allowlist must reference the
-deployed dashboard origin.
+| `PUBLIC_WEBSITE_BASE_URL` | build time | Public landing/docs origin |
+| `GATEKEEPER_SERVER_URL` | `npm run dev` only | Where the Rust server listens |
 
 Creating a tenant no longer asks for a password hash secret: the server generates each
 tenant's pepper and keeps it sealed. The OAuth-client form offers the `account` and

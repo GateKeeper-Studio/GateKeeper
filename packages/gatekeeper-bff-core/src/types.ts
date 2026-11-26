@@ -12,6 +12,7 @@ export interface NormalizedMfaConfig {
 
 export interface GateKeeperConfig {
   idpBaseUrl?: string;
+  /** Where the hosted login UI lives. Defaults to `idpBaseUrl` (the identity provider serves it). */
   authUiBaseUrl?: string;
   tenantId?: string;
   clientId?: string;

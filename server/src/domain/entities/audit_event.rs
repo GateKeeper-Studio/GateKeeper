@@ -21,7 +21,7 @@ impl ActorType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_db(s: &str) -> Self {
         match s {
             "admin" => ActorType::Admin,
             "client" => ActorType::Client,
@@ -47,7 +47,7 @@ impl Outcome {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_db(s: &str) -> Self {
         match s {
             "failure" => Outcome::Failure,
             _ => Outcome::Success,

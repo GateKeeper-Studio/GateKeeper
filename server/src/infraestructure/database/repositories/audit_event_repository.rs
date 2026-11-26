@@ -7,7 +7,7 @@ use crate::{
         errors::DomainError,
         repositories::audit_event_repository::{AuditEventFilter, AuditEventRepository},
     },
-    infraestructure::database::executor::{DbExecutor, SharedTx, run},
+    infraestructure::database::executor::{DbExecutor, SharedTx, run, run_custom_plan},
 };
 use sqlx::PgPool;
 
@@ -68,7 +68,7 @@ impl AuditEventRepository for DbAuditEventRepository {
         page: u32,
         page_size: u32,
     ) -> Result<Vec<AuditEvent>, DomainError> {
-        let rows = run!(
+        let rows = run_custom_plan!(
             self.executor,
             sqlx::query!(
                 r#"
@@ -103,12 +103,12 @@ impl AuditEventRepository for DbAuditEventRepository {
                 AuditEvent::reconstruct(
                     r.id,
                     r.tenant_id,
-                    ActorType::from_str(&r.actor_type),
+                    ActorType::from_db(&r.actor_type),
                     r.actor_id,
                     r.action,
                     r.resource_type,
                     r.resource_id,
-                    Outcome::from_str(&r.outcome),
+                    Outcome::from_db(&r.outcome),
                     r.ip_address,
                     r.user_agent,
                     r.metadata,
@@ -123,7 +123,7 @@ impl AuditEventRepository for DbAuditEventRepository {
         tenant_id: Uuid,
         filter: &AuditEventFilter,
     ) -> Result<u32, DomainError> {
-        let count = run!(
+        let count = run_custom_plan!(
             self.executor,
             sqlx::query_scalar!(
                 r#"

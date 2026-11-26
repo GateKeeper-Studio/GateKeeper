@@ -83,23 +83,33 @@ pub async fn callback(
 
     // Build the OAuth success redirect back to the client app. The raw code
     // travels in the URL exactly once.
-    let separator = if result.redirect_uri.contains('?') {
-        '&'
-    } else {
-        '?'
+    let location = match result {
+        callback::response::Response::Code {
+            redirect_uri,
+            authorization_code,
+            state,
+        } => {
+            let separator = if redirect_uri.contains('?') { '&' } else { '?' };
+            format!(
+                "{redirect_uri}{separator}code={}&state={}",
+                urlencode(&authorization_code),
+                urlencode(&state),
+            )
+        }
+        // A second factor is due: the hosted login page takes over. What it needs is in
+        // the URL fragment, which the browser keeps to itself.
+        callback::response::Response::SecondFactor { continue_url } => continue_url,
     };
-    let location = format!(
-        "{}{}code={}&state={}",
-        result.redirect_uri,
-        separator,
-        urlencode(&result.authorization_code),
-        urlencode(&result.state),
-    );
 
-    Ok(Redirect::to(&location).into_response())
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Redirect::to(&location),
+    )
+        .into_response())
 }
 
-// Minimal percent-encoding for the values placed in the redirect query string.
+// Percent-encodes a query value. Kept local (and minimal) to avoid pulling in a
+// URL crate just for this one redirect.
 pub(crate) fn urlencode(value: &str) -> String {
     value
         .bytes()

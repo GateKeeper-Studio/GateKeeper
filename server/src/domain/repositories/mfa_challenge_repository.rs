@@ -24,9 +24,29 @@ pub trait MfaChallengeRepository: Send + Sync {
         method: &MfaMethod,
     ) -> Result<Option<MfaChallenge>, DomainError>;
 
+    // The most recent unconsumed challenge of this user that belongs to NO sign-in
+    // session: the wrong-try counter of a check made by a signed-in user (the
+    // authenticator code asked for when registering a trusted device).
+    async fn find_active_by_user(
+        &self,
+        user_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+    ) -> Result<Option<MfaChallenge>, DomainError>;
+
     async fn add(&self, challenge: &MfaChallenge) -> Result<(), DomainError>;
     // Persists redemption (consumed_at) and the wrong-attempt counter.
     async fn update(&self, challenge: &MfaChallenge) -> Result<(), DomainError>;
+    // How many challenges of this purpose and method the user was issued since
+    // `since`, used or not. Bounds how often a new emailed code (and its fresh set of
+    // wrong tries) can be asked for.
+    async fn count_issued_since(
+        &self,
+        user_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, DomainError>;
     // Burn any still-active challenges before minting a replacement (resend /
     // method switch), so only one live code exists per user+purpose+method.
     async fn invalidate_active_by_user(

@@ -6,6 +6,12 @@ pub mod user_profile;
 pub mod admin_user;
 // Refresh tokens for platform-admin dashboard sessions (global rotation chain).
 pub mod admin_refresh_token;
+// Browser sessions of the admin console when the server serves the dashboard.
+pub mod admin_web_session;
+// A platform admin's second factor (TOTP seed + recovery codes).
+pub mod admin_mfa;
+// An invitation for a colleague to become an admin of the organization.
+pub mod admin_invitation;
 
 pub mod custom_field_definition;
 pub mod group;
@@ -32,10 +38,12 @@ pub mod mfa_method;
 pub mod oauth_client;
 pub mod password_change_token;
 pub mod password_reset_token;
+pub mod qr_login_request;
 pub mod refresh_token;
 pub mod risk_model;
 pub mod signing_key;
 pub mod social_identity;
+pub mod trusted_device;
 
 // Compliance / audit (WI-02)
 pub mod audit_action;

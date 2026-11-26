@@ -28,9 +28,11 @@ impl AdminTokenIssuer for FakeAdminTokenIssuer {
         email: &str,
         name: &str,
         organization_id: Uuid,
+        mfa_setup_required: bool,
     ) -> Result<IssuedAdminToken, DomainError> {
+        let setup = u8::from(mfa_setup_required);
         Ok(IssuedAdminToken {
-            token: format!("fake-admin.{admin_id}.{organization_id}.{name}.{email}"),
+            token: format!("fake-admin.{admin_id}.{organization_id}.{setup}.{name}.{email}"),
             expires_in: 3600,
         })
     }
@@ -39,12 +41,13 @@ impl AdminTokenIssuer for FakeAdminTokenIssuer {
         let rest = token
             .strip_prefix("fake-admin.")
             .ok_or_else(|| DomainError::AuthenticationError("invalid_token".to_string()))?;
-        // id and org are dot-free UUIDs; name is dot-free in tests; email comes last
-        // (it may contain dots), so split into exactly four segments.
-        let mut parts = rest.splitn(4, '.');
+        // id and org are dot-free UUIDs, then the 0/1 setup flag; name is dot-free in
+        // tests; email comes last (it may contain dots), so split into five segments.
+        let mut parts = rest.splitn(5, '.');
         let invalid = || DomainError::AuthenticationError("invalid_token".to_string());
         let id = parts.next().ok_or_else(invalid)?;
         let org = parts.next().ok_or_else(invalid)?;
+        let setup = parts.next().ok_or_else(invalid)? == "1";
         let name = parts.next().ok_or_else(invalid)?;
         let email = parts.next().ok_or_else(invalid)?;
         let admin_id = Uuid::parse_str(id).map_err(|_| invalid())?;
@@ -54,6 +57,7 @@ impl AdminTokenIssuer for FakeAdminTokenIssuer {
             email: email.to_string(),
             name: name.to_string(),
             organization_id,
+            mfa_setup_required: setup,
         })
     }
 }

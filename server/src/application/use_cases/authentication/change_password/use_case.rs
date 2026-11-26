@@ -31,9 +31,9 @@ impl UseCase {
         }
     }
 
-    // One transaction: validate the one-time change code, rotate the password,
-    // clear the should_change_password flag, burn the code, and revoke existing
-    // sessions together.
+    // One transaction: check the sign-in session, validate the one-time change code,
+    // rotate the password, clear the should_change_password flag, burn the code, and
+    // revoke existing sessions together.
     pub async fn execute(&self, command: Command) -> Result<(), DomainError> {
         let uow = self.unit_of_work_factory.begin().await?;
 
@@ -59,6 +59,27 @@ impl UseCase {
             || DomainError::Validation("invalid or expired password change code".to_string());
 
         let user_id = Uuid::parse_str(&command.user_id).map_err(|_| invalid())?;
+
+        // 2b. The sign-in session that minted the code, as `authorize` checks it:
+        //     alive, this client's, this user's, and past its second factor. Any first
+        //     factor will do (the temporary password, a magic link, a QR approval all
+        //     mint the code); a passkey or QR session that has proven nothing yet is
+        //     still MFA-pending or bound to no user. Without this, whoever knew the
+        //     temporary password would choose the next one without the second factor.
+        let invalid_session =
+            || DomainError::AuthenticationError("invalid or expired session".to_string());
+        let session = uow
+            .auth_session_repository()
+            .find_by_token_hash(tenant_id, &sha256_hex(&command.session_code))
+            .await?
+            .ok_or_else(invalid_session)?;
+        if session.is_expired(Utc::now())
+            || session.user_id() != Some(user_id)
+            || session.pending_client_id() != client.id()
+            || session.is_mfa_pending()
+        {
+            return Err(invalid_session());
+        }
 
         // 3. Resolve the user's most recent active change token and enforce all guards
         //    before comparing the secret.
@@ -126,6 +147,10 @@ impl UseCase {
 
         uow.refresh_token_repository()
             .revoke_by_user(tenant_id, user_id)
+            .await?;
+        // A device trusted under the temporary password must not outlive it.
+        uow.trusted_device_repository()
+            .delete_all_for_user(tenant_id, user_id)
             .await?;
 
         uow.commit().await?;

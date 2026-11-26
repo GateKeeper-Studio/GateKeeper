@@ -37,6 +37,10 @@ struct SealedColumn {
     table: &'static str,
     column: &'static str,
     purpose: SecretPurpose,
+    // The row key, and the column holding the id the secret is bound to (the
+    // `SecretContext` owner).
+    id_column: &'static str,
+    owner_column: &'static str,
 }
 
 const SEALED_COLUMNS: &[SealedColumn] = &[
@@ -44,26 +48,43 @@ const SEALED_COLUMNS: &[SealedColumn] = &[
         table: "tenant_emails",
         column: "password_encrypted",
         purpose: SecretPurpose::SmtpPassword,
+        id_column: "id",
+        owner_column: "tenant_id",
     },
     SealedColumn {
         table: "webhook_subscriptions",
         column: "secret_encrypted",
         purpose: SecretPurpose::WebhookSecret,
+        id_column: "id",
+        owner_column: "tenant_id",
     },
     SealedColumn {
         table: "external_identity_providers",
         column: "provider_client_secret_encrypted",
         purpose: SecretPurpose::ExternalIdpClientSecret,
+        id_column: "id",
+        owner_column: "tenant_id",
     },
     SealedColumn {
         table: "mfa_enrollments",
         column: "secret_enc",
         purpose: SecretPurpose::TotpSeed,
+        id_column: "id",
+        owner_column: "tenant_id",
     },
     SealedColumn {
         table: "signing_keys",
         column: "private_key_encrypted",
         purpose: SecretPurpose::SigningKey,
+        id_column: "id",
+        owner_column: "tenant_id",
+    },
+    SealedColumn {
+        table: "admin_mfa",
+        column: "totp_secret_enc",
+        purpose: SecretPurpose::AdminTotpSeed,
+        id_column: "admin_id",
+        owner_column: "admin_id",
     },
 ];
 
@@ -87,18 +108,22 @@ async fn reseal_column(
     column: &SealedColumn,
 ) -> Result<ResealReport, sqlx::Error> {
     let select = format!(
-        "SELECT id, tenant_id, {col} AS value FROM {table} WHERE {col} IS NOT NULL",
+        "SELECT {id} AS id, {owner} AS owner_id, {col} AS value FROM {table} \
+         WHERE {col} IS NOT NULL",
+        id = column.id_column,
+        owner = column.owner_column,
         col = column.column,
         table = column.table
     );
     let update = format!(
-        "UPDATE {table} SET {col} = $3 WHERE id = $1 AND {col} = $2",
+        "UPDATE {table} SET {col} = $3 WHERE {id} = $1 AND {col} = $2",
+        id = column.id_column,
         col = column.column,
         table = column.table
     );
 
     let mut report = ResealReport::default();
-    // Safe: `table` / `column` come only from the static `SEALED_COLUMNS` table.
+    // Safe: every identifier comes only from the static `SEALED_COLUMNS` table.
     for row in sqlx::query(sqlx::AssertSqlSafe(select))
         .fetch_all(pool)
         .await?
@@ -108,8 +133,8 @@ async fn reseal_column(
             continue;
         }
         let id: Uuid = row.get("id");
-        let tenant_id: Uuid = row.get("tenant_id");
-        let context = SecretContext::new(column.purpose, tenant_id);
+        let owner_id: Uuid = row.get("owner_id");
+        let context = SecretContext::new(column.purpose, owner_id);
 
         // A signing key written before sealing existed is a plaintext PEM.
         let plaintext =

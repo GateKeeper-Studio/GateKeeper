@@ -15,12 +15,15 @@
 	import { buildOidcParams } from '$lib/utils/form';
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { authorizeApi } from '$lib/services/auth/authorize';
+	import { redirectToClient } from '$lib/utils/continue-login';
+	import { approveQrSignIn, isQrApproval } from '$lib/utils/qr-approval';
 	import { startWebAuthnMfaApi } from '$lib/services/auth/start-webauthn-mfa';
 	import { verifyWebAuthnMfaApi } from '$lib/services/auth/verify-webauthn-mfa';
 	import { EMfaType } from '$lib/services/auth/login';
 	import {
 		SessionClock,
 		clearSession,
+		readPendingPasswordChange,
 		readSessionCode
 	} from '$lib/state/auth-session-expiry.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -158,6 +161,24 @@
 
 		sessionStorage.removeItem(`webauthn_options_${currentMfaId}`);
 
+		// A temporary password signed in: the new password comes before anything else.
+		if (readPendingPasswordChange(clientId)) {
+			const urlParams = buildOidcParams(searchParams, { email });
+			await goto(resolve(`/auth/[clientId]/update-password?${urlParams.toString()}`, { clientId }));
+			return;
+		}
+
+		// Signed in to approve a QR code: the session approves the other device instead
+		// of becoming a code here.
+		if (isQrApproval(searchParams)) {
+			const approval = await approveQrSignIn(clientId, verifyData.sessionCode);
+			if (approval.kind === 'error') {
+				error = approval.message || m.auth_generic_error();
+				isLoading = false;
+			}
+			return;
+		}
+
 		const [authorizeData, authorizeErr] = await authorizeApi({
 			email: email.trim(),
 			sessionCode: verifyData.sessionCode,
@@ -192,7 +213,7 @@
 		toast.success(m.signin_success());
 		clearSession(clientId);
 
-		window.location.href = `${redirectUri}?code=${authorizeData.authorizationCode}&state=${oidcState}&redirect_uri=${redirectUri}&client_id=${clientId}`;
+		redirectToClient(clientId, authorizeData);
 	}
 
 	function handleSignInAgain() {

@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::{
@@ -54,13 +54,18 @@ impl AdminRefreshTokenRepository for InMemoryAdminRefreshTokenRepository {
         &self,
         old: &AdminRefreshToken,
         new: &AdminRefreshToken,
-    ) -> Result<(), DomainError> {
+    ) -> Result<bool, DomainError> {
+        // Same compare-and-set as the database: only a still-live token rotates.
         let mut tokens = self.tokens.lock().unwrap();
-        if let Some(slot) = tokens.iter_mut().find(|t| t.id() == old.id()) {
-            *slot = old.clone();
+        let Some(rotated_at) = old.rotated_at() else {
+            return Ok(false);
+        };
+        match tokens.iter_mut().find(|t| t.id() == old.id()) {
+            Some(slot) if slot.is_active(rotated_at) => *slot = old.clone(),
+            _ => return Ok(false),
         }
         tokens.push(new.clone());
-        Ok(())
+        Ok(true)
     }
 
     async fn revoke_family(&self, family_id: Uuid) -> Result<(), DomainError> {
@@ -72,6 +77,13 @@ impl AdminRefreshTokenRepository for InMemoryAdminRefreshTokenRepository {
             }
         }
         Ok(())
+    }
+
+    async fn delete_expired(&self, now: DateTime<Utc>) -> Result<u64, DomainError> {
+        let mut tokens = self.tokens.lock().unwrap();
+        let before = tokens.len();
+        tokens.retain(|t| t.expires_at() > now);
+        Ok((before - tokens.len()) as u64)
     }
 
     async fn revoke_all_for_admin(&self, admin_id: Uuid) -> Result<(), DomainError> {

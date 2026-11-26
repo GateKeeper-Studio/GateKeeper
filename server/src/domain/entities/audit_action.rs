@@ -16,9 +16,21 @@ pub const USER_EMAIL_VERIFIED: &str = "user.email.verified";
 pub const USER_PASSWORD_RESET_REQUESTED: &str = "user.password.reset_requested";
 pub const USER_PASSWORD_RESET: &str = "user.password.reset";
 pub const USER_PASSWORD_CHANGED: &str = "user.password.changed";
+// An admin reset the user's password: a temporary one was emailed to the user. The
+// row names the admin and the user, never the password.
+pub const USER_PASSWORD_ADMIN_RESET: &str = "user.password.admin_reset";
 // A one-time sign-in link was emailed (magic link login). Recorded only for an
 // existing, eligible account — the request endpoint itself answers the same for all.
 pub const USER_MAGIC_LINK_SENT: &str = "user.login.magic_link_sent";
+// QR code sign-in: the device that scanned the code approved or denied the sign-in of
+// the browser showing it. The browser's own sign-in is then `user.login.success`
+// with `metadata.method = "qr_code"`.
+pub const USER_QR_LOGIN_APPROVED: &str = "user.login.qr_approved";
+pub const USER_QR_LOGIN_DENIED: &str = "user.login.qr_denied";
+// A trusted device (a phone app's key that approves QR code sign-ins) was registered
+// or removed. Removals by credential changes are covered by those changes' events.
+pub const USER_TRUSTED_DEVICE_REGISTERED: &str = "user.trusted_device.registered";
+pub const USER_TRUSTED_DEVICE_REVOKED: &str = "user.trusted_device.revoked";
 pub const USER_MFA_ENROLLED: &str = "user.mfa.enrolled";
 pub const USER_MFA_REMOVED: &str = "user.mfa.removed";
 // The user explicitly extended a pre-authorization session from the login UI. Worth
@@ -89,4 +101,18 @@ pub const ADMIN_LOGOUT: &str = "admin.logout";
 pub const ADMIN_PROFILE_UPDATED: &str = "admin.profile.updated";
 pub const ADMIN_PASSWORD_CHANGED: &str = "admin.password.changed";
 pub const ADMIN_DEACTIVATED: &str = "admin.deactivated";
+// The password was right and the account asked for its second factor.
+pub const ADMIN_LOGIN_MFA_REQUIRED: &str = "admin.login.mfa_required";
+// Too many consecutive failed sign-ins; the account is locked for a while.
+pub const ADMIN_ACCOUNT_LOCKED: &str = "admin.account.locked";
+pub const ADMIN_MFA_ENABLED: &str = "admin.mfa.enabled";
+pub const ADMIN_MFA_DISABLED: &str = "admin.mfa.disabled";
+pub const ADMIN_RECOVERY_CODES_REGENERATED: &str = "admin.mfa.recovery_codes_regenerated";
+// One admin acting on another admin of the same organization.
+pub const ADMIN_INVITED: &str = "admin.invited";
+pub const ADMIN_INVITATION_REVOKED: &str = "admin.invitation.revoked";
+pub const ADMIN_INVITATION_ACCEPTED: &str = "admin.invitation.accepted";
+pub const ADMIN_REACTIVATED: &str = "admin.reactivated";
+pub const ADMIN_MFA_RESET: &str = "admin.mfa.reset";
+pub const ORGANIZATION_ADMIN_MFA_POLICY_UPDATED: &str = "organization.admin_mfa_policy.updated";
 pub const DATA_PURGED: &str = "data.purged";

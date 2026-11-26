@@ -13,12 +13,16 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   return json(renamed);
 };
 
-// The IdP requires `current_password` (step-up) to remove a factor; forward it.
+// The IdP asks for a step-up to remove a factor: `current_password`, or the
+// `step_up` proof of an account without a password. Forward whichever came.
 export const DELETE: RequestHandler = async ({ locals, params, request }) => {
   const body = await request.json().catch(() => ({}));
   await idpFetch(locals, `/me/mfa/methods/${params.id}`, {
     method: 'DELETE',
-    body: JSON.stringify({ current_password: body?.current_password ?? null })
+    body: JSON.stringify({
+      current_password: body?.current_password ?? null,
+      step_up: body?.step_up ?? null
+    })
   });
   return new Response(null, { status: 204 });
 };

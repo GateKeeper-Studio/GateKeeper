@@ -1,5 +1,8 @@
+pub mod admin_invitation_repository;
+pub mod admin_mfa_repository;
 pub mod admin_refresh_token_repository;
 pub mod admin_user_repository;
+pub mod admin_web_session_repository;
 pub mod custom_field_definition_repository;
 pub mod group_repository;
 pub mod legal_document_repository;
@@ -22,10 +25,12 @@ pub mod mfa_enrollment_repository;
 pub mod oauth_client_repository;
 pub mod password_change_token_repository;
 pub mod password_reset_token_repository;
+pub mod qr_login_request_repository;
 pub mod refresh_token_repository;
 pub mod risk_model_repository;
 pub mod signing_key_repository;
 pub mod social_identity_repository;
+pub mod trusted_device_repository;
 
 // Compliance / audit (WI-02)
 pub mod audit_event_repository;

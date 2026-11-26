@@ -2,7 +2,7 @@
 //
 // One entry per dashboard destination. Org-level pages are always available; tenant-
 // scoped pages return `null` when no tenant is selected so the palette hides them
-// instead of linking to `/tenants/undefined/...`. Icons mirror the sidebar
+// instead of linking to `/console/tenants/undefined/...`. Icons mirror the sidebar
 // (`app-sidebar/index.svelte`) so the two stay visually consistent.
 
 import LayoutDashboardIcon from '@lucide/svelte/icons/layout-dashboard';
@@ -28,14 +28,14 @@ import type { NavCommand } from './types';
 const tenantPath =
 	(suffix: string) =>
 	({ tenantId }: { tenantId?: string }): string | null =>
-		tenantId ? `/tenants/${tenantId}/${suffix}` : null;
+		tenantId ? `/console/tenants/${tenantId}/${suffix}` : null;
 
 export const navigationCommands: NavCommand[] = [
 	// Organization-level — always available.
-	{ id: 'home', label: 'Dashboard Home', icon: LayoutDashboardIcon, keywords: ['overview', 'start'], href: () => '/' },
-	{ id: 'organization', label: 'Organization', icon: Building2Icon, keywords: ['org', 'company'], href: () => '/?settings=organization' },
-	{ id: 'account', label: 'Account', icon: CircleUserIcon, keywords: ['profile', 'settings', 'me'], href: () => '/?settings=account' },
-	{ id: 'create-tenant', label: 'Create Tenant', icon: PlusIcon, keywords: ['new', 'add', 'environment'], href: () => '/tenants/new' },
+	{ id: 'home', label: 'Dashboard Home', icon: LayoutDashboardIcon, keywords: ['overview', 'start'], href: () => '/console' },
+	{ id: 'organization', label: 'Organization', icon: Building2Icon, keywords: ['org', 'company'], href: () => '/console?settings=organization' },
+	{ id: 'account', label: 'Account', icon: CircleUserIcon, keywords: ['profile', 'settings', 'me'], href: () => '/console?settings=account' },
+	{ id: 'create-tenant', label: 'Create Tenant', icon: PlusIcon, keywords: ['new', 'add', 'environment'], href: () => '/console/tenants/new' },
 
 	// Tenant-scoped — hidden when no tenant is selected.
 	{ id: 'users', label: 'Users', icon: UserIcon, keywords: ['people', 'members', 'accounts'], href: tenantPath('users') },

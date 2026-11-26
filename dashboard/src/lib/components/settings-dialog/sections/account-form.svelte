@@ -17,6 +17,11 @@
 
 	let name = $state(profile.name);
 	let email = $state(profile.email);
+	let currentPassword = $state('');
+
+	// The email is the sign-in identifier, so the server asks for the current password
+	// to change it (a name-only change needs none). Compared as the server does.
+	const emailChanged = $derived(email.trim().toLowerCase() !== profile.email.trim().toLowerCase());
 
 	let error = $state('');
 	let isLoading = $state(false);
@@ -32,11 +37,20 @@
 			error = m.settings_account_email_required();
 			return;
 		}
+		if (emailChanged && currentPassword.length === 0) {
+			error = m.settings_account_email_password_required();
+			return;
+		}
 		error = '';
 		isLoading = true;
 
-		const [, err] = await updateMyProfile({ name: name.trim(), email: email.trim() });
+		const [, err] = await updateMyProfile({
+			name: name.trim(),
+			email: email.trim(),
+			currentPassword: emailChanged ? currentPassword : undefined
+		});
 		isLoading = false;
+		currentPassword = '';
 
 		if (err) {
 			toast.error(err.data?.message || err.message || m.settings_account_update_error());
@@ -66,8 +80,22 @@
 		</Label>
 		<Input id="email" type="email" placeholder={m.settings_account_email_placeholder()} bind:value={email} />
 		<p class="text-xs text-muted-foreground">{m.settings_account_email_helper()}</p>
-		{#if error}<p class="text-sm font-medium text-destructive">{error}</p>{/if}
+		{#if error && !emailChanged}<p class="text-sm font-medium text-destructive">{error}</p>{/if}
 	</div>
+
+	{#if emailChanged}
+		<div class="space-y-2">
+			<Label for="email-current-password">{m.settings_account_email_password_label()}</Label>
+			<Input
+				id="email-current-password"
+				type="password"
+				autocomplete="current-password"
+				bind:value={currentPassword}
+			/>
+			<p class="text-xs text-muted-foreground">{m.settings_account_email_password_helper()}</p>
+			{#if error}<p class="text-sm font-medium text-destructive">{error}</p>{/if}
+		</div>
+	{/if}
 
 	<div class="flex justify-end">
 		<Button type="submit" disabled={isLoading} class="w-fit">
