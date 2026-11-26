@@ -76,9 +76,7 @@
 		// mfa_id — each page resolves its own challenge.
 		const urlParams = buildOidcParams(searchParams, {
 			mfa_auth_app_required: searchParams.get('mfa_auth_app_required') || '',
-			email: searchParams.get('email') || '',
-			change_password_code: searchParams.get('change_password_code') || '',
-			user_id: searchParams.get('user_id') || ''
+			email: searchParams.get('email') || ''
 		});
 
 		open = false;

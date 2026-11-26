@@ -105,6 +105,35 @@ impl MfaChallengeRepository for DbMfaChallengeRepository {
         Ok(row.map(|r| reconstruct_row!(r)))
     }
 
+    async fn find_active_by_user(
+        &self,
+        user_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+    ) -> Result<Option<MfaChallenge>, DomainError> {
+        let row = run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          SELECT id, tenant_id, user_id, auth_session_id, purpose, method,
+            code_hash, state_json, attempts, consumed_at, expires_at, created_at
+          FROM mfa_challenges
+          WHERE user_id = $1 AND purpose = $2 AND method = $3
+            AND auth_session_id IS NULL AND consumed_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        "#,
+                user_id,
+                purpose.as_str(),
+                method.as_str()
+            ),
+            fetch_optional
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(row.map(|r| reconstruct_row!(r)))
+    }
+
     async fn add(&self, challenge: &MfaChallenge) -> Result<(), DomainError> {
         run!(
             self.executor,
@@ -153,6 +182,32 @@ impl MfaChallengeRepository for DbMfaChallengeRepository {
         .map_err(map_sqlx_error)?;
 
         Ok(())
+    }
+
+    async fn count_issued_since(
+        &self,
+        user_id: Uuid,
+        purpose: &MfaChallengePurpose,
+        method: &MfaMethod,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, DomainError> {
+        let count = run!(
+            self.executor,
+            sqlx::query_scalar!(
+                r#"
+          SELECT COUNT(*) AS "count!"
+          FROM mfa_challenges
+          WHERE user_id = $1 AND purpose = $2 AND method = $3 AND created_at >= $4
+        "#,
+                user_id,
+                purpose.as_str(),
+                method.as_str(),
+                since
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(count)
     }
 
     async fn invalidate_active_by_user(

@@ -15,6 +15,7 @@
 	import { formSchema } from './schema';
 	import type { ClientAuthData } from '$lib/services/auth/get-client-auth-data';
 	import { authorizeApi } from '$lib/services/auth/authorize';
+	import { redirectToClient } from '$lib/utils/continue-login';
 	import { approveQrSignIn, isQrApproval } from '$lib/utils/qr-approval';
 	import { sendEmailMfaApi } from '$lib/services/auth/send-email-mfa';
 	import { verifyEmailMfaApi } from '$lib/services/auth/verify-email-mfa';
@@ -22,6 +23,7 @@
 	import {
 		SessionClock,
 		clearSession,
+		readPendingPasswordChange,
 		readSessionCode
 	} from '$lib/state/auth-session-expiry.svelte';
 	import { m } from '$lib/paraglide/messages.js';
@@ -38,9 +40,7 @@
 	const oidcState = searchParams.get('state') || '';
 	const email = searchParams.get('email') || '';
 	const codeChallenge = searchParams.get('code_challenge') || '';
-	const changePasswordCode = searchParams.get('change_password_code') || '';
 	const mfaAuthAppRequired = searchParams.get('mfa_auth_app_required') || '';
-	const userId = searchParams.get('user_id') || '';
 	const mfaId = searchParams.get('mfa_id') || '';
 	const nonce = searchParams.get('nonce') || '';
 
@@ -147,11 +147,8 @@
 			return;
 		}
 
-		if (changePasswordCode && userId) {
-			urlParams.set('session_code', verifyMfaData.sessionCode);
-			urlParams.set('change_password_code', changePasswordCode);
-			urlParams.set('user_id', userId);
-
+		// A temporary password signed in: the new password comes before anything else.
+		if (readPendingPasswordChange(clientId)) {
 			await goto(resolve(`/auth/[clientId]/update-password?${urlParams.toString()}`, { clientId }));
 			return;
 		}
@@ -196,7 +193,7 @@
 		toast.success(m.signin_success());
 		clearSession(clientId);
 
-		window.location.href = `${redirectUri}?code=${authorizeData.authorizationCode}&state=${oidcState}&redirect_uri=${redirectUri}&client_id=${clientId}`;
+		redirectToClient(clientId, authorizeData);
 	}
 </script>
 
@@ -243,7 +240,13 @@
 			{/if}
 			{m.auth_mfa_mail_submit()}
 		</Button>
-		<Button type="button" variant="ghost" disabled={isResending} class="w-full" onclick={resendCode}>
+		<Button
+			type="button"
+			variant="ghost"
+			disabled={isResending}
+			class="w-full"
+			onclick={resendCode}
+		>
 			{isResending ? m.auth_mfa_mail_resending() : m.auth_mfa_mail_resend_button()}
 		</Button>
 	</form>

@@ -18,6 +18,9 @@ pub enum MfaChallengePurpose {
     Login,
     // Proof-of-possession during enrollment (may have no auth session).
     Enroll,
+    // Fresh proof before a sensitive self-service action on an account without a
+    // password (a passkey assertion or an emailed code). No auth session.
+    StepUp,
 }
 
 impl MfaChallengePurpose {
@@ -25,12 +28,14 @@ impl MfaChallengePurpose {
         match self {
             MfaChallengePurpose::Login => "login",
             MfaChallengePurpose::Enroll => "enroll",
+            MfaChallengePurpose::StepUp => "step_up",
         }
     }
 
     pub fn from_db(value: &str) -> Self {
         match value {
             "enroll" => MfaChallengePurpose::Enroll,
+            "step_up" => MfaChallengePurpose::StepUp,
             _ => MfaChallengePurpose::Login,
         }
     }

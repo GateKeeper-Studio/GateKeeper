@@ -138,10 +138,15 @@ pub async fn confirm_totp_enrollment(
     Ok((StatusCode::OK, Json(response)))
 }
 
+// Step-up for an account without a password (see `step_up.rs`): there a passkey
+// signs in on its own, so a stolen token must not be able to add one.
 pub async fn start_webauthn_enrollment(
     State(state): State<AppState>,
     principal: AuthPrincipal,
+    body: Option<axum::Json<crate::presentation::handlers::step_up::StepUpBody>>,
 ) -> Result<impl IntoResponse, ApiError> {
+    crate::presentation::handlers::step_up::confirm_without_password(&state, &principal, body)
+        .await?;
     let response = state
         .mfa
         .start_webauthn_enrollment
@@ -181,7 +186,8 @@ pub async fn finish_webauthn_enrollment(
     Ok((StatusCode::CREATED, Json(response)))
 }
 
-// Step-up: the body must carry `current_password` (see `step_up.rs`).
+// Step-up: the body must carry `current_password`, or the `step_up` proof of an
+// account without a password (see `step_up.rs`).
 pub async fn delete_my_mfa_enrollment(
     State(state): State<AppState>,
     principal: AuthPrincipal,

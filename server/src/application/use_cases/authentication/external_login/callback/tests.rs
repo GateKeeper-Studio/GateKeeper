@@ -9,13 +9,14 @@ mod tests {
                 external_identity_provider_client::ExternalUserProfile, risk_engine::RiskEngine,
             },
             use_cases::authentication::external_login::callback::{
-                command::Command, use_case::UseCase,
+                command::Command, response::Response, use_case::UseCase,
             },
         },
         domain::entities::{
             external_identity_provider::{ExternalIdentityProvider, ExternalProviderKind},
             external_login_flow::ExternalLoginFlow,
             login_event::RiskDecision,
+            mfa_enrollment::MfaEnrollment,
             oauth_client::{ClientType, MfaPolicy, OAuthClient},
             social_identity::SocialIdentity,
             user::User,
@@ -23,8 +24,11 @@ mod tests {
         testing::{
             fake_external_identity_provider_client::FakeExternalIdentityProviderClient,
             fake_risk_engine::FakeRiskEngine,
+            fake_webauthn_service::FakeWebauthnService,
             in_memory_repositories::{
+                in_memory_auth_session_repository::InMemoryAuthSessionRepository,
                 in_memory_authorization_code_repository::InMemoryAuthorizationCodeRepository,
+                in_memory_mfa_enrollment_repository::InMemoryMfaEnrollmentRepository,
                 in_memory_external_identity_provider_repository::InMemoryExternalIdentityProviderRepository,
                 in_memory_external_login_flow_repository::InMemoryExternalLoginFlowRepository,
                 in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
@@ -34,7 +38,9 @@ mod tests {
                 in_memory_user_repository::InMemoryUserRepository,
             },
             in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
+            recording_email_sender::RecordingEmailSender,
             stub_secret_cipher::StubSecretCipher,
+            templated_email_support::recording_templated_email_sender,
         },
         utils::oauth_crypto::sha256_hex,
     };
@@ -47,8 +53,63 @@ mod tests {
         codes: Arc<InMemoryAuthorizationCodeRepository>,
         flows: Arc<InMemoryExternalLoginFlowRepository>,
         outbox: Arc<InMemoryOutboxEventRepository>,
+        sessions: Arc<InMemoryAuthSessionRepository>,
+        mfa_enrollments: Arc<InMemoryMfaEnrollmentRepository>,
+        emails: Arc<RecordingEmailSender>,
         tenant_id: Uuid,
         use_case: UseCase,
+    }
+
+    // The authorization code of a sign-in that needed no second factor.
+    fn code_of(response: &Response) -> &str {
+        match response {
+            Response::Code {
+                authorization_code, ..
+            } => authorization_code,
+            Response::SecondFactor { .. } => panic!("expected a code, got a second-factor step"),
+        }
+    }
+
+    // What the hosted page reads from the fragment of the continue URL.
+    fn continuation_of(response: &Response) -> serde_json::Value {
+        use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+        let Response::SecondFactor { continue_url } = response else {
+            panic!("expected a second-factor step, got a code");
+        };
+        let (page, payload) = continue_url.split_once("#payload=").unwrap();
+        assert!(page.starts_with("https://id.example.com/auth/"));
+        assert!(page.ends_with("/external-continue"));
+        serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).unwrap()).unwrap()
+    }
+
+    // A user who signed in with Google before, so the callback recognises the subject.
+    fn seed_returning_user(h: &Harness) -> Uuid {
+        let user = User::new(h.tenant_id, "returning@example.com".to_string(), None, None);
+        let user_id = user.id();
+        let identity = SocialIdentity::new(
+            user_id,
+            h.tenant_id,
+            ExternalProviderKind::Google,
+            "google-sub-1".to_string(),
+            Some("returning@example.com".to_string()),
+        );
+        h.users.memory.data.lock().unwrap().insert(user_id, user);
+        h.socials
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(identity.id(), identity);
+        user_id
+    }
+
+    fn returning_profile() -> ExternalUserProfile {
+        ExternalUserProfile {
+            subject: "google-sub-1".to_string(),
+            email: None,
+            email_verified: false,
+            name: None,
+        }
     }
 
     fn make_client(tenant_id: Uuid) -> OAuthClient {
@@ -155,6 +216,9 @@ mod tests {
 
         let codes = Arc::new(InMemoryAuthorizationCodeRepository::new());
         let outbox = Arc::new(InMemoryOutboxEventRepository::new());
+        let sessions = Arc::new(InMemoryAuthSessionRepository::new());
+        let mfa_enrollments = Arc::new(InMemoryMfaEnrollmentRepository::new());
+        let (templated_email, emails) = recording_templated_email_sender();
 
         let factory = Arc::new(
             InMemoryUnitOfWorkFactory::new(
@@ -166,7 +230,9 @@ mod tests {
             .with_external_login_flow_repository(Arc::clone(&flows))
             .with_social_identity_repository(Arc::clone(&socials))
             .with_authorization_code_repository(Arc::clone(&codes))
-            .with_outbox_event_repository(Arc::clone(&outbox)),
+            .with_outbox_event_repository(Arc::clone(&outbox))
+            .with_auth_session_repository(Arc::clone(&sessions))
+            .with_mfa_enrollment_repository(Arc::clone(&mfa_enrollments)),
         );
 
         let use_case = UseCase::new(
@@ -174,6 +240,9 @@ mod tests {
             Arc::new(FakeExternalIdentityProviderClient::returning(profile)),
             Arc::new(StubSecretCipher),
             risk_engine,
+            Arc::new(FakeWebauthnService::new()),
+            templated_email,
+            "https://id.example.com".to_string(),
         );
 
         Harness {
@@ -182,6 +251,9 @@ mod tests {
             codes,
             flows,
             outbox,
+            sessions,
+            mfa_enrollments,
+            emails,
             tenant_id,
             use_case,
         }
@@ -209,9 +281,17 @@ mod tests {
 
         let response = h.use_case.execute(command()).await.unwrap();
 
-        assert_eq!(response.redirect_uri, "https://app.example.com/cb");
-        assert_eq!(response.state, "client-state");
-        assert!(!response.authorization_code.is_empty());
+        let Response::Code {
+            redirect_uri,
+            state,
+            authorization_code,
+        } = &response
+        else {
+            panic!("expected a code");
+        };
+        assert_eq!(redirect_uri, "https://app.example.com/cb");
+        assert_eq!(state, "client-state");
+        assert!(!authorization_code.is_empty());
 
         // A new verified user + its social link were created, the code minted, and
         // the flow consumed.
@@ -257,7 +337,7 @@ mod tests {
             .insert(identity.id(), identity);
 
         let response = h.use_case.execute(command()).await.unwrap();
-        assert!(!response.authorization_code.is_empty());
+        assert!(!code_of(&response).is_empty());
 
         // No new user created; the existing one is reused, and a code is minted.
         assert_eq!(h.users.memory.data.lock().unwrap().len(), 1);
@@ -283,7 +363,7 @@ mod tests {
             .insert(existing_id, existing);
 
         let response = h.use_case.execute(command()).await.unwrap();
-        assert!(!response.authorization_code.is_empty());
+        assert!(!code_of(&response).is_empty());
 
         // No new user; a social link to the existing user was added.
         assert_eq!(h.users.memory.data.lock().unwrap().len(), 1);
@@ -320,7 +400,7 @@ mod tests {
             .insert(existing_id, existing);
 
         let response = h.use_case.execute(command()).await.unwrap();
-        assert!(!response.authorization_code.is_empty());
+        assert!(!code_of(&response).is_empty());
 
         // Linked, not duplicated: still one user, and the social link points at it.
         assert_eq!(h.users.memory.data.lock().unwrap().len(), 1);
@@ -332,6 +412,81 @@ mod tests {
             socials.values().next().unwrap().email(),
             Some("gabriel.sobral@example.com")
         );
+    }
+
+    // A user who enrolled an authenticator app: "Sign in with Google" must not hand
+    // out a code before that factor is checked.
+    #[tokio::test]
+    async fn an_enrolled_second_factor_is_asked_for_before_any_code_exists() {
+        let h = setup(returning_profile(), vec![], vec![]);
+        let user_id = seed_returning_user(&h);
+        let mut enrollment = MfaEnrollment::new_totp(h.tenant_id, user_id, "enc:seed".to_string());
+        enrollment.confirm(chrono::Utc::now());
+        let enrollment_id = enrollment.id();
+        h.mfa_enrollments
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(enrollment_id, enrollment);
+
+        let response = h.use_case.execute(command()).await.unwrap();
+
+        let continuation = continuation_of(&response);
+        assert_eq!(continuation["email"], "returning@example.com");
+        assert_eq!(continuation["login"]["mfaType"], "totp");
+        assert_eq!(continuation["login"]["mfaId"], enrollment_id.to_string());
+        assert_eq!(continuation["oidc"]["redirect_uri"], "https://app.example.com/cb");
+        assert_eq!(continuation["oidc"]["state"], "client-state");
+        assert_eq!(continuation["oidc"]["code_challenge"], "challenge");
+
+        // No code, one MFA-pending session holding the frozen request, flow consumed.
+        assert!(h.codes.memory.data.lock().unwrap().is_empty());
+        let sessions = h.sessions.memory.data.lock().unwrap();
+        assert_eq!(sessions.len(), 1);
+        let session = sessions.values().next().unwrap();
+        assert!(session.is_mfa_pending());
+        assert_eq!(session.user_id(), Some(user_id));
+        assert_eq!(session.pending_redirect_uri(), "https://app.example.com/cb");
+        assert_eq!(
+            session.session_token_hash(),
+            sha256_hex(continuation["login"]["sessionCode"].as_str().unwrap())
+        );
+        assert!(h.flows.memory.data.lock().unwrap().is_empty());
+    }
+
+    // A risk step-up applies to a social sign-in too. This user has no enrolled
+    // factor, so the code goes to their mailbox.
+    #[tokio::test]
+    async fn a_risk_step_up_sends_an_email_code_instead_of_minting_a_code() {
+        let h = setup_with_risk(
+            returning_profile(),
+            vec![],
+            vec![],
+            Arc::new(FakeRiskEngine::with_decision(RiskDecision::AllowWithMfa)),
+        );
+        seed_returning_user(&h);
+
+        let response = h.use_case.execute(command()).await.unwrap();
+
+        assert_eq!(continuation_of(&response)["login"]["mfaType"], "email");
+        assert!(h.codes.memory.data.lock().unwrap().is_empty());
+        let sent = h.emails.sent.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].to, "returning@example.com");
+    }
+
+    // Without a factor due, the session opened for the gate is spent at once.
+    #[tokio::test]
+    async fn a_sign_in_without_a_second_factor_leaves_no_usable_session() {
+        let h = setup(returning_profile(), vec![], vec![]);
+        seed_returning_user(&h);
+
+        let response = h.use_case.execute(command()).await.unwrap();
+
+        assert!(!code_of(&response).is_empty());
+        let sessions = h.sessions.memory.data.lock().unwrap();
+        assert!(sessions.values().all(|s| s.is_expired(chrono::Utc::now())));
     }
 
     #[tokio::test]

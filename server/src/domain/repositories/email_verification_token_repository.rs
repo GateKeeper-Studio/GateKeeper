@@ -14,6 +14,13 @@ pub trait EmailVerificationTokenRepository: Send + Sync {
         &self,
         user_id: Uuid,
     ) -> Result<Option<EmailVerificationToken>, DomainError>;
+    // How many codes this user was issued since `since`, consumed or not. Bounds how
+    // often a new code (and its fresh set of wrong tries) can be asked for.
+    async fn count_issued_since(
+        &self,
+        user_id: Uuid,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, DomainError>;
     async fn add(&self, token: &EmailVerificationToken) -> Result<(), DomainError>;
     // Persists redemption (consumed_at) and the wrong-attempt counter.
     async fn update(&self, token: &EmailVerificationToken) -> Result<(), DomainError>;

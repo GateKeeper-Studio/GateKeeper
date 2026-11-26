@@ -32,6 +32,10 @@ impl DbEmailVerificationTokenRepository {
 
 #[async_trait]
 impl EmailVerificationTokenRepository for DbEmailVerificationTokenRepository {
+    // SECURITY: `FOR UPDATE`. The confirmation code has six digits and five wrong
+    // tries. The counter is read here and written back by the caller, so without the
+    // row lock parallel guesses were all counted as the first one, and anyone could
+    // confirm an address they do not own. The lock serializes the guesses.
     async fn find_active_by_user_id(
         &self,
         user_id: Uuid,
@@ -45,6 +49,7 @@ impl EmailVerificationTokenRepository for DbEmailVerificationTokenRepository {
           WHERE user_id = $1 AND consumed_at IS NULL
           ORDER BY created_at DESC
           LIMIT 1
+          FOR UPDATE
         "#,
                 user_id
             ),
@@ -64,6 +69,29 @@ impl EmailVerificationTokenRepository for DbEmailVerificationTokenRepository {
                 r.created_at,
             )
         }))
+    }
+
+    async fn count_issued_since(
+        &self,
+        user_id: Uuid,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<i64, DomainError> {
+        let row = run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          SELECT COUNT(*) AS "count!"
+          FROM email_verification_tokens
+          WHERE user_id = $1 AND created_at >= $2
+        "#,
+                user_id,
+                since
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(row.count)
     }
 
     async fn add(&self, token: &EmailVerificationToken) -> Result<(), DomainError> {
