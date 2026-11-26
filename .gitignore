@@ -21,3 +21,14 @@
 # no -devel package), which cannot work on CI or in a container image. Keep it
 # local; see server/.cargo/config.toml.example.
 **/.cargo/config.toml
+
+# Claude Code's local state: plans, worktrees, machine-local settings.
+.claude/
+
+# Build output of the SDK packages (`npm run build` in packages/*); published, not
+# committed.
+packages/*/dist/
+
+# The repo root has no package.json: a lockfile here is the stray result of an
+# `npm install` run in the wrong directory. Each app/package keeps its own.
+/package-lock.json
