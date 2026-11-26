@@ -73,21 +73,26 @@ fn key_id(secret: &str) -> String {
     hex::encode(&digest[..8])
 }
 
+// jsonwebtoken refuses an empty HMAC key, with which anyone could forge an admin
+// token. Config never yields one (`env_string` drops empty values), so an empty key
+// here is a wiring bug: stop the boot rather than run without admin auth.
+const EMPTY_KEY: &str = "the admin token signing key must not be empty";
+
 impl AdminTokenService {
     pub fn new(secret: &str, previous_secret: Option<&str>, issuer: String) -> Self {
         let mut verification_keys = vec![VerificationKey {
             kid: key_id(secret),
-            key: DecodingKey::from_secret(secret.as_bytes()),
+            key: DecodingKey::from_secret(secret.as_bytes()).expect(EMPTY_KEY),
         }];
         if let Some(previous) = previous_secret.filter(|p| !p.is_empty() && *p != secret) {
             verification_keys.push(VerificationKey {
                 kid: key_id(previous),
-                key: DecodingKey::from_secret(previous.as_bytes()),
+                key: DecodingKey::from_secret(previous.as_bytes()).expect(EMPTY_KEY),
             });
         }
         Self {
             kid: key_id(secret),
-            encoding_key: EncodingKey::from_secret(secret.as_bytes()),
+            encoding_key: EncodingKey::from_secret(secret.as_bytes()).expect(EMPTY_KEY),
             verification_keys,
             issuer,
         }
@@ -282,7 +287,7 @@ mod tests {
         let token = encode(
             &header,
             &claims,
-            &EncodingKey::from_secret(secret.as_bytes()),
+            &EncodingKey::from_secret(secret.as_bytes()).unwrap(),
         )
         .unwrap();
         assert!(svc.verify(&token).is_err());

@@ -2,11 +2,17 @@
 # and documented in docs/MEMORY-SAFETY.md. Run: `cargo audit`.
 [advisories]
 ignore = [
-    # rsa "Marvin Attack" timing sidechannel — no upstream fix. Transitive via
-    # jsonwebtoken's rust_crypto backend; the RSA path is unused (this IdP signs
-    # ES256 + HS256 only). Revisit when a constant-time rsa release lands.
-    "RUSTSEC-2023-0071",
     # proc-macro-error2 unmaintained — build-time proc-macro (validator_derive),
     # not in the runtime binary. No security impact.
     "RUSTSEC-2026-0173",
+    # chrono unmaintained — informational, no vulnerability and no patched release.
+    # Used throughout (DateTime<Utc>, sqlx `chrono`); migrating to jiff/time is its
+    # own project. Revisit with that migration.
+    "RUSTSEC-2026-0543",
+    # libsqlite3-sys (bundled SQLite page-cache leak) — cargo-audit only: the crate is
+    # in Cargo.lock as sqlx's optional SQLite driver but is never built (the server
+    # uses Postgres; `cargo tree -i libsqlite3-sys` is empty), so cargo-deny, which
+    # resolves the real feature graph, does not report it. The bug needs a crafted
+    # local database file opened by the process. Drops when sqlx moves to >= 0.39.
+    "RUSTSEC-2026-0459",
 ]

@@ -54,17 +54,26 @@ absence is a decision, not an oversight.
 
 Accepted RustSec advisories and reviewed unsafe dependencies. Each row has a
 matching `ignore` entry in both `deny.toml` (`[advisories].ignore`) and
-`.cargo/audit.toml`. Add a row before accepting anything new.
+`.cargo/audit.toml` (except where noted). Add a row before accepting anything new.
 
 | Advisory / crate | Reason accepted | Date | Revisit when |
 |------------------|-----------------|------|--------------|
-| `RUSTSEC-2023-0071` — `rsa` Marvin timing sidechannel | No upstream fix. Transitive via `jsonwebtoken`'s `rust_crypto` backend; this IdP signs/verifies **ES256 + HS256 only**, so the RSA path is never exercised. | 2026-07-16 | RustCrypto/RSA ships a constant-time release |
 | `RUSTSEC-2026-0173` — `proc-macro-error2` unmaintained | Build-time proc-macro (dependency of `validator_derive`); not present in the runtime binary. No security impact. | 2026-07-16 | `validator` migrates off it |
+| `RUSTSEC-2026-0543` — `chrono` unmaintained | Informational: no vulnerability, no patched release. Used throughout (`DateTime<Utc>`, sqlx `chrono`); moving to `jiff`/`time` is a separate migration. | 2026-11-26 | that migration lands |
+| `RUSTSEC-2026-0459` — `libsqlite3-sys` bundled SQLite page-cache leak | **`.cargo/audit.toml` only.** In `Cargo.lock` as sqlx's optional SQLite driver but never built (Postgres only; `cargo tree -i libsqlite3-sys` is empty), so cargo-deny does not see it. Needs a crafted local database file. | 2026-11-26 | sqlx requires `libsqlite3-sys` ≥ 0.39 |
 
 **Fixed by lockfile bump (not accepted, resolved):** `anyhow` 1.0.102→1.0.103
 (RUSTSEC-2026-0190 unsound `downcast_mut`), `quinn-proto` 0.11.14→0.11.16
 (RUSTSEC-2026-0185 high — remote memory exhaustion, a §17 concern), `spin`
 0.9.8→0.9.9 (yanked).
+
+**Fixed 2026-11-26 (resolved):** `jsonwebtoken` 10.4→12.0 and `p256` 0.13→0.14 move the
+signing stack to `crypto-bigint` 0.7.11 (RUSTSEC-2026-0387, non-constant-time
+arithmetic) and `rsa` 0.10 (RUSTSEC-2023-0071, Marvin, so that exception is gone).
+Lockfile bumps: `lettre` 0.11.24 (six SMTP advisories, RUSTSEC-2026-0560…0565),
+`rustls` 0.23.46, `rustls-webpki` 0.103.17, `webpki-roots` 1.0.12, `quinn-proto`
+0.11.19, `quinn-udp` 0.5.16, `h2` 0.4.21, `url` 2.5.9, `ctutils` 0.4.8, and the unsound
+`tokio` 1.54.1 / `event-listener` 5.4.2 plus the yanked `chacha20` 0.10.2.
 
 ---
 

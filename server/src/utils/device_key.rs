@@ -17,7 +17,7 @@ use base64::{
 use p256::{
     PublicKey,
     ecdsa::{Signature, VerifyingKey, signature::Verifier},
-    elliptic_curve::sec1::ToEncodedPoint,
+    elliptic_curve::sec1::ToSec1Point,
     pkcs8::DecodePublicKey,
 };
 
@@ -36,7 +36,7 @@ pub fn normalize_public_key(encoded: &str) -> Option<String> {
     let key = PublicKey::from_public_key_der(&bytes)
         .or_else(|_| PublicKey::from_sec1_bytes(&bytes))
         .ok()?;
-    Some(URL_SAFE_NO_PAD.encode(key.to_encoded_point(false).as_bytes()))
+    Some(URL_SAFE_NO_PAD.encode(key.to_sec1_point(false).as_bytes()))
 }
 
 // Whether `signature` is a valid ES256 signature of `message` by the stored key.
@@ -57,7 +57,8 @@ pub fn verify(stored_public_key: &str, message: &[u8], signature: &str) -> bool 
         return false;
     };
     // A high-S signature is as valid mathematically; some platforms emit it.
-    let signature = signature.normalize_s().unwrap_or(signature);
+    // (`normalize_s` is a constant-time no-op on a low-S signature.)
+    let signature = signature.normalize_s();
     key.verify(message, &signature).is_ok()
 }
 
@@ -79,7 +80,7 @@ mod tests {
     }
 
     fn sec1_b64(key: &SigningKey, compressed: bool) -> String {
-        URL_SAFE_NO_PAD.encode(key.verifying_key().to_encoded_point(compressed).as_bytes())
+        URL_SAFE_NO_PAD.encode(key.verifying_key().to_sec1_point(compressed).as_bytes())
     }
 
     #[test]
@@ -95,7 +96,7 @@ mod tests {
             from_spki
         );
         // Standard base64 with padding of the raw point, as iOS apps often send it.
-        let raw = key.verifying_key().to_encoded_point(false);
+        let raw = key.verifying_key().to_sec1_point(false);
         assert_eq!(
             normalize_public_key(&STANDARD.encode(raw.as_bytes())).unwrap(),
             from_spki

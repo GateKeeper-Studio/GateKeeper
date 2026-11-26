@@ -343,7 +343,7 @@ impl Fixture {
     // its id and signing key.
     fn trust_device(&self, counts_as_second_factor: bool) -> (Uuid, SigningKey) {
         let key = SigningKey::from_slice(&[42u8; 32]).unwrap();
-        let public = URL_SAFE_NO_PAD.encode(key.verifying_key().to_encoded_point(false).as_bytes());
+        let public = URL_SAFE_NO_PAD.encode(key.verifying_key().to_sec1_point(false).as_bytes());
         let device = TrustedDevice::new(
             self.tenant_id,
             self.user_id,
