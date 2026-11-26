@@ -109,20 +109,25 @@ jobs:
   supply-chain:
     # Advisory / license / ban / source gates. No compilation, no database.
     runs-on: ubuntu-latest
-    # audit-check publishes its report as a Check Run, which the default read-only
-    # token cannot create ("Resource not accessible by integration"). PRs from forks
-    # still get read-only tokens; the action then prints the report in the log.
     permissions:
       contents: read
-      checks: write
     steps:
       - uses: actions/checkout@v4
 
+      # Only to install cargo-audit; the scan reads Cargo.lock and compiles nothing.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        # Built with stable, not server/'s pinned toolchain, like cargo-geiger below.
+        run: cargo +stable install cargo-audit --locked
+
       - name: cargo-audit
-        uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: server
+        # Runs inside server/ (the job default), so cargo-audit reads
+        # server/.cargo/audit.toml: the accepted exceptions, documented in
+        # docs/MEMORY-SAFETY.md. rustsec/audit-check ran `cargo audit --file
+        # server/Cargo.lock` from the repo root, where that file is never found, so
+        # every accepted advisory failed the job.
+        run: cargo +stable audit
 
       - name: cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v2
