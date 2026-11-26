@@ -78,9 +78,11 @@ pub async fn sign_in(
             .with_request_context(ctx.ip_address.clone(), ctx.user_agent.clone());
             let _ = state.audit_logger.record(event).await;
 
-            let cookie = state
-                .console
-                .session_cookie(&started.session_token, session_lifetime().num_seconds());
+            let cookie = state.console.session_cookie(
+                &headers,
+                &started.session_token,
+                session_lifetime().num_seconds(),
+            );
             let mut response =
                 (StatusCode::OK, Json(json!({ "admin": started.admin }))).into_response();
             response.headers_mut().insert(header::SET_COOKIE, cookie);
@@ -125,7 +127,7 @@ pub async fn current(State(state): State<AppState>, headers: HeaderMap) -> Respo
                 ApiError::Unauthorized("session expired".to_string()).into_response();
             response
                 .headers_mut()
-                .insert(header::SET_COOKIE, state.console.cleared_cookie());
+                .insert(header::SET_COOKIE, state.console.cleared_cookie(&headers));
             no_store(response)
         }
         Err(other) => no_store(ApiError::from(other).into_response()),
@@ -172,6 +174,6 @@ pub async fn sign_out(
     let mut response = Json(json!({ "ok": true })).into_response();
     response
         .headers_mut()
-        .insert(header::SET_COOKIE, state.console.cleared_cookie());
+        .insert(header::SET_COOKIE, state.console.cleared_cookie(&headers));
     no_store(response)
 }

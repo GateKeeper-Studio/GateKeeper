@@ -14,7 +14,8 @@ use crate::presentation::{
         consent_handler, email_provider_handler, email_template_handler,
         external_identity_provider_handler, group_handler, legal_document_handler,
         oauth_client_handler, role_handler, security_handler, session_handler,
-        tenant_custom_field_handler, tenant_handler, user_handler, webhook_subscription_handler,
+        tenant_custom_field_handler, tenant_handler, trusted_device_handler, user_handler,
+        webhook_subscription_handler,
     },
     routes::AppState,
 };
@@ -41,6 +42,11 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
             put(admin_me_handler::change_my_password),
         )
         .route("/admin/me", delete(admin_me_handler::deactivate_my_account))
+        // The console's guided tour: the version this admin has finished or closed.
+        .route(
+            "/admin/me/console-tour",
+            put(admin_me_handler::record_my_console_tour),
+        )
         // Two-step verification: an authenticator app plus recovery codes.
         .route(
             "/admin/me/mfa",
@@ -112,6 +118,21 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
         .route(
             "/tenants/{tenant_id}/users/{user_id}/authentication-methods",
             get(user_handler::get_tenant_user_authentication_methods),
+        )
+        // Emails the user a single-use temporary password (the admin never sees it).
+        .route(
+            "/tenants/{tenant_id}/users/{user_id}/password-reset",
+            post(user_handler::reset_user_password),
+        )
+        // A user's trusted devices (phone apps that approve QR code sign-ins): list,
+        // and remove a lost or stolen one.
+        .route(
+            "/tenants/{tenant_id}/users/{user_id}/trusted-devices",
+            get(trusted_device_handler::list_for_user),
+        )
+        .route(
+            "/tenants/{tenant_id}/users/{user_id}/trusted-devices/{device_id}",
+            delete(trusted_device_handler::revoke_for_user),
         )
         .route(
             "/tenants/{tenant_id}/users/{user_id}/custom-field-values",

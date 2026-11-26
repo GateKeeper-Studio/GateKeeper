@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          UPDATE user_credentials\n          SET temporary_password_expires_at = $2\n          WHERE user_id = $1 AND temporary_password_expires_at > $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f013d4c2a7c0ad5e8080d5369229751baf3563292bb65a577578fda690305477"
+}

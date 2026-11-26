@@ -126,6 +126,11 @@ impl UseCase {
         uow.refresh_token_repository()
             .revoke_by_user(tenant_id, user.id())
             .await?;
+        // A device trusted under the old password (perhaps by whoever knew it) must
+        // not outlive it.
+        uow.trusted_device_repository()
+            .delete_all_for_user(tenant_id, user.id())
+            .await?;
 
         uow.commit().await?;
 

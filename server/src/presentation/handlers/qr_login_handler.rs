@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     application::use_cases::qr_login::{
-        decide::command::{Command as DecideCommand, Decider, Decision},
+        decide::command::{AppProof, Command as DecideCommand, Decider, Decision},
         poll,
         scan::command::{Command as ScanCommand, Scanner},
         start,
@@ -99,9 +99,12 @@ pub struct AppScanBody {
 pub struct AppDecisionBody {
     pub request_id: Uuid,
     pub claim_code: String,
-    // Approving only: the account's current password (see qr_login::decide).
+    // Approving only, one of: the account's current password, or a trusted device's
+    // id and its signature of the approval message (see qr_login::decide).
     #[serde(alias = "current_password")]
     pub current_password: Option<String>,
+    pub device_id: Option<Uuid>,
+    pub signature: Option<String>,
 }
 
 // POST /v1/auth/qr-login/scan — the hosted approval page read a code.
@@ -195,8 +198,9 @@ pub async fn scan_in_app(
 }
 
 // POST /me/qr-login/approve and /deny — that app decides. Approving takes
-// `{requestId, claimCode, currentPassword}`; a missing or wrong password answers 403
-// `step_up_required` (a wrong one also denies the request).
+// `{requestId, claimCode}` plus either `currentPassword` or, from a trusted device,
+// `{deviceId, signature}`. A missing password answers 403 `step_up_required`; a wrong
+// password (403) or an invalid device proof (401) also denies the request.
 pub async fn approve_in_app(
     state: State<AppState>,
     principal: AuthPrincipal,
@@ -233,10 +237,14 @@ async fn decide_in_app(
             decider: Decider::SignedInUser {
                 tenant_id,
                 user_id,
-                // A denial needs no proof; never pass a password along with one.
-                current_password: match decision {
-                    Decision::Approve => body.current_password,
-                    Decision::Deny => None,
+                // A denial needs no proof; never pass one along with it.
+                proof: match (decision, body.device_id, body.signature) {
+                    (Decision::Approve, Some(device_id), Some(signature)) => AppProof::Device {
+                        device_id,
+                        signature,
+                    },
+                    (Decision::Approve, _, _) => AppProof::Password(body.current_password),
+                    (Decision::Deny, _, _) => AppProof::Password(None),
                 },
             },
             ip_address: ctx.ip_address,

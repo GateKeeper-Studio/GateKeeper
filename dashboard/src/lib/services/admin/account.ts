@@ -64,6 +64,17 @@ export async function changeMyPassword(input: ChangePasswordInput): Promise<Void
 	}
 }
 
+// PUT /admin/me/console-tour — the admin finished or closed that version of the
+// console's guided tour, so first access in another browser skips it.
+export async function recordConsoleTour(version: number): Promise<VoidResult> {
+	try {
+		await api.put<void>('/admin/me/console-tour', { version });
+		return [null];
+	} catch (error) {
+		return [error as ApiError];
+	}
+}
+
 // DELETE /admin/me — LGPD soft-deactivation: disables the account and ends every
 // session. Needs the current password; the server refuses if this is the org's last
 // active admin.

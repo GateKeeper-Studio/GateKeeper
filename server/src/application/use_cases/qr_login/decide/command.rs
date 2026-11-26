@@ -17,14 +17,24 @@ pub enum Decider {
         session_code: Option<String>,
     },
     // An app the user is signed in to, identified by its verified access token.
-    // Approving also needs the account's current password: a bearer token proves
-    // nothing about who holds it, and without this a stolen short-lived token could
-    // be turned into a full sign-in on the thief's browser. Denying needs nothing.
+    // Approving also needs a proof that the token's holder is the user: a bearer
+    // token proves nothing about who holds it, and without a proof a stolen
+    // short-lived token could be turned into a full sign-in on the thief's browser.
+    // Denying needs nothing.
     SignedInUser {
         tenant_id: Uuid,
         user_id: Uuid,
-        current_password: Option<String>,
+        proof: AppProof,
     },
+}
+
+// What an app presents to approve.
+#[derive(Debug, Clone)]
+pub enum AppProof {
+    // The account's current password (`None`: not sent).
+    Password(Option<String>),
+    // A trusted device's signature of `trusted_device::shared::qr_approval_message`.
+    Device { device_id: Uuid, signature: String },
 }
 
 #[derive(Debug, Clone)]

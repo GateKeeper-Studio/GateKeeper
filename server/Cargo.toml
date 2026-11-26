@@ -76,7 +76,16 @@ rand = "0.9"
 # p256 generates the per-tenant ECDSA P-256 (ES256) keypairs the OAuth/OIDC
 # provider signs JWTs with: `pem` exports the PKCS#8 private key that jsonwebtoken
 # loads, `jwk` exports the public half as a JWK for the /jwks.json endpoint.
-p256 = { version = "0.13", features = ["pem", "jwk"] }
+# `ecdsa` verifies the signatures of trusted devices (utils/device_key.rs).
+p256 = { version = "0.13", features = ["pem", "jwk", "ecdsa"] }
+
+# ── Optional HTTPS listener (TLS_CERT_FILE / TLS_KEY_FILE; local development) ───
+# tokio-rustls with the ring provider, like the rest of the tree (reqwest, lettre):
+# no second crypto backend. hyper-util serves each TLS connection with HTTP/1.1 or
+# HTTP/2 (ALPN) and drains them on shutdown, as `axum::serve` does for plain HTTP.
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "server-graceful", "service", "http1", "http2"] }
 
 # ── OAuth crypto primitives ─────────────────────────────────────────────────────
 # sha2 hashes opaque tokens (codes, refresh tokens) before they touch the DB;

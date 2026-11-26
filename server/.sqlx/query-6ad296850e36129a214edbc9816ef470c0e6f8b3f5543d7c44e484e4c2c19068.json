@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT u.id as \"id!\", u.email as \"email!\", u.tenant_id as \"tenant_id!\", u.is_email_verified as \"is_email_verified!\",\n            c.password_hash, c.password_algorithm, c.should_change_pass, u.is_active,\n            u.created_at, u.updated_at\n          FROM users u\n          LEFT JOIN user_credentials c ON c.user_id = u.id\n          WHERE u.id = $1\n        ",
+  "query": "\n          SELECT u.id as \"id!\", u.email as \"email!\", u.tenant_id as \"tenant_id!\", u.is_email_verified as \"is_email_verified!\",\n            c.password_hash, c.password_algorithm, c.should_change_pass, c.temporary_password_expires_at,\n            u.is_active, u.created_at, u.updated_at\n          FROM users u\n          LEFT JOIN user_credentials c ON c.user_id = u.id\n          WHERE u.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -82,6 +82,17 @@
       },
       {
         "ordinal": 7,
+        "name": "temporary_password_expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "user_credentials",
+            "name": "temporary_password_expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
         "name": "is_active",
         "type_info": "Bool",
         "origin": {
@@ -92,7 +103,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "created_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -103,7 +114,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "updated_at",
         "type_info": "Timestamptz",
         "origin": {
@@ -127,10 +138,11 @@
       true,
       true,
       true,
+      true,
       false,
       false,
       true
     ]
   },
-  "hash": "550aa2ddd12b5b7cfca4c3c3734ca5211d3fc117a2c0c537107aea680976a19a"
+  "hash": "6ad296850e36129a214edbc9816ef470c0e6f8b3f5543d7c44e484e4c2c19068"
 }

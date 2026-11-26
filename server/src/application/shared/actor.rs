@@ -243,6 +243,9 @@ mod tests {
             "mfa/set_preferred_mfa_method",
             "mfa/start_totp_enrollment",
             "mfa/start_webauthn_enrollment",
+            "step_up/confirm",
+            "step_up/start",
+            "trusted_device/register",
             // OAuth protocol: the client authenticates itself.
             "oauth/token_exchange",
             "oauth/token_refresh",

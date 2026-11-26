@@ -159,7 +159,10 @@ injects the infra implementation (e.g. `JwtSigningService`, `SmtpEmailSender`,
 - **`me_router`** — behind `require_auth`: a tenant access token **with the `account`
   scope** acting on its own data (`/me/*`: profile, data export, erasure, policy
   acceptance, self-service MFA). `DELETE /me` and `DELETE /me/mfa/methods/{id}` also
-  require `{"current_password"}` (step-up, `handlers/step_up.rs`).
+  require a step-up (`handlers/step_up.rs`, `use_cases/step_up/`): `current_password`,
+  or for an account without a password a fresh passkey assertion (an emailed code when
+  it has no passkey either) opened by `POST /me/step-up`. Adding a passkey to an
+  account without a password needs the same, since there a passkey signs in alone.
 - **`public_router`** — no global guard; each endpoint authenticates by its own
   means: OAuth/OIDC protocol endpoints (`/oauth/*`, `/.well-known/*`), the
   first-party login flow (`/v1/auth/*`), registration, admin sign-in
@@ -250,9 +253,13 @@ exempt list because their caller comes from the token.
   device presents the code's token once (the first scan claims it) and then the claim
   code; every status change of `qr_login_requests` is one conditional statement. The
   hosted approval page proves the approver with a completed sign-in for the same client
-  (burned, never a code); an app proves it with an `account`-scoped token plus the
-  current password (`/me/qr-login/*`; a wrong one denies the request), which never
-  counts as a second factor. The completing poll risk-scores the browser itself, and a
+  (burned, never a code); an app proves it with an `account`-scoped token plus either
+  the current password (never a second factor) or the ES256 signature of one of the
+  user's **trusted devices** (`use_cases/trusted_device/`, `utils/device_key.rs`; a
+  second factor when registered with one). A failed proof denies the request. Changing
+  or resetting the password, "sign out everywhere" and erasure delete the user's trusted
+  devices in the same unit of work — keep that true for any new use case that ends all
+  of a user's sessions. The completing poll risk-scores the browser itself, and a
   risk-forced step-up applies there even when the phone passed a second factor. The
   browser confirms the approved account before continuing. See
   `docs/FLOWS-AUTHENTICATION.md` §1.
@@ -298,6 +305,51 @@ exempt list because their caller comes from the token.
   signing keys, peppers) go through `SecretCipher` with a **`SecretContext`**
   (purpose + tenant id = AEAD associated data). Format `v1:<key_id>:…`; key ring =
   `SECRETS_ENCRYPTION_KEY` + `SECRETS_ENCRYPTION_PREVIOUS_KEYS`.
+- **Guess counters are read under a row lock.** `find_by_token_hash` (auth sessions),
+  `find_active_by_user_id` (email verification tokens) and `find_by_code_hash`
+  (authorization codes) end in `FOR UPDATE`, so parallel requests for one session /
+  token / code run one after the other. Without it, parallel wrong guesses were counted
+  as one (`parallel_wrong_guesses_are_each_counted` in `tests/db_repositories.rs`). A new
+  "read, compare, write the counter back" flow needs the same lock or one conditional
+  statement.
+- **Outbound connections to admin-supplied hosts are vetted when they are made**, not
+  only when the address is saved: `ReqwestWebhookSender` (webhooks, back-channel logout)
+  and `SmtpEmailSender` resolve the name, refuse private / loopback / link-local
+  addresses unless `WEBHOOK_ALLOW_PRIVATE_TARGETS`, and connect to the vetted address.
+- **Email bodies are never logged outside development.** With no SMTP provider the
+  message is dropped with a warning; only `APP_ENV=development` prints it (it carries the
+  one-time code or link).
+- **Redirect URIs refuse browser-executed schemes** (`javascript:`, `data:`, …),
+  credentials (`user@host`) and backslashes (`oauth_client/validation.rs`).
+- **A second factor the user enrolled is always asked for.** `MfaGate::engage`
+  (`login_flow.rs`) runs when the client requires MFA, when risk forces a step-up, or
+  when the user has a confirmed authenticator app / passkey the client allows. Every
+  first factor goes through it: password, magic link, QR code and **social sign-in**.
+  The social callback (`external_login/callback`) mints a code only when no factor is
+  due; otherwise it opens an MFA-pending session and redirects to the hosted page
+  `/auth/{client_id}/external-continue#payload=…`, which continues like after a
+  password. A new first factor must call the gate too.
+- **Admin password reset and admin-created accounts** (`tenant_user/reset_user_password`,
+  `POST /tenants/{tenant_id}/users/{user_id}/password-reset`; `create_tenant_user`, which
+  takes no password): the server makes the temporary
+  password and emails it; it never reaches the admin, the response, the audit row or
+  the logs. It expires (`TEMPORARY_PASSWORD_TTL_HOURS`, `NEW_ACCOUNT_PASSWORD_TTL_HOURS`
+  for a new account) and signs in once: login burns
+  it with the conditional `burn_temporary_password`, and the user upsert never lets a
+  stale copy revive it. The forced change (`change_password`) requires the sign-in's
+  `session_code` past its second factor, and a password pending a change never counts
+  at a step-up (`UserCredentials::proves_account_owner`). A reset ends everything the
+  old password opened, like a password change. See `docs/FLOWS-AUTHENTICATION.md` §4.
+- **The hosted pages redirect to the address the server answers with**
+  (`redirectToClient` in `dashboard/src/lib/utils/continue-login.ts`: the session's
+  stored `redirect_uri` and `state`), never to their own `redirect_uri` parameter.
+- **Six-digit codes have bounded tries everywhere.** Besides sign-in: the authenticator
+  code at trusted-device registration (5 wrong tries, then 15 minutes locked, counter =
+  an `mfa_challenges` row with no session), and email confirmation codes (at most
+  `MAX_CODES_PER_WINDOW` = 3 codes per 15 minutes per account; further resends answer
+  `Ok` and send nothing).
+- **Unencrypted SMTP (`encryption: none`) only reaches a local or private host**, which
+  itself needs `WEBHOOK_ALLOW_PRIVATE_TARGETS`.
 - **`audit_events` is append-only in the database** (trigger refuses UPDATE).
 - **Authorization context in tokens:** `roles` and `groups` claims are re-resolved
   at token issue *and* refresh, so a refreshed token reflects current RBAC.
@@ -359,13 +411,14 @@ See [`.env.example`](.env.example) for the annotated template.
 | `ADMIN_PASSWORD_PEPPER` | Argon2 pepper for admin passwords; never change it. Falls back to the legacy `JWT_SECRET` |
 | `TRUSTED_PROXIES` | CIDRs of reverse proxies whose `X-Forwarded-For` is believed (read from the right). Empty ⇒ the TCP peer is the client |
 | `METRICS_PORT` | Separate listener for `/metrics` (default `9090`; `off` disables). Not served on the API port |
+| `TLS_CERT_FILE` / `TLS_KEY_FILE` / `TLS_PORT` | Optional HTTPS listener (default `8443`) next to HTTP on `PORT`, for local development (phones on the LAN, passkeys): `infraestructure/tls_listener.rs`, rustls with the ring provider. `scripts/dev-tls.sh` issues the certificate (see `README.md`). Both files or neither; production terminates TLS at the proxy |
 | `RUN_MIGRATIONS` / `DATABASE_MIGRATION_URL` | Run migrations at boot (default `true`) / with this (owner) role instead of `DATABASE_URL` |
 | `PASSWORD_HASH_CONCURRENCY` | Max Argon2id hashes in flight (default: CPU cores) |
 | `PORT` | HTTP port (default `8080`) |
 | `OAUTH_ISSUER` | Public issuer URL pinned as `iss` (dev default `http://localhost:8080`) |
 | `REFRESH_REUSE_LEEWAY_SECONDS` | Grace window where a just-rotated refresh token presented again is reissued (concurrent-refresh race) instead of revoking the family as reuse (default `10`) |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated allow-list; empty = permissive (dev only) |
-| `AUTH_UI_BASE_URL` | Login SPA base URL (reset-password links, WebAuthn origin default). Its origin is also the only one the console's cookie session accepts; when this server serves the UI, set it to the server's own public URL |
+| `AUTH_UI_BASE_URL` | Login SPA base URL (reset-password links, WebAuthn origin default). Its origin is also the only one the console's cookie session accepts (development adds the loopback `http://localhost:PORT` / `http://127.0.0.1:PORT`); when this server serves the UI, set it to the server's own public URL |
 | `UI_DIR` | Directory of the built dashboard (`dashboard/build`). Set: this server serves the admin console and the hosted login UI. Unset: API only. A directory without `index.html` stops the boot. A rebuild is picked up without a restart (`npm run build:watch` in `dashboard/` during UI work) |
 | `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` / `WEBAUTHN_ADDITIONAL_ORIGINS` | WebAuthn relying-party config |
 | `SECRETS_ENCRYPTION_KEY` / `SECRETS_ENCRYPTION_PREVIOUS_KEYS` | 32-byte AES-256-GCM key (base64/hex) sealing every secret at rest (legacy name `EMAIL_ENCRYPTION_KEY`), plus retired keys still accepted for decryption. **Required outside development**; dev falls back to a fixed, publicly-known key |

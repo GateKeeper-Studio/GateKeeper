@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM trusted_devices WHERE tenant_id = $1 AND user_id = $2 AND id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6293d03e6019c5a51e629fab8c4ab8892dd46470fca24e76d51d5f3ce9aefa7b"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT a.id, a.organization_id, a.email, a.name, a.password_hash, a.password_algorithm,\n                 a.is_active, a.created_at, a.updated_at, a.failed_sign_in_count, a.locked_until,\n                 a.last_sign_in_at, o.is_active AS organization_active,\n                 o.require_admin_mfa AS organization_requires_mfa\n          FROM admin_users a\n          JOIN organizations o ON o.id = a.organization_id\n          WHERE a.id = $1\n        ",
+  "query": "\n          SELECT a.id, a.organization_id, a.email, a.name, a.password_hash, a.password_algorithm,\n                 a.is_active, a.created_at, a.updated_at, a.failed_sign_in_count, a.locked_until,\n                 a.last_sign_in_at, a.console_tour_version, o.is_active AS organization_active,\n                 o.require_admin_mfa AS organization_requires_mfa\n          FROM admin_users a\n          JOIN organizations o ON o.id = a.organization_id\n          WHERE a.email = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -137,6 +137,17 @@
       },
       {
         "ordinal": 12,
+        "name": "console_tour_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "console_tour_version"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
         "name": "organization_active",
         "type_info": "Bool",
         "origin": {
@@ -147,7 +158,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "organization_requires_mfa",
         "type_info": "Bool",
         "origin": {
@@ -160,7 +171,7 @@
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Text"
       ]
     },
     "nullable": [
@@ -177,8 +188,9 @@
       true,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "ae2e052c3c51afd107bb417b0ea28e8ac3c1dfddb530c8f0e3921b7cc13fcd87"
+  "hash": "354a835d961030b2ad2d5abdc4c632bd654ad380567f2c9850e9af1c5357ba46"
 }

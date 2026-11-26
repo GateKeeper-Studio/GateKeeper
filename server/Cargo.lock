@@ -1217,6 +1217,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "h2"
+version = "0.4.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
+dependencies = [
+ "atomic-waker",
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "http",
+ "indexmap",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1430,6 +1449,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-core",
+ "h2",
  "http",
  "http-body",
  "httparse",
@@ -4044,6 +4064,8 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "html2text",
+ "hyper",
+ "hyper-util",
  "jsonwebtoken",
  "lettre",
  "lol_html",
@@ -4064,6 +4086,7 @@ dependencies = [
  "subtle",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-rustls",
  "tower",
  "tower-http",
  "tower_governor",

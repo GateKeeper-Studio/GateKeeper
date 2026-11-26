@@ -14,6 +14,7 @@ use crate::{
             admin_account::{
                 change_password as admin_change_password,
                 deactivate_account as admin_deactivate_account, get_profile as admin_get_profile,
+                record_console_tour as admin_record_console_tour,
                 update_profile as admin_update_profile,
             },
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
@@ -22,9 +23,9 @@ use crate::{
                 end as console_end, resolve as console_resolve, start as console_start,
             },
             authentication::{
-                authorize_session, change_password, confirm_current_password, confirm_email,
-                external_login, forgot_password, login, redeem_magic_link, refresh_session,
-                register, request_magic_link, resend_confirm_email, reset_password,
+                authorize_session, change_password, confirm_email, external_login, forgot_password,
+                login, redeem_magic_link, refresh_session, register, request_magic_link,
+                resend_confirm_email, reset_password,
             },
             compliance::{
                 erase_user, export_user_data, list_audit_events, list_required_documents,
@@ -79,6 +80,7 @@ use crate::{
                 update_risk_policy,
             },
             session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
+            step_up,
             tenant::{
                 create_tenant, delete_tenant_by_id, get_tenant_by_id, list_tenants,
                 update_tenant_appearance, update_tenant_by_id,
@@ -90,9 +92,10 @@ use crate::{
             },
             tenant_user::{
                 create_tenant_user, delete_tenant_user_by_id, get_authentication_methods,
-                get_tenant_user_by_id, list_tenant_users, update_tenant_user_by_id,
-                update_tenant_user_custom_field_values,
+                get_tenant_user_by_id, list_tenant_users, reset_user_password,
+                update_tenant_user_by_id, update_tenant_user_custom_field_values,
             },
+            trusted_device,
             webhook_subscription::{
                 create_webhook_subscription, delete_webhook_subscription,
                 get_webhook_subscription_by_id, list_webhook_deliveries,
@@ -130,6 +133,8 @@ pub struct TenantUserUseCases {
     pub update_tenant_user_custom_field_values:
         Arc<update_tenant_user_custom_field_values::use_case::UseCase>,
     pub delete_tenant_user_by_id: Arc<delete_tenant_user_by_id::use_case::UseCase>,
+    // Emails the user a single-use temporary password; the admin never sees it.
+    pub reset_user_password: Arc<reset_user_password::use_case::UseCase>,
 }
 
 // Per-tenant custom profile fields.
@@ -224,7 +229,6 @@ pub struct AuthenticationUseCases {
     pub redeem_magic_link: Arc<redeem_magic_link::use_case::UseCase>,
     pub reset_password: Arc<reset_password::use_case::UseCase>,
     pub change_password: Arc<change_password::use_case::UseCase>,
-    pub confirm_current_password: Arc<confirm_current_password::use_case::UseCase>,
 }
 
 // QR code sign-in: the browser's code (start, poll) and the scanning device's side
@@ -234,6 +238,20 @@ pub struct QrLoginUseCases {
     pub poll: Arc<qr_login::poll::use_case::UseCase>,
     pub scan: Arc<qr_login::scan::use_case::UseCase>,
     pub decide: Arc<qr_login::decide::use_case::UseCase>,
+}
+
+// Step-up before sensitive self-service actions: the proof an account gives
+// (password, passkey assertion, emailed code) and its check.
+pub struct StepUpUseCases {
+    pub start: Arc<step_up::start::use_case::UseCase>,
+    pub confirm: Arc<step_up::confirm::use_case::UseCase>,
+}
+
+// Trusted devices: phone apps whose key approves QR code sign-ins.
+pub struct TrustedDeviceUseCases {
+    pub register: Arc<trusted_device::register::use_case::UseCase>,
+    pub list: Arc<trusted_device::list::use_case::UseCase>,
+    pub revoke: Arc<trusted_device::revoke::use_case::UseCase>,
 }
 
 // MFA challenges during sign-in, and self-service enrollment.
@@ -321,6 +339,8 @@ pub struct AdminUseCases {
     pub update_my_profile: Arc<admin_update_profile::use_case::UseCase>,
     pub change_my_password: Arc<admin_change_password::use_case::UseCase>,
     pub deactivate_my_account: Arc<admin_deactivate_account::use_case::UseCase>,
+    // The console's guided tour, seen (`/admin/me/console-tour`).
+    pub record_my_console_tour: Arc<admin_record_console_tour::use_case::UseCase>,
     // The admin's own second factor (`/admin/me/mfa*`).
     pub get_my_mfa: Arc<admin_mfa::get_status::use_case::UseCase>,
     pub start_my_totp: Arc<admin_mfa::start_totp::use_case::UseCase>,
@@ -358,6 +378,8 @@ pub struct AppState {
     pub sessions: Arc<SessionUseCases>,
     pub authentication: Arc<AuthenticationUseCases>,
     pub qr_login: Arc<QrLoginUseCases>,
+    pub trusted_devices: Arc<TrustedDeviceUseCases>,
+    pub step_up: Arc<StepUpUseCases>,
     pub mfa: Arc<MfaUseCases>,
     pub webhooks: Arc<WebhookUseCases>,
     pub email: Arc<EmailUseCases>,

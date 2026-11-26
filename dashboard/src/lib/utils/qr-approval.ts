@@ -57,16 +57,18 @@ function base64Url(bytes: Uint8Array): string {
  * The OIDC query string for this device's own sign-in. Its state and PKCE challenge
  * are random and thrown away: this sign-in never becomes a code here, it only proves
  * who approves. The redirect URI and scopes are the client's own (from the scan).
+ *
+ * The challenge is 32 random bytes, not the hash of a verifier: no verifier is ever
+ * presented for it. That keeps `crypto.subtle` out of this page, which browsers only
+ * offer on HTTPS or localhost, so the page also works on a phone that opens a plain
+ * `http://<LAN IP>` address during development. (`getRandomValues` works everywhere.)
  */
 export async function approvalSignInParams(
 	requestId: string,
 	signIn: { redirectUri: string; scope: string }
 ): Promise<URLSearchParams> {
 	const random = (length: number) => crypto.getRandomValues(new Uint8Array(length));
-	const verifier = base64Url(random(32));
-	const challenge = base64Url(
-		new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)))
-	);
+	const challenge = base64Url(random(32));
 	return new URLSearchParams({
 		redirect_uri: signIn.redirectUri,
 		response_type: 'code',

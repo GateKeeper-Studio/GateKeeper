@@ -8,4 +8,5 @@ pub mod geoip;
 pub mod observability;
 pub mod retention;
 pub mod runtime;
+pub mod tls_listener;
 pub mod webhooks;

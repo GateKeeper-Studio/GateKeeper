@@ -39,7 +39,7 @@ use crate::{
             social_identity_repository::SocialIdentityRepository,
             tenant_repository::TenantRepository,
             tenant_risk_policy_repository::TenantRiskPolicyRepository,
-            user_repository::UserRepository,
+            trusted_device_repository::TrustedDeviceRepository, user_repository::UserRepository,
             webhook_delivery_repository::WebhookDeliveryRepository,
             webhook_subscription_repository::WebhookSubscriptionRepository,
         },
@@ -74,6 +74,7 @@ use crate::{
         in_memory_social_identity_repository::InMemorySocialIdentityRepository,
         in_memory_tenant_repository::InMemoryTenantRepository,
         in_memory_tenant_risk_policy_repository::InMemoryTenantRiskPolicyRepository,
+        in_memory_trusted_device_repository::InMemoryTrustedDeviceRepository,
         in_memory_user_repository::InMemoryUserRepository,
         in_memory_webhook_delivery_repository::InMemoryWebhookDeliveryRepository,
         in_memory_webhook_subscription_repository::InMemoryWebhookSubscriptionRepository,
@@ -147,6 +148,7 @@ pub struct InMemoryUnitOfWork {
     tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
     login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
     qr_login_request_repository: Arc<InMemoryQrLoginRequestRepository>,
+    trusted_device_repository: Arc<InMemoryTrustedDeviceRepository>,
 }
 
 impl InMemoryUnitOfWork {
@@ -184,6 +186,7 @@ impl InMemoryUnitOfWork {
         tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
         login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
         qr_login_request_repository: Arc<InMemoryQrLoginRequestRepository>,
+        trusted_device_repository: Arc<InMemoryTrustedDeviceRepository>,
     ) -> Self {
         Self {
             user_repository,
@@ -218,6 +221,7 @@ impl InMemoryUnitOfWork {
             tenant_risk_policy_repository,
             login_event_label_repository,
             qr_login_request_repository,
+            trusted_device_repository,
         }
     }
 }
@@ -355,6 +359,10 @@ impl UnitOfWork for InMemoryUnitOfWork {
         Arc::clone(&self.qr_login_request_repository) as Arc<dyn QrLoginRequestRepository>
     }
 
+    fn trusted_device_repository(&self) -> Arc<dyn TrustedDeviceRepository> {
+        Arc::clone(&self.trusted_device_repository) as Arc<dyn TrustedDeviceRepository>
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), DomainError> {
         self.user_repository.memory.commit();
         self.tenant_repository.memory.commit();
@@ -376,6 +384,7 @@ impl UnitOfWork for InMemoryUnitOfWork {
         self.password_reset_token_repository.memory.commit();
         self.magic_link_token_repository.memory.commit();
         self.qr_login_request_repository.memory.commit();
+        self.trusted_device_repository.memory.commit();
         self.password_change_token_repository.memory.commit();
         self.email_provider_repository.memory.commit();
         self.external_identity_provider_repository.memory.commit();
@@ -426,6 +435,7 @@ pub struct InMemoryUnitOfWorkFactory {
     tenant_risk_policy_repository: Arc<InMemoryTenantRiskPolicyRepository>,
     login_event_label_repository: Arc<InMemoryLoginEventLabelRepository>,
     qr_login_request_repository: Arc<InMemoryQrLoginRequestRepository>,
+    trusted_device_repository: Arc<InMemoryTrustedDeviceRepository>,
 }
 
 impl InMemoryUnitOfWorkFactory {
@@ -477,7 +487,16 @@ impl InMemoryUnitOfWorkFactory {
             tenant_risk_policy_repository: Arc::new(InMemoryTenantRiskPolicyRepository::new()),
             login_event_label_repository: Arc::new(InMemoryLoginEventLabelRepository::new()),
             qr_login_request_repository: Arc::new(InMemoryQrLoginRequestRepository::new()),
+            trusted_device_repository: Arc::new(InMemoryTrustedDeviceRepository::new()),
         }
+    }
+
+    pub fn with_trusted_device_repository(
+        mut self,
+        repo: Arc<InMemoryTrustedDeviceRepository>,
+    ) -> Self {
+        self.trusted_device_repository = repo;
+        self
     }
 
     pub fn with_qr_login_request_repository(
@@ -742,6 +761,7 @@ impl UnitOfWorkFactory for InMemoryUnitOfWorkFactory {
             Arc::clone(&self.tenant_risk_policy_repository),
             Arc::clone(&self.login_event_label_repository),
             Arc::clone(&self.qr_login_request_repository),
+            Arc::clone(&self.trusted_device_repository),
         )))
     }
 }

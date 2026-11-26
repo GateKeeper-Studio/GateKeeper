@@ -246,6 +246,38 @@ async fn main() {
         .await
         .unwrap_or_else(|e| panic!("could not bind {address}: {e}"));
 
+    // One shutdown signal for every listener: SIGTERM / Ctrl-C flips it once, and
+    // each server stops accepting and drains on its own.
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        let _ = shutdown_tx.send(true);
+    });
+    let shutdown_requested = |mut rx: tokio::sync::watch::Receiver<bool>| async move {
+        let _ = rx.wait_for(|stop| *stop).await;
+    };
+
+    // Optional HTTPS next to HTTP (TLS_CERT_FILE / TLS_KEY_FILE, local development):
+    // same router, its own port. A configured but unusable certificate stops the boot.
+    let https_server = config.tls.as_ref().map(|tls| {
+        let server_config = web_api::infraestructure::tls_listener::load_server_config(
+            &tls.cert_file,
+            &tls.key_file,
+        )
+        .unwrap_or_else(|e| panic!("TLS_CERT_FILE / TLS_KEY_FILE: {e}"));
+        let address = format!("0.0.0.0:{}", tls.port);
+        let app = app.clone();
+        let shutdown = shutdown_requested(shutdown_rx.clone());
+        tokio::spawn(async move {
+            let listener = tokio::net::TcpListener::bind(&address)
+                .await
+                .unwrap_or_else(|e| panic!("could not bind {address}: {e}"));
+            tracing::info!("HTTPS listening on {address}");
+            web_api::infraestructure::tls_listener::serve(listener, server_config, app, shutdown)
+                .await;
+        })
+    });
+
     // `into_make_service_with_connect_info` exposes the TCP peer address to handlers
     // via `ConnectInfo<SocketAddr>`, letting `capture_client_context` fall back to the
     // socket IP when no X-Forwarded-For / X-Real-IP proxy header is present.
@@ -253,11 +285,16 @@ async fn main() {
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal())
+    .with_graceful_shutdown(shutdown_requested(shutdown_rx.clone()))
     .await;
 
     if let Err(err) = result {
         tracing::error!("server error: {err}");
+    }
+    if let Some(handle) = https_server {
+        if let Err(err) = handle.await {
+            tracing::error!("https server did not shut down cleanly: {err:?}");
+        }
     }
 
     if let Some(handle) = metrics_server {

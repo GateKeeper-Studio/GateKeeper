@@ -13,7 +13,7 @@ use crate::{
         qr_login::{
             decide::{
                 self,
-                command::{Decider, Decision},
+                command::{AppProof, Decider, Decision},
             },
             poll::{self, response::Status},
             scan::{self, command::Scanner},
@@ -49,6 +49,7 @@ use crate::{
             in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
             in_memory_qr_login_request_repository::InMemoryQrLoginRequestRepository,
             in_memory_tenant_repository::InMemoryTenantRepository,
+            in_memory_trusted_device_repository::InMemoryTrustedDeviceRepository,
             in_memory_user_repository::InMemoryUserRepository,
         },
         in_memory_unit_of_work::InMemoryUnitOfWorkFactory,
@@ -57,6 +58,13 @@ use crate::{
         user_factory::{TEST_PASSWORD, TEST_PASSWORD_SECRET, generate_user},
     },
     utils::oauth_crypto::{generate_opaque_token, sha256_hex},
+};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use p256::ecdsa::{Signature, SigningKey, signature::Signer};
+
+use crate::{
+    application::use_cases::trusted_device::shared::qr_approval_message,
+    domain::entities::trusted_device::TrustedDevice,
 };
 
 const PUBLIC_CLIENT_ID: &str = "01890000-0000-7000-8000-000000000def";
@@ -92,6 +100,7 @@ struct Fixture {
     users: Arc<InMemoryUserRepository>,
     sessions: Arc<InMemoryAuthSessionRepository>,
     requests: Arc<InMemoryQrLoginRequestRepository>,
+    devices: Arc<InMemoryTrustedDeviceRepository>,
     enrollments: Arc<InMemoryMfaEnrollmentRepository>,
     audit: Arc<InMemoryAuditEventRepository>,
     client: OAuthClient,
@@ -164,6 +173,7 @@ fn build(options: Options) -> Fixture {
 
     let sessions = Arc::new(InMemoryAuthSessionRepository::new());
     let requests = Arc::new(InMemoryQrLoginRequestRepository::new());
+    let devices = Arc::new(InMemoryTrustedDeviceRepository::new());
     let enrollments = Arc::new(InMemoryMfaEnrollmentRepository::new());
     let audit = Arc::new(InMemoryAuditEventRepository::new());
     let factory = Arc::new(
@@ -172,7 +182,8 @@ fn build(options: Options) -> Fixture {
             .with_auth_session_repository(sessions.clone())
             .with_qr_login_request_repository(requests.clone())
             .with_mfa_enrollment_repository(enrollments.clone())
-            .with_audit_event_repository(audit.clone()),
+            .with_audit_event_repository(audit.clone())
+            .with_trusted_device_repository(devices.clone()),
     );
     let (templated, _emails) = recording_templated_email_sender();
     let risk = Arc::new(options.risk);
@@ -202,6 +213,7 @@ fn build(options: Options) -> Fixture {
         users,
         sessions,
         requests,
+        devices,
         enrollments,
         audit,
         client,
@@ -323,7 +335,36 @@ impl Fixture {
         Decider::SignedInUser {
             tenant_id: self.tenant_id,
             user_id,
-            current_password: password.map(str::to_string),
+            proof: AppProof::Password(password.map(str::to_string)),
+        }
+    }
+
+    // A trusted device of `fx.user_id`, seeded as `register` would leave it. Returns
+    // its id and signing key.
+    fn trust_device(&self, counts_as_second_factor: bool) -> (Uuid, SigningKey) {
+        let key = SigningKey::from_slice(&[42u8; 32]).unwrap();
+        let public = URL_SAFE_NO_PAD.encode(key.verifying_key().to_encoded_point(false).as_bytes());
+        let device = TrustedDevice::new(
+            self.tenant_id,
+            self.user_id,
+            "Pixel 8".to_string(),
+            public,
+            counts_as_second_factor,
+            Utc::now(),
+        );
+        let id = device.id();
+        self.devices.memory.data.lock().unwrap().insert(id, device);
+        (id, key)
+    }
+
+    fn device_decider(&self, device_id: Uuid, signature: String) -> Decider {
+        Decider::SignedInUser {
+            tenant_id: self.tenant_id,
+            user_id: self.user_id,
+            proof: AppProof::Device {
+                device_id,
+                signature,
+            },
         }
     }
 
@@ -1011,4 +1052,162 @@ async fn an_account_without_a_password_cannot_approve_from_an_app() {
     )
     .await
     .unwrap();
+}
+
+fn sign(key: &SigningKey, message: &str) -> String {
+    let signature: Signature = key.sign(message.as_bytes());
+    URL_SAFE_NO_PAD.encode(signature.to_der().as_bytes())
+}
+
+#[tokio::test]
+async fn a_trusted_device_approves_by_signing_with_nothing_to_type() {
+    let fx = build(Options {
+        mfa_policy: MfaPolicy {
+            required: true,
+            email_enabled: true,
+            totp_enabled: true,
+            webauthn_enabled: true,
+        },
+        ..Options::default()
+    });
+    fx.seed_totp();
+    let (device_id, key) = fx.trust_device(true);
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_as(&shown, fx.app(fx.user_id)).await.unwrap();
+
+    let signature = sign(
+        &key,
+        &qr_approval_message(shown.request_id, &scanned.claim_code),
+    );
+    fx.decide_as(
+        &shown,
+        &scanned.claim_code,
+        Decision::Approve,
+        fx.device_decider(device_id, signature),
+    )
+    .await
+    .unwrap();
+    let request = fx.request(&shown);
+    assert_eq!(request.approved_via(), Some(QrApprover::TrustedDevice));
+    assert!(request.approver_mfa_verified());
+    assert!(
+        fx.devices.all()[0].last_used_at().is_some(),
+        "the device's last use is recorded"
+    );
+
+    // Registered with a second factor: it answers for the client's MFA policy.
+    let login = fx.poll(&shown).await.unwrap().login.unwrap();
+    assert!(login.mfa_type.is_none());
+    let approved = fx
+        .audit_actions()
+        .into_iter()
+        .find(|(a, _, _)| a == USER_QR_LOGIN_APPROVED)
+        .unwrap();
+    assert_eq!(approved.2["via"], "trusted_device");
+    assert_eq!(approved.2["device_id"], device_id.to_string());
+}
+
+#[tokio::test]
+async fn a_device_without_second_factor_credit_still_leaves_the_browser_its_mfa() {
+    let fx = build(Options {
+        mfa_policy: MfaPolicy {
+            required: true,
+            email_enabled: true,
+            totp_enabled: true,
+            webauthn_enabled: true,
+        },
+        ..Options::default()
+    });
+    fx.seed_totp();
+    let (device_id, key) = fx.trust_device(false);
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_as(&shown, fx.app(fx.user_id)).await.unwrap();
+    let signature = sign(
+        &key,
+        &qr_approval_message(shown.request_id, &scanned.claim_code),
+    );
+    fx.decide_as(
+        &shown,
+        &scanned.claim_code,
+        Decision::Approve,
+        fx.device_decider(device_id, signature),
+    )
+    .await
+    .unwrap();
+    let login = fx.poll(&shown).await.unwrap().login.unwrap();
+    assert_eq!(login.mfa_type.as_deref(), Some("totp"));
+}
+
+#[tokio::test]
+async fn a_bad_device_proof_denies_the_request() {
+    let fx = build(Options::default());
+    let (device_id, key) = fx.trust_device(true);
+
+    // A signature of something else (another request's message) is refused, and the
+    // request is denied: each forgery attempt costs a new code.
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_as(&shown, fx.app(fx.user_id)).await.unwrap();
+    let forged = sign(
+        &key,
+        &qr_approval_message(Uuid::now_v7(), &scanned.claim_code),
+    );
+    let refused = fx
+        .decide_as(
+            &shown,
+            &scanned.claim_code,
+            Decision::Approve,
+            fx.device_decider(device_id, forged),
+        )
+        .await;
+    assert!(is_auth_error(refused));
+    assert_eq!(fx.request(&shown).status(), QrLoginStatus::Denied);
+    let denied = fx
+        .audit_actions()
+        .into_iter()
+        .find(|(a, _, _)| a == USER_QR_LOGIN_DENIED)
+        .unwrap();
+    assert_eq!(denied.2["reason"], "bad_device_signature");
+
+    // An unknown (or removed) device: the same.
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_as(&shown, fx.app(fx.user_id)).await.unwrap();
+    let signature = sign(
+        &key,
+        &qr_approval_message(shown.request_id, &scanned.claim_code),
+    );
+    let refused = fx
+        .decide_as(
+            &shown,
+            &scanned.claim_code,
+            Decision::Approve,
+            fx.device_decider(Uuid::now_v7(), signature),
+        )
+        .await;
+    assert!(is_auth_error(refused));
+    assert_eq!(fx.request(&shown).status(), QrLoginStatus::Denied);
+
+    // Another user's device does not answer for this one, even with a valid signature.
+    let other = fx.add_user();
+    let shown = fx.show().await.unwrap();
+    let scanned = fx.scan_as(&shown, fx.app(other)).await.unwrap();
+    let signature = sign(
+        &key,
+        &qr_approval_message(shown.request_id, &scanned.claim_code),
+    );
+    let refused = fx
+        .decide_as(
+            &shown,
+            &scanned.claim_code,
+            Decision::Approve,
+            Decider::SignedInUser {
+                tenant_id: fx.tenant_id,
+                user_id: other,
+                proof: AppProof::Device {
+                    device_id,
+                    signature,
+                },
+            },
+        )
+        .await;
+    assert!(is_auth_error(refused));
 }

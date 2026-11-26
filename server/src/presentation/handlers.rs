@@ -26,5 +26,6 @@ pub mod session_handler;
 pub mod step_up;
 pub mod tenant_custom_field_handler;
 pub mod tenant_handler;
+pub mod trusted_device_handler;
 pub mod user_handler;
 pub mod webhook_subscription_handler;

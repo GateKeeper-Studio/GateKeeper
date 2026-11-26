@@ -24,14 +24,12 @@ use crate::domain::{entities::domain_event_type::DomainEventType, errors::Domain
 //   * IP-literal hosts in private / loopback / link-local / unique-local ranges are
 //     refused outright.
 //
-// DOCUMENTED LIMITATION: a hostname that passes this check can still RESOLVE to a
-// private address later — DNS rebinding, or simply an internal DNS name that looks
-// public. Closing that fully requires resolving the name and pinning the socket to
-// the vetted IP at request time, which reqwest does not expose cleanly. The
-// redirect-disabled client (see ReqwestWebhookSender) closes the easier variant
-// where a public URL 302s to a private one. Treat this as defence in depth against
-// a careless or semi-trusted tenant admin, not as an airtight boundary against a
-// determined attacker who already controls DNS.
+// This check only sees the text of the URL. A hostname that passes it can still
+// RESOLVE to a private address (DNS rebinding, an internal DNS name, a wildcard
+// service such as sslip.io), and the HTTP client accepts spellings of an IP literal
+// this parser does not (`127.1`). Both are closed where the request is made:
+// `ReqwestWebhookSender` vets the resolved addresses and connects only to them, and
+// its client does not follow redirects.
 pub fn validate_webhook_url(url: &str, allow_private_targets: bool) -> Result<(), DomainError> {
     validate_outbound_url("webhook url", url, allow_private_targets)
 }
@@ -140,8 +138,9 @@ fn is_local_host(host: &str) -> bool {
             .any(|suffix| host.ends_with(suffix))
 }
 
-// The ranges an outbound request must never reach.
-fn is_blocked_ip(ip: &IpAddr) -> bool {
+// The ranges an outbound request must never reach. Also applied at connection time
+// to the addresses a host name resolves to (webhook sender, SMTP sender).
+pub fn is_blocked_ip(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_blocked_v4(v4),
         IpAddr::V6(v6) => is_blocked_v6(v6),

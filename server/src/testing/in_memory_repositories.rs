@@ -34,6 +34,7 @@ pub mod in_memory_signing_key_repository;
 pub mod in_memory_social_identity_repository;
 pub mod in_memory_tenant_repository;
 pub mod in_memory_tenant_risk_policy_repository;
+pub mod in_memory_trusted_device_repository;
 pub mod in_memory_user_repository;
 
 // Outbound events: transactional outbox + signed webhook delivery.

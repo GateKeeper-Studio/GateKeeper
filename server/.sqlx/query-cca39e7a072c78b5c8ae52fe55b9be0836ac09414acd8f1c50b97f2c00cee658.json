@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at, primary_factor,\n            mfa_required, mfa_verified_at, mfa_method,\n            pending_client_id, pending_redirect_uri, pending_scopes, pending_state,\n            pending_code_challenge, pending_code_challenge_method, pending_nonce,\n            expires_at, absolute_expires_at, created_at, risk_login_event_id\n          FROM auth_sessions\n          WHERE tenant_id = $1 AND session_token_hash = $2\n        ",
+  "query": "\n          SELECT id, tenant_id, session_token_hash, user_id, authenticated_at, primary_factor,\n            mfa_required, mfa_verified_at, mfa_method,\n            pending_client_id, pending_redirect_uri, pending_scopes, pending_state,\n            pending_code_challenge, pending_code_challenge_method, pending_nonce,\n            expires_at, absolute_expires_at, created_at, risk_login_event_id\n          FROM auth_sessions\n          WHERE tenant_id = $1 AND session_token_hash = $2\n          FOR UPDATE\n        ",
   "describe": {
     "columns": [
       {
@@ -253,5 +253,5 @@
       true
     ]
   },
-  "hash": "3f0ead2b31c963a39c651985a5553a3fb14824ef12fa6d7a92180d2e54f774c7"
+  "hash": "cca39e7a072c78b5c8ae52fe55b9be0836ac09414acd8f1c50b97f2c00cee658"
 }

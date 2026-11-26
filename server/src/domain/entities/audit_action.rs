@@ -16,6 +16,9 @@ pub const USER_EMAIL_VERIFIED: &str = "user.email.verified";
 pub const USER_PASSWORD_RESET_REQUESTED: &str = "user.password.reset_requested";
 pub const USER_PASSWORD_RESET: &str = "user.password.reset";
 pub const USER_PASSWORD_CHANGED: &str = "user.password.changed";
+// An admin reset the user's password: a temporary one was emailed to the user. The
+// row names the admin and the user, never the password.
+pub const USER_PASSWORD_ADMIN_RESET: &str = "user.password.admin_reset";
 // A one-time sign-in link was emailed (magic link login). Recorded only for an
 // existing, eligible account — the request endpoint itself answers the same for all.
 pub const USER_MAGIC_LINK_SENT: &str = "user.login.magic_link_sent";
@@ -24,6 +27,10 @@ pub const USER_MAGIC_LINK_SENT: &str = "user.login.magic_link_sent";
 // with `metadata.method = "qr_code"`.
 pub const USER_QR_LOGIN_APPROVED: &str = "user.login.qr_approved";
 pub const USER_QR_LOGIN_DENIED: &str = "user.login.qr_denied";
+// A trusted device (a phone app's key that approves QR code sign-ins) was registered
+// or removed. Removals by credential changes are covered by those changes' events.
+pub const USER_TRUSTED_DEVICE_REGISTERED: &str = "user.trusted_device.registered";
+pub const USER_TRUSTED_DEVICE_REVOKED: &str = "user.trusted_device.revoked";
 pub const USER_MFA_ENROLLED: &str = "user.mfa.enrolled";
 pub const USER_MFA_REMOVED: &str = "user.mfa.removed";
 // The user explicitly extended a pre-authorization session from the login UI. Worth

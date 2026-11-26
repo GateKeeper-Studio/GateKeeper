@@ -70,6 +70,28 @@ the server refuses to start until the production settings are complete.
 | `SECRETS_ENCRYPTION_KEY` | AES-256-GCM key for secrets at rest (rotate with `SECRETS_ENCRYPTION_PREVIOUS_KEYS`). |
 | `TRUSTED_PROXIES` | Reverse proxies and BFFs whose `X-Forwarded-For` is trusted. |
 | `METRICS_PORT` | Internal Prometheus port (default 9090, `off` to disable). |
+| `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_PORT` | Optional HTTPS listener (default port 8443) next to HTTP, for local development. |
+
+### HTTPS on the local network (phones, passkeys)
+
+Browsers only offer passkeys (WebAuthn) and some other APIs on HTTPS, or on
+`localhost`. A phone that opens `http://192.168.x.x:8080` gets neither, so testing QR
+sign-in approval or passkeys on a phone needs HTTPS:
+
+1. `scripts/dev-tls.sh` creates a local certificate authority (once) and a certificate
+   for `<your-ip-with-dashes>.sslip.io`, a public DNS name that resolves to your LAN IP
+   (passkeys need a host name, not an IP). Everything goes to `server/.dev-tls/`
+   (git-ignored; it holds private keys). The CA is name-constrained to `sslip.io`,
+   `nip.io`, `localhost` and private IP ranges.
+2. Put the lines it prints in `.env` and restart: the server keeps HTTP on `PORT` and
+   adds HTTPS on `TLS_PORT`.
+3. Trust `server/.dev-tls/gatekeeper-dev-ca.crt` once on each device: on Android,
+   Settings > Security & privacy > More security settings > Encryption & credentials >
+   Install a certificate > CA certificate; for Chrome on Linux, the `certutil` line the
+   script prints. Never share `ca.key`.
+
+Open everything (console included) at `https://<ip-with-dashes>.sslip.io:8443`.
+Passkeys made on `localhost` belong to another relying party and do not work there.
 
 ## Architecture
 

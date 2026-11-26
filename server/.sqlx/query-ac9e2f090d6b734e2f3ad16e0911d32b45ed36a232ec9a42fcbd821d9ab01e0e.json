@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT a.id, a.organization_id, a.email, a.name, a.password_hash, a.password_algorithm,\n                 a.is_active, a.created_at, a.updated_at, a.failed_sign_in_count, a.locked_until,\n                 a.last_sign_in_at, o.is_active AS organization_active,\n                 o.require_admin_mfa AS organization_requires_mfa\n          FROM admin_users a\n          JOIN organizations o ON o.id = a.organization_id\n          WHERE a.email = $1\n        ",
+  "query": "\n          SELECT a.id, a.organization_id, a.email, a.name, a.password_hash, a.password_algorithm,\n                 a.is_active, a.created_at, a.updated_at, a.failed_sign_in_count, a.locked_until,\n                 a.last_sign_in_at, a.console_tour_version, o.is_active AS organization_active,\n                 o.require_admin_mfa AS organization_requires_mfa\n          FROM admin_users a\n          JOIN organizations o ON o.id = a.organization_id\n          WHERE a.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -137,6 +137,17 @@
       },
       {
         "ordinal": 12,
+        "name": "console_tour_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "admin_users",
+            "name": "console_tour_version"
+          }
+        }
+      },
+      {
+        "ordinal": 13,
         "name": "organization_active",
         "type_info": "Bool",
         "origin": {
@@ -147,7 +158,7 @@
         }
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "organization_requires_mfa",
         "type_info": "Bool",
         "origin": {
@@ -160,7 +171,7 @@
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -177,8 +188,9 @@
       true,
       true,
       false,
+      false,
       false
     ]
   },
-  "hash": "8c7f29ca670e1d794870f9d1fd763976f24b0d4028aa8c04aeb620c5b904ca51"
+  "hash": "ac9e2f090d6b734e2f3ad16e0911d32b45ed36a232ec9a42fcbd821d9ab01e0e"
 }

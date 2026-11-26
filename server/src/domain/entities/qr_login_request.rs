@@ -65,8 +65,11 @@ impl QrLoginStatus {
 pub enum QrApprover {
     // The hosted approval page, after the user signed in on that device.
     HostedPage,
-    // An app the user was already signed in to (an access token with `account`).
+    // An app the user was already signed in to (an access token with `account`),
+    // confirmed with the account's password.
     SignedInApp,
+    // A signed-in app whose registered device key signed the approval.
+    TrustedDevice,
 }
 
 impl QrApprover {
@@ -74,6 +77,7 @@ impl QrApprover {
         match self {
             QrApprover::HostedPage => "hosted_page",
             QrApprover::SignedInApp => "signed_in_app",
+            QrApprover::TrustedDevice => "trusted_device",
         }
     }
 
@@ -81,6 +85,7 @@ impl QrApprover {
         match value {
             "hosted_page" => Some(QrApprover::HostedPage),
             "signed_in_app" => Some(QrApprover::SignedInApp),
+            "trusted_device" => Some(QrApprover::TrustedDevice),
             _ => None,
         }
     }

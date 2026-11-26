@@ -9,12 +9,15 @@ use crate::{
             password_hasher::PasswordHasher,
             unit_of_work::{UnitOfWork, UnitOfWorkFactory},
         },
-        use_cases::qr_login::{
-            decide::{
-                command::{Command, Decider, Decision},
-                response::Response,
+        use_cases::{
+            qr_login::{
+                decide::{
+                    command::{AppProof, Command, Decider, Decision},
+                    response::Response,
+                },
+                shared::{invalid_code, is_client, offering_client},
             },
-            shared::{invalid_code, is_client, offering_client},
+            trusted_device::shared::qr_approval_message,
         },
     },
     domain::{
@@ -26,7 +29,7 @@ use crate::{
         },
         errors::DomainError,
     },
-    utils::oauth_crypto::sha256_hex,
+    utils::{device_key, oauth_crypto::sha256_hex},
 };
 
 // POST /v1/auth/qr-login/{approve,deny} (hosted approval page) and
@@ -39,10 +42,12 @@ use crate::{
 //     session must be fully spendable (MFA cleared, no forced password change
 //     pending) and is burned here: it served as proof, never as a code. If it passed
 //     a second factor, the browser's MFA policy counts it;
-//   * signed-in app: the token's user, who must be the one who scanned, AND the
-//     account's current password. A wrong password ends the request (it is denied),
-//     so every guess costs a new code, which the strict rate limit bounds. An account
-//     without a password approves on the hosted page instead.
+//   * signed-in app: the token's user, who must be the one who scanned, AND either
+//     the account's current password or the signature of one of the user's trusted
+//     devices (a key in the phone's secure hardware: nothing to type). A failed proof
+//     ends the request (it is denied), so every guess costs a new code, which the
+//     strict rate limit bounds. A device registered with a second factor counts as
+//     one for the browser's MFA policy; a password never does.
 //
 // One conditional statement makes the decision, so it is taken once.
 pub struct UseCase {
@@ -54,6 +59,7 @@ struct Approval {
     user_id: Uuid,
     mfa_verified: bool,
     via: QrApprover,
+    device_id: Option<Uuid>,
 }
 
 // Why an approval was refused.
@@ -64,15 +70,16 @@ enum Refusal {
     PasswordRequired,
     // The account has no password to confirm with.
     NoPassword,
-    // A wrong password: the request is denied.
-    WrongPassword,
+    // A wrong password, or a device proof that does not verify: the request is denied.
+    WrongProof(&'static str),
 }
 
 const PASSWORD_REQUIRED: &str = "approving requires `current_password`";
 const WRONG_PASSWORD: &str =
     "current password is incorrect; this request was denied, scan a new code";
-const NO_PASSWORD: &str =
-    "this account has no password: approve by opening the code with the phone's camera";
+const NO_PASSWORD: &str = "this account has no password: approve with a trusted device, or by opening the code with the phone's camera";
+const BAD_DEVICE_PROOF: &str =
+    "the device proof is invalid; this request was denied, scan a new code";
 
 impl UseCase {
     pub fn new(
@@ -98,6 +105,7 @@ impl UseCase {
             .await?
             .ok_or_else(invalid_code)?;
         let claim_hash = sha256_hex(&command.claim_code);
+        let mut device_id = None;
 
         let (decided, user_id, via) = match command.decision {
             Decision::Approve => {
@@ -107,6 +115,7 @@ impl UseCase {
                         &command.decider,
                         &client,
                         &request,
+                        &command.claim_code,
                         &claim_hash,
                         now,
                     )
@@ -130,6 +139,12 @@ impl UseCase {
                         now,
                     )
                     .await?;
+                if decided && let Some(device_id) = approval.device_id {
+                    uow.trusted_device_repository()
+                        .record_use(device_id, now)
+                        .await?;
+                }
+                device_id = approval.device_id;
                 (decided, Some(approval.user_id), approval.via)
             }
             Decision::Deny => {
@@ -166,7 +181,7 @@ impl UseCase {
         };
         uow.audit_event_repository()
             .record(&audit(
-                &command, &client, &request, action, user_id, via, None,
+                &command, &client, &request, action, user_id, via, device_id, None,
             ))
             .await?;
         uow.commit().await?;
@@ -187,6 +202,7 @@ impl UseCase {
         decider: &Decider,
         client: &OAuthClient,
         request: &QrLoginRequest,
+        claim_code: &str,
         claim_hash: &str,
         now: DateTime<Utc>,
     ) -> Result<Result<Approval, Refusal>, DomainError> {
@@ -242,15 +258,16 @@ impl UseCase {
                     user_id,
                     mfa_verified,
                     via: QrApprover::HostedPage,
+                    device_id: None,
                 }))
             }
             Decider::SignedInUser {
                 tenant_id: token_tenant,
                 user_id,
-                current_password,
+                proof,
             } => {
-                // Checked before the password, so that a password can only be tried
-                // against a code this user really claimed.
+                // Checked before any proof, so that a password or a signature can only
+                // be tried against a code this user really claimed.
                 if tenant_id != *token_tenant
                     || !request.is_decidable_by(claim_hash, Some(*user_id), now)
                 {
@@ -264,39 +281,73 @@ impl UseCase {
                 else {
                     return Ok(Err(Refusal::Invalid));
                 };
-                let Some(credentials) = user.credentials() else {
-                    return Ok(Err(Refusal::NoPassword));
-                };
-                let Some(password) = current_password.as_deref().filter(|p| !p.is_empty()) else {
-                    return Ok(Err(Refusal::PasswordRequired));
-                };
-                let Some(tenant) = uow.tenant_repository().find_by_id(tenant_id).await? else {
-                    return Ok(Err(Refusal::Invalid));
-                };
-                if !self
-                    .password_hasher
-                    .verify(
-                        credentials.password_hash(),
-                        password,
-                        tenant.password_hash_secret(),
-                    )
-                    .await
-                {
-                    return Ok(Err(Refusal::WrongPassword));
+                match proof {
+                    AppProof::Device {
+                        device_id,
+                        signature,
+                    } => {
+                        // The device must be this user's, in this tenant.
+                        let Some(device) = uow
+                            .trusted_device_repository()
+                            .find(tenant_id, *user_id, *device_id)
+                            .await?
+                        else {
+                            return Ok(Err(Refusal::WrongProof("unknown_device")));
+                        };
+                        let message = qr_approval_message(request.id(), claim_code);
+                        if !device_key::verify(device.public_key(), message.as_bytes(), signature) {
+                            return Ok(Err(Refusal::WrongProof("bad_device_signature")));
+                        }
+                        // A key in the phone's secure hardware, registered with the
+                        // user's second factor (or as their first one): possession of
+                        // that phone counts as one.
+                        Ok(Ok(Approval {
+                            user_id: *user_id,
+                            mfa_verified: device.counts_as_second_factor(),
+                            via: QrApprover::TrustedDevice,
+                            device_id: Some(device.id()),
+                        }))
+                    }
+                    AppProof::Password(current_password) => {
+                        let Some(credentials) = user.credentials() else {
+                            return Ok(Err(Refusal::NoPassword));
+                        };
+                        let Some(password) = current_password.as_deref().filter(|p| !p.is_empty())
+                        else {
+                            return Ok(Err(Refusal::PasswordRequired));
+                        };
+                        let Some(tenant) = uow.tenant_repository().find_by_id(tenant_id).await?
+                        else {
+                            return Ok(Err(Refusal::Invalid));
+                        };
+                        let matches = self
+                            .password_hasher
+                            .verify(
+                                credentials.password_hash(),
+                                password,
+                                tenant.password_hash_secret(),
+                            )
+                            .await;
+                        // A password awaiting a forced change is not the user's.
+                        if !matches || !credentials.proves_account_owner() {
+                            return Ok(Err(Refusal::WrongProof("wrong_password")));
+                        }
+                        // An access token and a password are not a second factor
+                        // passed for this sign-in: the browser's MFA rules still apply.
+                        Ok(Ok(Approval {
+                            user_id: *user_id,
+                            mfa_verified: false,
+                            via: QrApprover::SignedInApp,
+                            device_id: None,
+                        }))
+                    }
                 }
-                // An access token and a password are not a second factor passed for
-                // this sign-in: the browser's MFA rules still apply.
-                Ok(Ok(Approval {
-                    user_id: *user_id,
-                    mfa_verified: false,
-                    via: QrApprover::SignedInApp,
-                }))
             }
         }
     }
 
-    // Answers a refused approval. A wrong password also denies the request and is
-    // audited, in one transaction.
+    // Answers a refused approval. A failed proof (a wrong password, an unknown device,
+    // a bad signature) also denies the request and is audited, in one transaction.
     #[allow(clippy::too_many_arguments)]
     async fn refuse(
         &self,
@@ -314,9 +365,15 @@ impl UseCase {
                 Err(DomainError::StepUpRequired(PASSWORD_REQUIRED.to_string()))
             }
             Refusal::NoPassword => Err(DomainError::AccessDenied(NO_PASSWORD.to_string())),
-            Refusal::WrongPassword => {
-                let Decider::SignedInUser { user_id, .. } = &command.decider else {
+            Refusal::WrongProof(reason) => {
+                let Decider::SignedInUser { user_id, proof, .. } = &command.decider else {
                     return Err(invalid_code());
+                };
+                let (via, device_id) = match proof {
+                    AppProof::Device { device_id, .. } => {
+                        (QrApprover::TrustedDevice, Some(*device_id))
+                    }
+                    AppProof::Password(_) => (QrApprover::SignedInApp, None),
                 };
                 if uow
                     .qr_login_request_repository()
@@ -330,18 +387,25 @@ impl UseCase {
                             request,
                             USER_QR_LOGIN_DENIED,
                             Some(*user_id),
-                            QrApprover::SignedInApp,
-                            Some("wrong_password"),
+                            via,
+                            device_id,
+                            Some(reason),
                         ))
                         .await?;
                     uow.commit().await?;
                 }
-                Err(DomainError::StepUpRequired(WRONG_PASSWORD.to_string()))
+                Err(match via {
+                    QrApprover::TrustedDevice => {
+                        DomainError::AuthenticationError(BAD_DEVICE_PROOF.to_string())
+                    }
+                    _ => DomainError::StepUpRequired(WRONG_PASSWORD.to_string()),
+                })
             }
         }
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn audit(
     command: &Command,
     client: &OAuthClient,
@@ -349,6 +413,7 @@ fn audit(
     action: &str,
     user_id: Option<Uuid>,
     via: QrApprover,
+    device_id: Option<Uuid>,
     reason: Option<&str>,
 ) -> AuditEvent {
     let mut metadata = serde_json::json!({
@@ -360,6 +425,9 @@ fn audit(
         "requester_location": request.requester().location,
         "requester_ip": request.requester().ip_address,
     });
+    if let Some(device_id) = device_id {
+        metadata["device_id"] = serde_json::json!(device_id);
+    }
     if let Some(reason) = reason {
         metadata["reason"] = serde_json::Value::String(reason.to_string());
     }

@@ -216,13 +216,18 @@ credentials. `use_cases/webhook_subscription/validation.rs` therefore refuses:
 Redirects are disabled on the HTTP client, so a public URL cannot 302 us to a blocked
 one after passing validation.
 
-> **Known limitation — DNS rebinding.** A hostname that passes validation can still
-> *resolve* to a private address later, or simply be an internal DNS name that looks
-> public. Closing that fully requires resolving the name and pinning the socket to the
-> vetted IP at request time. Treat this as defence in depth against a careless or
-> semi-trusted tenant admin, **not** as an airtight boundary against an attacker who
-> already controls DNS. Where that matters, run the dispatcher behind an egress proxy
-> with its own allow-list.
+The same ranges are checked again **when the request is made**
+(`ReqwestWebhookSender`): the client resolves the host name through a resolver that
+refuses a name when any of its addresses is in a blocked range, and connects to
+exactly the addresses it vetted. So a name that resolves to a private address
+(`169-254-169-254.sslip.io`, an internal DNS name, a record changed after the URL was
+saved) is refused, and so is every other spelling of an IP literal the client accepts
+(`127.1`, `2130706433`). `WEBHOOK_ALLOW_PRIVATE_TARGETS=true` turns both checks off.
+The SMTP sender applies the same rule to a tenant's SMTP host.
+
+> **Remaining limit.** If the server sends outbound HTTP through a proxy
+> (`HTTPS_PROXY`), the proxy resolves the name, not this check; give that proxy its
+> own allow-list.
 
 **PII.** Payloads carry email and names to a third-party endpoint. That is the point
 of the feature, but it is why the URL is validated as above, why each subscription

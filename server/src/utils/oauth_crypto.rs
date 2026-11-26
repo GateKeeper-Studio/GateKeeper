@@ -28,6 +28,28 @@ pub fn generate_numeric_code() -> String {
     format!("{:06}", rand::rng().random_range(0..1_000_000))
 }
 
+// Characters a person can read off an email and type: no 0/O, 1/I/L. 31 symbols.
+const TEMPORARY_PASSWORD_ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+// A temporary password for an admin reset, e.g. `K7QM-4TZP-WXRB-9HNC`: 16 symbols
+// drawn uniformly from the OS-seeded generator, about 79 bits. Typed once, so it can
+// be shorter than a token; it is still Argon2-hashed like any password, expires, and
+// signs in only once.
+pub fn generate_temporary_password() -> String {
+    let mut rng = rand::rng();
+    let symbols: Vec<char> = (0..16)
+        .map(|_| {
+            let index = rng.random_range(0..TEMPORARY_PASSWORD_ALPHABET.len());
+            TEMPORARY_PASSWORD_ALPHABET[index] as char
+        })
+        .collect();
+    symbols
+        .chunks(4)
+        .map(|group| group.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
 // We persist only the hash of opaque tokens so a DB leak does not hand out live
 // credentials. SHA-256 is correct here (unlike passwords) because the input is
 // already high-entropy random — no Argon2 stretching needed.
@@ -77,4 +99,29 @@ pub fn verify_pkce_s256(code_verifier: &str, code_challenge: &str) -> bool {
 // Verifies a PKCE proof, enforcing the S256 method (the only one OAuth 2.1 allows).
 pub fn verify_pkce(code_challenge: &str, code_challenge_method: &str, code_verifier: &str) -> bool {
     code_challenge_method == "S256" && verify_pkce_s256(code_verifier, code_challenge)
+}
+
+#[cfg(test)]
+mod temporary_password_tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn temporary_passwords_are_four_groups_of_unambiguous_symbols() {
+        let password = generate_temporary_password();
+        let groups: Vec<&str> = password.split('-').collect();
+        assert_eq!(groups.len(), 4, "{password}");
+        for group in groups {
+            assert_eq!(group.len(), 4, "{password}");
+            assert!(
+                group
+                    .bytes()
+                    .all(|b| TEMPORARY_PASSWORD_ALPHABET.contains(&b)),
+                "{password}"
+            );
+        }
+        let many: HashSet<String> = (0..1000).map(|_| generate_temporary_password()).collect();
+        assert_eq!(many.len(), 1000);
+    }
 }

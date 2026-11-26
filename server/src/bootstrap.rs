@@ -34,6 +34,7 @@ use crate::{
             admin_account::{
                 change_password as admin_change_password,
                 deactivate_account as admin_deactivate_account, get_profile as admin_get_profile,
+                record_console_tour as admin_record_console_tour,
                 update_profile as admin_update_profile,
             },
             admin_auth::{login as admin_login, logout as admin_logout, refresh as admin_refresh},
@@ -42,9 +43,9 @@ use crate::{
                 end as console_end, resolve as console_resolve, start as console_start,
             },
             authentication::{
-                authorize_session, change_password, confirm_current_password, confirm_email,
-                external_login, forgot_password, login, redeem_magic_link, refresh_session,
-                register, request_magic_link, resend_confirm_email, reset_password,
+                authorize_session, change_password, confirm_email, external_login, forgot_password,
+                login, redeem_magic_link, refresh_session, register, request_magic_link,
+                resend_confirm_email, reset_password,
             },
             compliance::{
                 erase_user, export_user_data, list_audit_events, list_required_documents,
@@ -99,6 +100,7 @@ use crate::{
                 update_risk_policy,
             },
             session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
+            step_up,
             tenant::{
                 create_tenant, delete_tenant_by_id, get_tenant_by_id, list_tenants,
                 update_tenant_appearance, update_tenant_by_id,
@@ -110,9 +112,10 @@ use crate::{
             },
             tenant_user::{
                 create_tenant_user, delete_tenant_user_by_id, get_authentication_methods,
-                get_tenant_user_by_id, list_tenant_users, update_tenant_user_by_id,
-                update_tenant_user_custom_field_values,
+                get_tenant_user_by_id, list_tenant_users, reset_user_password,
+                update_tenant_user_by_id, update_tenant_user_custom_field_values,
             },
+            trusted_device,
             webhook_subscription::{
                 create_webhook_subscription, delete_webhook_subscription,
                 get_webhook_subscription_by_id, list_webhook_deliveries,
@@ -189,6 +192,7 @@ use crate::{
                 social_identity_repository::DbSocialIdentityRepository,
                 tenant_repository::DbTenantRepository,
                 tenant_risk_policy_repository::DbTenantRiskPolicyRepository,
+                trusted_device_repository::DbTrustedDeviceRepository,
                 user_repository::DbUserRepository,
                 webhook_delivery_repository::DbWebhookDeliveryRepository,
                 webhook_subscription_repository::DbWebhookSubscriptionRepository,
@@ -225,8 +229,10 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
 
     // Outbound webhooks. The sender here serves the synchronous "send test event"
     // endpoint; the background dispatcher (spawned in main) builds its own.
-    let webhook_sender: Arc<dyn WebhookSender> =
-        Arc::new(ReqwestWebhookSender::new(config.webhook_timeout_seconds));
+    let webhook_sender: Arc<dyn WebhookSender> = Arc::new(ReqwestWebhookSender::new(
+        config.webhook_timeout_seconds,
+        config.webhook_allow_private_targets,
+    ));
     // SECURITY: gates the SSRF check on admin-supplied subscription URLs. See the
     // WEBHOOK_ALLOW_PRIVATE_TARGETS note in config.rs — off means private, loopback
     // and link-local targets (including the cloud metadata endpoint) are refused.
@@ -345,8 +351,12 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
 
     // Outbound email transport. Delivers through the tenant's configured SMTP
     // provider; falls back to logging when a client/tenant has none configured.
-    let email_sender: Arc<dyn EmailSender> =
-        Arc::new(SmtpEmailSender::new(Arc::clone(&secret_cipher)));
+    let email_sender: Arc<dyn EmailSender> = Arc::new(SmtpEmailSender::new(
+        Arc::clone(&secret_cipher),
+        // Message bodies (codes, reset links) reach the log in development only.
+        config.app_env.is_development(),
+        config.webhook_allow_private_targets,
+    ));
 
     // Editable per-tenant email templates: the store, the MJML renderer that
     // compiles them to Outlook-safe sanitized HTML, and the service that resolves
@@ -445,6 +455,18 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
         }
     };
 
+    // The console's cookie session runs at AUTH_UI_BASE_URL's origin. In development
+    // it also runs on this server's plain-HTTP loopback listener, so the console
+    // still opens at http://localhost:PORT when AUTH_UI_BASE_URL is a LAN or TLS
+    // address (for phones). Production accepts the one origin only.
+    let mut console = ConsoleSettings::from_public_url(&config.auth_ui_base_url);
+    if config.app_env.is_development() {
+        console = console.also_at([
+            format!("http://localhost:{}", config.port),
+            format!("http://127.0.0.1:{}", config.port),
+        ]);
+    }
+
     let state = AppState {
         tenants: Arc::new(TenantUseCases {
             create_tenant: Arc::new(create_tenant::use_case::UseCase::new(
@@ -479,6 +501,9 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             create_tenant_user: Arc::new(create_tenant_user::use_case::UseCase::new(
                 Arc::clone(&uow_factory),
                 Arc::clone(&password_hasher),
+                Arc::clone(&templated_email),
+                // As for a reset: outside development the welcome email needs a provider.
+                !config.app_env.is_development(),
             )),
             list_tenant_users: Arc::new(list_tenant_users::use_case::UseCase::new(
                 Arc::clone(&user_repository),
@@ -506,6 +531,14 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             ),
             delete_tenant_user_by_id: Arc::new(delete_tenant_user_by_id::use_case::UseCase::new(
                 Arc::clone(&uow_factory),
+            )),
+            reset_user_password: Arc::new(reset_user_password::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&password_hasher),
+                Arc::clone(&templated_email),
+                // Development prints undelivered mail to the log; anywhere else a
+                // reset needs a provider, or the user would never get the password.
+                !config.app_env.is_development(),
             )),
         }),
         custom_fields: Arc::new(CustomFieldUseCases {
@@ -710,6 +743,9 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 Arc::clone(&external_provider_client),
                 Arc::clone(&secret_cipher),
                 Arc::clone(&risk_engine),
+                Arc::clone(&webauthn),
+                Arc::clone(&templated_email),
+                auth_ui_base_url.clone(),
             )),
             register: Arc::new(register::use_case::UseCase::new(
                 Arc::clone(&uow_factory),
@@ -764,11 +800,6 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 Arc::clone(&uow_factory),
                 Arc::clone(&password_hasher),
             )),
-            confirm_current_password: Arc::new(confirm_current_password::use_case::UseCase::new(
-                Arc::clone(&user_repository),
-                Arc::clone(&tenant_repository),
-                Arc::clone(&password_hasher),
-            )),
         }),
         qr_login: Arc::new(QrLoginUseCases {
             start: Arc::new(qr_login::start::use_case::UseCase::new(
@@ -789,6 +820,34 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 Arc::clone(&uow_factory),
                 Arc::clone(&password_hasher),
             )),
+        }),
+        step_up: Arc::new(StepUpUseCases {
+            start: Arc::new(step_up::start::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&webauthn),
+                Arc::clone(&templated_email),
+                // Development prints undelivered mail to the log; anywhere else the
+                // emailed code needs a provider.
+                !config.app_env.is_development(),
+            )),
+            confirm: Arc::new(step_up::confirm::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&password_hasher),
+                Arc::clone(&webauthn),
+            )),
+        }),
+        trusted_devices: Arc::new(TrustedDeviceUseCases {
+            register: Arc::new(trusted_device::register::use_case::UseCase::new(
+                Arc::clone(&uow_factory),
+                Arc::clone(&password_hasher),
+                Arc::clone(&secret_cipher),
+            )),
+            list: Arc::new(trusted_device::list::use_case::UseCase::new(Arc::new(
+                DbTrustedDeviceRepository::new(db_pool.clone()),
+            ))),
+            revoke: Arc::new(trusted_device::revoke::use_case::UseCase::new(Arc::clone(
+                &uow_factory,
+            ))),
         }),
         mfa: Arc::new(MfaUseCases {
             send_mfa_email_otp: Arc::new(send_email_otp::use_case::UseCase::new(
@@ -1036,6 +1095,9 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
                 Arc::clone(&admin_refresh_token_repository),
                 Arc::clone(&admin_web_session_repository),
             )),
+            record_my_console_tour: Arc::new(admin_record_console_tour::use_case::UseCase::new(
+                Arc::clone(&admin_user_repository),
+            )),
             get_my_mfa: Arc::new(admin_mfa::get_status::use_case::UseCase::new(Arc::clone(
                 &admin_mfa_repository,
             ))),
@@ -1134,7 +1196,7 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             Arc::clone(&admin_token_service),
         )),
         health: Arc::new(DbHealthCheck::new(db_pool.clone())),
-        console: Arc::new(ConsoleSettings::from_public_url(&config.auth_ui_base_url)),
+        console: Arc::new(console),
     };
 
     let trusted_proxies = TrustedProxies::parse(&config.trusted_proxies)
@@ -1149,8 +1211,12 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
         let assets = UiAssets::load(std::path::Path::new(dir)).unwrap_or_else(|e| panic!("{e}"));
         tracing::info!("serving the dashboard from UI_DIR={dir}");
         // The console's cookie session accepts requests only from AUTH_UI_BASE_URL's
-        // origin. When this server serves the UI, that is its own public URL.
-        if origin_of(&config.auth_ui_base_url) != origin_of(&config.oauth_issuer) {
+        // origin (plus the loopback listener in development). When this server
+        // serves the UI, that is its own public URL.
+        if !state
+            .console
+            .accepts_origin(&origin_of(&config.oauth_issuer))
+        {
             tracing::warn!(
                 auth_ui_base_url = %config.auth_ui_base_url,
                 oauth_issuer = %config.oauth_issuer,

@@ -59,6 +59,11 @@ pub struct AppConfig {
     /// Separate listener for `/metrics`. `None` disables it. The main API port no
     /// longer serves metrics, so a public API does not expose the registry.
     pub metrics_port: Option<u16>,
+    /// Optional HTTPS listener next to the HTTP one (`TLS_CERT_FILE` + `TLS_KEY_FILE`).
+    /// Meant for local development: phones on the LAN and WebAuthn need a secure
+    /// context, which plain HTTP has only on localhost. Production terminates TLS at
+    /// the load balancer / reverse proxy instead.
+    pub tls: Option<TlsConfig>,
     pub log_json: bool,
 
     /// Public issuer URL pinned as `iss` in every token.
@@ -250,6 +255,7 @@ impl AppConfig {
                 .parse()
                 .expect("PORT must be a valid number"),
             metrics_port: resolve_metrics_port(),
+            tls: resolve_tls(),
             log_json: resolve_log_json(app_env),
 
             oauth_issuer: env_string("OAUTH_ISSUER").unwrap_or_else(|| DEFAULT_ISSUER.to_string()),
@@ -321,6 +327,32 @@ impl AppConfig {
 /// before reading `APP_ENV` so a value set only in `.env` is honoured.
 pub fn load_dotenv() {
     dotenvy::dotenv().ok();
+}
+
+#[derive(Debug, Clone)]
+pub struct TlsConfig {
+    /// PEM certificate chain (leaf first).
+    pub cert_file: std::path::PathBuf,
+    /// PEM private key (PKCS#8, SEC1 or PKCS#1).
+    pub key_file: std::path::PathBuf,
+    /// Port of the HTTPS listener (`TLS_PORT`, default 8443). `PORT` keeps serving HTTP.
+    pub port: u16,
+}
+
+pub const DEFAULT_TLS_PORT: u16 = 8443;
+
+// Both files, or neither: half a TLS configuration is a mistake to stop on, not to
+// silently serve plain HTTP for.
+fn resolve_tls() -> Option<TlsConfig> {
+    match (env_string("TLS_CERT_FILE"), env_string("TLS_KEY_FILE")) {
+        (None, None) => None,
+        (Some(cert_file), Some(key_file)) => Some(TlsConfig {
+            cert_file: cert_file.into(),
+            key_file: key_file.into(),
+            port: env_parsed("TLS_PORT", DEFAULT_TLS_PORT),
+        }),
+        _ => panic!("TLS_CERT_FILE and TLS_KEY_FILE must be set together"),
+    }
 }
 
 // JSON logs unless LOG_FORMAT says otherwise; JSON is the default outside

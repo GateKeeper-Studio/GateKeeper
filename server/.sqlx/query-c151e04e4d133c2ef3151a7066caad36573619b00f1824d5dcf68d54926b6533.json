@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n          SELECT id, tenant_id, code_hash, client_id, user_id, redirect_uri, scopes,\n            code_challenge, code_challenge_method, nonce, consumed_at, expires_at, created_at\n          FROM authorization_codes\n          WHERE tenant_id = $1 AND code_hash = $2\n        ",
+  "query": "\n          SELECT id, tenant_id, code_hash, client_id, user_id, redirect_uri, scopes,\n            code_challenge, code_challenge_method, nonce, consumed_at, expires_at, created_at\n          FROM authorization_codes\n          WHERE tenant_id = $1 AND code_hash = $2\n          FOR UPDATE\n        ",
   "describe": {
     "columns": [
       {
@@ -169,5 +169,5 @@
       false
     ]
   },
-  "hash": "c5127cb56c2b3bdc7508572d9da90bd87f68b90cc997ef338d44d3390858fb97"
+  "hash": "c151e04e4d133c2ef3151a7066caad36573619b00f1824d5dcf68d54926b6533"
 }

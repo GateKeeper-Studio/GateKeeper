@@ -38,54 +38,125 @@ pub struct ConsoleSessionId(pub uuid::Uuid);
 // How the console session behaves on this deployment.
 #[derive(Debug, Clone)]
 pub struct ConsoleSettings {
-    // The only origin allowed to drive the session: scheme://host[:port] of
-    // AUTH_UI_BASE_URL, which is this server's own public origin when it serves the UI.
+    // scheme://host[:port] of AUTH_UI_BASE_URL, which is this server's own public
+    // origin when it serves the UI. The links the server hands out (QR sign-in,
+    // admin invitations) point here.
     pub public_origin: String,
-    // True when the public origin is https: the cookie is then `Secure` and `__Host-`.
-    pub secure_cookie: bool,
+    // Every origin allowed to drive the session; the public origin comes first.
+    // Production has only that one. Development also has this server's plain-HTTP
+    // loopback listener (`also_at`), so the console keeps working on localhost when
+    // AUTH_UI_BASE_URL is a LAN or TLS address for phones.
+    origins: Vec<ConsoleOrigin>,
 }
 
-impl ConsoleSettings {
-    pub fn from_public_url(url: &str) -> Self {
-        let public_origin = origin_of(url);
+#[derive(Debug, Clone)]
+struct ConsoleOrigin {
+    origin: String,
+    // host[:port] of `origin`, compared with the request's `Host` header.
+    authority: String,
+    // True for https: the cookie is then `Secure` and `__Host-`.
+    secure: bool,
+}
+
+impl ConsoleOrigin {
+    fn new(url: &str) -> Self {
+        let origin = origin_of(url);
+        let authority = origin
+            .split_once("://")
+            .map_or(origin.as_str(), |(_, authority)| authority)
+            .to_string();
         Self {
-            secure_cookie: public_origin.starts_with("https://"),
-            public_origin,
+            secure: origin.starts_with("https://"),
+            authority,
+            origin,
         }
     }
 
-    pub fn cookie_name(&self) -> &'static str {
-        if self.secure_cookie {
+    fn cookie_name(&self) -> &'static str {
+        if self.secure {
             SECURE_COOKIE
         } else {
             DEV_COOKIE
         }
     }
+}
+
+impl ConsoleSettings {
+    pub fn from_public_url(url: &str) -> Self {
+        let public = ConsoleOrigin::new(url);
+        Self {
+            public_origin: public.origin.clone(),
+            origins: vec![public],
+        }
+    }
+
+    // Lets the console also run at these URLs' origins: other addresses of this
+    // same server. Development only (bootstrap adds the loopback listener); each
+    // gets the cookie its scheme allows.
+    pub fn also_at<I, S>(mut self, urls: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        for url in urls {
+            let extra = ConsoleOrigin::new(url.as_ref());
+            if !self.accepts_origin(&extra.origin) {
+                self.origins.push(extra);
+            }
+        }
+        self
+    }
+
+    pub fn accepts_origin(&self, origin: &str) -> bool {
+        self.origins.iter().any(|o| o.origin == origin)
+    }
+
+    // The console origin this request was made at: the one its `Host` names, else
+    // the public origin. A browser sets `Host` itself, so a page cannot pick another
+    // origin's cookie or Origin check. A request whose `Host` names none of them
+    // (HTTP/2 sends `:authority` instead, a proxy may rewrite it) falls back to the
+    // public origin, which with a single origin is the only behavior there is.
+    fn origin_for(&self, headers: &HeaderMap) -> &ConsoleOrigin {
+        let host = headers.get(header::HOST).and_then(|h| h.to_str().ok());
+        host.and_then(|host| {
+            self.origins[1..]
+                .iter()
+                .find(|o| o.authority.eq_ignore_ascii_case(host.trim()))
+        })
+        .unwrap_or(&self.origins[0])
+    }
 
     // `Set-Cookie` opening a session. SameSite=Strict costs the console nothing: its
     // pages are public static files and every authenticated call is a same-origin
     // fetch, so the cookie is never needed on a cross-site navigation.
-    pub fn session_cookie(&self, value: &str, max_age_seconds: i64) -> HeaderValue {
-        let secure = if self.secure_cookie { "; Secure" } else { "" };
+    pub fn session_cookie(
+        &self,
+        headers: &HeaderMap,
+        value: &str,
+        max_age_seconds: i64,
+    ) -> HeaderValue {
+        let origin = self.origin_for(headers);
+        let secure = if origin.secure { "; Secure" } else { "" };
         HeaderValue::from_str(&format!(
             "{}={value}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age_seconds}{secure}",
-            self.cookie_name()
+            origin.cookie_name()
         ))
         .expect("an opaque token is a valid header value")
     }
 
-    pub fn cleared_cookie(&self) -> HeaderValue {
-        let secure = if self.secure_cookie { "; Secure" } else { "" };
+    pub fn cleared_cookie(&self, headers: &HeaderMap) -> HeaderValue {
+        let origin = self.origin_for(headers);
+        let secure = if origin.secure { "; Secure" } else { "" };
         HeaderValue::from_str(&format!(
             "{}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0{secure}",
-            self.cookie_name()
+            origin.cookie_name()
         ))
         .expect("static cookie is a valid header value")
     }
 
     // The session cookie's value, if the request carries one.
     pub fn read_cookie(&self, headers: &HeaderMap) -> Option<String> {
-        let name = self.cookie_name();
+        let name = self.origin_for(headers).cookie_name();
         headers
             .get_all(header::COOKIE)
             .iter()
@@ -103,7 +174,8 @@ impl ConsoleSettings {
     // is the registrable domain: a relying party on a sibling subdomain is
     // same-site. So the origin is checked too:
     //   - `Sec-Fetch-Site`, when the browser sends it, must be `same-origin`;
-    //   - any state-changing method must carry an `Origin` equal to ours.
+    //   - any state-changing method must carry an `Origin` equal to the console
+    //     origin the request was made at.
     pub fn refuse_cross_origin(&self, method: &Method, headers: &HeaderMap) -> Option<Response> {
         if let Some(site) = headers.get("sec-fetch-site") {
             if site.as_bytes() != b"same-origin" {
@@ -113,7 +185,7 @@ impl ConsoleSettings {
         let safe = matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS);
         if !safe {
             let origin = headers.get(header::ORIGIN).and_then(|o| o.to_str().ok());
-            if origin != Some(self.public_origin.as_str()) {
+            if origin != Some(self.origin_for(headers).origin.as_str()) {
                 return Some(cross_origin_refused());
             }
         }
@@ -173,9 +245,10 @@ pub async fn console_api_bridge(
         Err(DomainError::AuthenticationError(_)) => {
             let mut response =
                 ApiError::Unauthorized("session expired".to_string()).into_response();
-            response
-                .headers_mut()
-                .insert(header::SET_COOKIE, console.cleared_cookie());
+            response.headers_mut().insert(
+                header::SET_COOKIE,
+                console.cleared_cookie(request.headers()),
+            );
             return response;
         }
         Err(other) => return ApiError::from(other).into_response(),
@@ -228,7 +301,7 @@ mod tests {
     #[test]
     fn https_deployments_get_a_host_prefixed_secure_cookie() {
         let secure = settings("https://id.example.com");
-        let cookie = secure.session_cookie("abc", 60);
+        let cookie = secure.session_cookie(&HeaderMap::new(), "abc", 60);
         assert_eq!(
             cookie.to_str().unwrap(),
             "__Host-gk_admin=abc; Path=/; HttpOnly; SameSite=Strict; Max-Age=60; Secure"
@@ -236,9 +309,94 @@ mod tests {
 
         let dev = settings("http://localhost:5173");
         assert_eq!(
-            dev.session_cookie("abc", 60).to_str().unwrap(),
+            dev.session_cookie(&HeaderMap::new(), "abc", 60)
+                .to_str()
+                .unwrap(),
             "gk_admin=abc; Path=/; HttpOnly; SameSite=Strict; Max-Age=60"
         );
+    }
+
+    // Development: AUTH_UI_BASE_URL is the TLS address phones use, and the console
+    // is also opened on the loopback HTTP listener.
+    fn dev_with_loopback() -> ConsoleSettings {
+        settings("https://192-168-0-140.sslip.io:8443")
+            .also_at(["http://localhost:8080", "http://127.0.0.1:8080"])
+    }
+
+    #[test]
+    fn an_extra_origin_is_served_at_its_own_host_with_the_cookie_its_scheme_allows() {
+        let s = dev_with_loopback();
+        let local = headers(&[
+            ("host", "localhost:8080"),
+            ("origin", "http://localhost:8080"),
+            ("sec-fetch-site", "same-origin"),
+        ]);
+        assert!(s.refuse_cross_origin(&Method::POST, &local).is_none());
+        assert_eq!(
+            s.session_cookie(&local, "abc", 60).to_str().unwrap(),
+            "gk_admin=abc; Path=/; HttpOnly; SameSite=Strict; Max-Age=60"
+        );
+        assert_eq!(
+            s.cleared_cookie(&local).to_str().unwrap(),
+            "gk_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+        );
+        let local_get = headers(&[("host", "localhost:8080"), ("cookie", "gk_admin=local")]);
+        assert_eq!(s.read_cookie(&local_get).as_deref(), Some("local"));
+
+        // The public origin keeps its prefixed cookie; HTTP/2 sends no `Host`.
+        let public = headers(&[
+            ("origin", "https://192-168-0-140.sslip.io:8443"),
+            ("cookie", "gk_admin=wrong-name; __Host-gk_admin=public"),
+        ]);
+        assert!(s.refuse_cross_origin(&Method::POST, &public).is_none());
+        assert!(
+            s.session_cookie(&public, "abc", 60)
+                .to_str()
+                .unwrap()
+                .starts_with("__Host-gk_admin=abc;")
+        );
+        assert_eq!(s.read_cookie(&public).as_deref(), Some("public"));
+        assert_eq!(s.public_origin, "https://192-168-0-140.sslip.io:8443");
+    }
+
+    #[test]
+    fn each_origin_accepts_only_its_own_requests() {
+        let s = dev_with_loopback();
+        // A page on one allowed origin cannot write through another.
+        let mismatched = headers(&[
+            ("host", "localhost:8080"),
+            ("origin", "https://192-168-0-140.sslip.io:8443"),
+        ]);
+        assert!(s.refuse_cross_origin(&Method::POST, &mismatched).is_some());
+        let mismatched = headers(&[
+            ("host", "192-168-0-140.sslip.io:8443"),
+            ("origin", "http://localhost:8080"),
+        ]);
+        assert!(s.refuse_cross_origin(&Method::POST, &mismatched).is_some());
+        // An origin the server never added stays refused.
+        let lan = headers(&[
+            ("host", "192.168.0.140:8080"),
+            ("origin", "http://192.168.0.140:8080"),
+        ]);
+        assert!(s.refuse_cross_origin(&Method::POST, &lan).is_some());
+    }
+
+    #[test]
+    fn without_extra_origins_the_host_header_changes_nothing() {
+        let s = settings("https://id.example.com");
+        let local = headers(&[
+            ("host", "localhost:8080"),
+            ("origin", "http://localhost:8080"),
+        ]);
+        assert!(s.refuse_cross_origin(&Method::POST, &local).is_some());
+        assert!(
+            s.session_cookie(&local, "abc", 60)
+                .to_str()
+                .unwrap()
+                .starts_with("__Host-gk_admin=abc;")
+        );
+        assert!(!s.accepts_origin("http://localhost:8080"));
+        assert!(dev_with_loopback().accepts_origin("http://127.0.0.1:8080"));
     }
 
     #[test]

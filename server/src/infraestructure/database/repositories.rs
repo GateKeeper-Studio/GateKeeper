@@ -34,6 +34,7 @@ pub mod signing_key_repository;
 pub mod social_identity_repository;
 pub mod tenant_repository;
 pub mod tenant_risk_policy_repository;
+pub mod trusted_device_repository;
 pub mod user_repository;
 
 // Outbound events: transactional outbox + signed webhook delivery.

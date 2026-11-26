@@ -43,6 +43,7 @@ pub mod refresh_token;
 pub mod risk_model;
 pub mod signing_key;
 pub mod social_identity;
+pub mod trusted_device;
 
 // Compliance / audit (WI-02)
 pub mod audit_action;

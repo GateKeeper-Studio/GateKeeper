@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_credentials (id, user_id, password_hash, password_algorithm, should_change_pass,\n                                          temporary_password_expires_at, created_at, updated_at)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)\n            ON CONFLICT (user_id) DO UPDATE\n            SET password_hash = EXCLUDED.password_hash,\n                password_algorithm = EXCLUDED.password_algorithm,\n                should_change_pass = EXCLUDED.should_change_pass,\n                -- Same password: keep the earlier expiry (LEAST skips NULL), so a copy\n                -- read before a sign-in burned the temporary password cannot revive it.\n                temporary_password_expires_at = CASE\n                    WHEN user_credentials.password_hash = EXCLUDED.password_hash\n                        THEN LEAST(user_credentials.temporary_password_expires_at,\n                                   EXCLUDED.temporary_password_expires_at)\n                    ELSE EXCLUDED.temporary_password_expires_at\n                END,\n                updated_at = EXCLUDED.updated_at\n          ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Bool",
+        "Timestamptz",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "550e5f23ad2ce4a7bb4bc4995bca9791704e3a00ce36814375d930e6fecd5450"
+}

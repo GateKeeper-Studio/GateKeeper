@@ -38,6 +38,7 @@
 					<Sidebar.MenuButton
 						{...props}
 						size="lg"
+						data-tour="tenant-switcher"
 						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 					>
 						<div

@@ -4,6 +4,8 @@
 /postgres_data
 /server/target
 /server/postgres_data
+# Local HTTPS for development (server/scripts/dev-tls.sh): includes private keys.
+/server/.dev-tls
 
 # Secrets. `.env` files carry real credentials (JWT_SECRET, DATABASE_URL,
 # OAUTH_CLIENT_SECRET, SESSION_SECRET) and must never be committed — only the

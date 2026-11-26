@@ -242,7 +242,7 @@
 		<div class="space-y-6">
 			<!-- Header -->
 			<div class="flex flex-wrap items-start justify-between gap-4">
-				<div class="flex items-start gap-4">
+				<div class="flex items-start gap-4" data-tour="tenant-overview">
 					<span
 						class="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
 					>
@@ -285,7 +285,7 @@
 					</div>
 				</div>
 
-				<div class="flex flex-wrap items-center gap-2">
+				<div class="flex flex-wrap items-center gap-2" data-tour="tenant-actions">
 					<Button variant="outline" href={`/console/tenants/${tenantId}/edit`}>
 						<PencilIcon />
 						{m.tenant_edit_button()}
@@ -302,7 +302,7 @@
 			</div>
 
 			<!-- Resource counts -->
-			<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+			<div class="grid grid-cols-2 gap-3 lg:grid-cols-4" data-tour="tenant-stats">
 				{@render statTile(
 					m.nav_users(),
 					countValue(usersCount),

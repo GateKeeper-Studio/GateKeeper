@@ -30,6 +30,7 @@ pub mod refresh_token_repository;
 pub mod risk_model_repository;
 pub mod signing_key_repository;
 pub mod social_identity_repository;
+pub mod trusted_device_repository;
 
 // Compliance / audit (WI-02)
 pub mod audit_event_repository;

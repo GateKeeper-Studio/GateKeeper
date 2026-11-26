@@ -32,6 +32,7 @@ use web_api::{
             qr_login_request::{QrApprover, QrLoginRequest, QrLoginStatus, QrRequester},
             refresh_token::RefreshToken,
             tenant::Tenant,
+            trusted_device::TrustedDevice,
             user::User,
             webhook_delivery::WebhookDelivery,
             webhook_subscription::WebhookSubscription,
@@ -45,7 +46,7 @@ use web_api::{
             outbox_event_repository::OutboxEventRepository,
             qr_login_request_repository::QrLoginRequestRepository,
             refresh_token_repository::RefreshTokenRepository, tenant_repository::TenantRepository,
-            user_repository::UserRepository,
+            trusted_device_repository::TrustedDeviceRepository, user_repository::UserRepository,
             webhook_delivery_repository::WebhookDeliveryRepository,
             webhook_subscription_repository::WebhookSubscriptionRepository,
         },
@@ -63,7 +64,9 @@ use web_api::{
                 outbox_event_repository::DbOutboxEventRepository,
                 qr_login_request_repository::DbQrLoginRequestRepository,
                 refresh_token_repository::DbRefreshTokenRepository,
-                tenant_repository::DbTenantRepository, user_repository::DbUserRepository,
+                tenant_repository::DbTenantRepository,
+                trusted_device_repository::DbTrustedDeviceRepository,
+                user_repository::DbUserRepository,
                 webhook_delivery_repository::DbWebhookDeliveryRepository,
                 webhook_subscription_repository::DbWebhookSubscriptionRepository,
             },
@@ -875,6 +878,154 @@ async fn qr_login_requests_move_forward_once_and_die_with_their_session(pool: Pg
     assert!(repo.find_by_id(request.id()).await.unwrap().is_none());
 }
 
+// Trusted devices: scoped to tenant AND user on every read and delete, one row per
+// (user, key), and gone with their user. A QR approval may name the trusted device.
+#[sqlx::test(migrations = "./migrations")]
+async fn trusted_devices_are_scoped_to_their_user_and_die_with_them(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let user = seed_user(&pool, &tenant).await;
+    let other = seed_user(&pool, &tenant).await;
+    let repo = DbTrustedDeviceRepository::new(pool.clone());
+    let now = Utc::now();
+
+    let device = TrustedDevice::new(
+        tenant.id(),
+        user.id(),
+        "Pixel 8".to_string(),
+        "BKey".to_string(),
+        true,
+        now,
+    );
+    repo.add(&device).await.unwrap();
+    let read = repo
+        .find(tenant.id(), user.id(), device.id())
+        .await
+        .unwrap()
+        .expect("device");
+    assert_eq!(read.name(), "Pixel 8");
+    assert_eq!(read.public_key(), "BKey");
+    assert!(read.counts_as_second_factor());
+    assert!(read.last_used_at().is_none());
+
+    // Another user's id, or another tenant's, finds nothing and deletes nothing.
+    assert!(
+        repo.find(tenant.id(), other.id(), device.id())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        repo.find(Uuid::now_v7(), user.id(), device.id())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        !repo
+            .delete(tenant.id(), other.id(), device.id())
+            .await
+            .unwrap()
+    );
+
+    assert!(repo.has_key(user.id(), "BKey").await.unwrap());
+    assert!(!repo.has_key(other.id(), "BKey").await.unwrap());
+    let duplicate = TrustedDevice::new(
+        tenant.id(),
+        user.id(),
+        "Again".to_string(),
+        "BKey".to_string(),
+        false,
+        now,
+    );
+    assert!(
+        repo.add(&duplicate).await.is_err(),
+        "one row per (user, key)"
+    );
+    // The same key may belong to two accounts (one phone, two accounts).
+    let shared = TrustedDevice::new(
+        tenant.id(),
+        other.id(),
+        "Shared".to_string(),
+        "BKey".to_string(),
+        false,
+        now,
+    );
+    repo.add(&shared).await.unwrap();
+
+    repo.record_use(device.id(), now).await.unwrap();
+    assert!(
+        repo.find(tenant.id(), user.id(), device.id())
+            .await
+            .unwrap()
+            .unwrap()
+            .last_used_at()
+            .is_some()
+    );
+
+    let second = TrustedDevice::new(
+        tenant.id(),
+        user.id(),
+        "iPhone".to_string(),
+        "BKey2".to_string(),
+        false,
+        now,
+    );
+    repo.add(&second).await.unwrap();
+    assert_eq!(
+        repo.count_for_user(tenant.id(), user.id()).await.unwrap(),
+        2
+    );
+    let listed: Vec<String> = repo
+        .list_for_user(tenant.id(), user.id())
+        .await
+        .unwrap()
+        .iter()
+        .map(|d| d.name().to_string())
+        .collect();
+    assert_eq!(listed, ["Pixel 8", "iPhone"]);
+
+    assert!(
+        repo.delete(tenant.id(), user.id(), second.id())
+            .await
+            .unwrap()
+    );
+    assert_eq!(
+        repo.delete_all_for_user(tenant.id(), user.id())
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        repo.count_for_user(tenant.id(), other.id()).await.unwrap(),
+        1,
+        "the other account keeps its own"
+    );
+
+    // Gone with their user.
+    sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(other.id())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        repo.count_for_user(tenant.id(), other.id()).await.unwrap(),
+        0
+    );
+
+    // Blank names are refused by the database too.
+    let blank = sqlx::query(
+        "INSERT INTO trusted_devices (id, tenant_id, user_id, name, public_key, counts_as_second_factor, created_at)
+         VALUES ($1, $2, $3, '  ', 'k', false, now())",
+    )
+    .bind(Uuid::now_v7())
+    .bind(tenant.id())
+    .bind(user.id())
+    .execute(&pool)
+    .await;
+    assert!(blank.is_err());
+}
+
 // Restarting a ceremony replaces only that session's challenge, never one running in
 // another session of the same user.
 #[sqlx::test(migrations = "./migrations")]
@@ -924,6 +1075,74 @@ async fn mfa_challenges_are_invalidated_per_session(pool: PgPool) {
 
 async fn begin(pool: &PgPool) -> SharedTx {
     Arc::new(Mutex::new(Some(pool.begin().await.expect("begin"))))
+}
+
+// SECURITY regression: wrong guesses sent in parallel must each count. The verify use
+// cases read the session, read the challenge, and write `attempts + 1` back; without
+// the row lock taken by `find_by_token_hash` every parallel guess read the same
+// count, so a burst of guesses used up one of the five tries.
+#[sqlx::test(migrations = "./migrations")]
+async fn parallel_wrong_guesses_are_each_counted(pool: PgPool) {
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let client = seed_client(&pool, &tenant).await;
+    let user = seed_user(&pool, &tenant).await;
+
+    let mut session = login_session(&tenant, &client, "hash-guess");
+    session.authenticate(user.id(), Utc::now());
+    DbAuthSessionRepository::new(pool.clone())
+        .add(&session)
+        .await
+        .unwrap();
+    let challenge = MfaChallenge::new_email_otp(
+        tenant.id(),
+        user.id(),
+        Some(session.id()),
+        MfaChallengePurpose::Login,
+        "code-hash".to_string(),
+        Utc::now() + Duration::minutes(5),
+    );
+    DbMfaChallengeRepository::new(pool.clone())
+        .add(&challenge)
+        .await
+        .unwrap();
+
+    const GUESSES: i32 = 8;
+    let mut guesses = Vec::new();
+    for _ in 0..GUESSES {
+        let pool = pool.clone();
+        let (tenant_id, session_id) = (tenant.id(), session.id());
+        guesses.push(tokio::spawn(async move {
+            let tx = begin(&pool).await;
+            DbAuthSessionRepository::with_tx(Arc::clone(&tx))
+                .find_by_token_hash(tenant_id, "hash-guess")
+                .await
+                .unwrap()
+                .unwrap();
+            let challenges = DbMfaChallengeRepository::with_tx(Arc::clone(&tx));
+            let mut challenge = challenges
+                .find_active_by_session(session_id, &MfaMethod::Email)
+                .await
+                .unwrap()
+                .unwrap();
+            // Give the other guesses time to read the same row if nothing stops them.
+            tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+            challenge.register_failed_attempt();
+            challenges.update(&challenge).await.unwrap();
+            let transaction = tx.lock().await.take().unwrap();
+            transaction.commit().await.unwrap();
+        }));
+    }
+    for guess in guesses {
+        guess.await.unwrap();
+    }
+
+    let stored = DbMfaChallengeRepository::new(pool.clone())
+        .find_by_id(tenant.id(), challenge.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.attempts(), GUESSES);
 }
 
 #[sqlx::test(migrations = "./migrations")]
@@ -1200,7 +1419,7 @@ async fn a_signed_out_session_reaches_the_app_as_a_verifiable_logout_token(pool:
 
     let tick = dispatch_pending_events::use_case::UseCase::new(
         factory,
-        Arc::new(ReqwestWebhookSender::new(5)),
+        Arc::new(ReqwestWebhookSender::new(5, true)),
         Arc::clone(&cipher),
         Arc::new(JwtSigningService::new(Arc::clone(&cipher))),
         issuer.clone(),
@@ -1704,6 +1923,48 @@ async fn admin_console_sessions_round_trip_and_clear_expired_rows(pool: PgPool) 
             .unwrap()
             .is_none()
     );
+}
+
+#[sqlx::test(migrations = "./migrations")]
+async fn admin_console_tour_version_only_goes_up_and_leaves_the_account_alone(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::admin_user::AdminUser,
+            repositories::admin_user_repository::AdminUserRepository,
+        },
+        infraestructure::database::repositories::admin_user_repository::DbAdminUserRepository,
+    };
+
+    let organization = Organization::new(format!("org-{}", Uuid::now_v7()), None, true);
+    DbOrganizationRepository::new(pool.clone())
+        .add(&organization)
+        .await
+        .unwrap();
+    let admins = DbAdminUserRepository::new(pool.clone());
+    let admin = AdminUser::new(
+        organization.id(),
+        format!("admin-{}@example.com", Uuid::now_v7()),
+        "Ada".to_string(),
+        "hash".to_string(),
+        "argon2id".to_string(),
+    );
+    admins.create(&admin).await.unwrap();
+    let load = || async { admins.find_by_id(admin.id()).await.unwrap().unwrap() };
+    assert_eq!(load().await.console_tour_version(), 0);
+
+    admins.record_console_tour(admin.id(), 2).await.unwrap();
+    assert_eq!(load().await.console_tour_version(), 2);
+
+    // An older console in another tab cannot bring an outdated tour back.
+    admins.record_console_tour(admin.id(), 1).await.unwrap();
+    let reloaded = load().await;
+    assert_eq!(reloaded.console_tour_version(), 2);
+    // A console preference, not an account change.
+    assert_eq!(reloaded.updated_at(), None);
+
+    // The sign-in lookup carries it too.
+    let by_email = admins.find_by_email(admin.email()).await.unwrap().unwrap();
+    assert_eq!(by_email.console_tour_version(), 2);
 }
 
 // ── Platform-admin account security ─────────────────────────────────────────────
@@ -2274,4 +2535,137 @@ async fn filter_queries_return_the_right_rows_on_pool_and_in_a_unit_of_work(pool
         1
     );
     tx.lock().await.take().unwrap().rollback().await.unwrap();
+}
+
+// An admin reset's temporary password: it round-trips its expiry, the conditional
+// burn lets exactly one sign-in through, and a copy read before the burn cannot
+// revive it when saved (another flow updating the user), while a new password
+// replaces it.
+#[sqlx::test(migrations = "./migrations")]
+async fn a_temporary_password_burns_once_and_stays_burned(pool: PgPool) {
+    use web_api::domain::{
+        entities::user_credentials::UserCredentials, repositories::user_repository::UserRepository,
+    };
+
+    let tenant = seed_tenant(&pool, &cipher(), "pepper-temporary").await;
+    let mut user = seed_user(&pool, &tenant).await;
+    let users = DbUserRepository::new(pool.clone());
+    let expires_at = Utc::now() + Duration::hours(24);
+    user.update_credentials(UserCredentials::temporary(
+        user.id(),
+        "temporary-hash".to_string(),
+        "argon2".to_string(),
+        expires_at,
+    ));
+    users.update(&user).await.expect("save temporary password");
+
+    let stale = users
+        .find_by_id_with_credentials(user.id())
+        .await
+        .unwrap()
+        .unwrap();
+    let stored = stale.credentials().unwrap();
+    assert!(stored.should_change_password());
+    let stored_expiry = stored.temporary_password_expires_at().unwrap();
+    assert!((stored_expiry - expires_at).num_milliseconds().abs() < 1);
+
+    let now = Utc::now();
+    assert!(users.burn_temporary_password(user.id(), now).await.unwrap());
+    assert!(!users.burn_temporary_password(user.id(), now).await.unwrap());
+
+    // Saving the copy read before the burn keeps it burned.
+    users.update(&stale).await.expect("save stale copy");
+    let after = users
+        .find_by_id_with_credentials(user.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!after.credentials().unwrap().accepts_password_at(Utc::now()));
+
+    // The user's own new password is not temporary.
+    let mut changed = after.clone();
+    changed.update_credentials(UserCredentials::new(
+        user.id(),
+        "chosen-hash".to_string(),
+        "argon2".to_string(),
+        false,
+    ));
+    users.update(&changed).await.expect("save new password");
+    let chosen = users
+        .find_by_id_with_credentials(user.id())
+        .await
+        .unwrap()
+        .unwrap();
+    let chosen = chosen.credentials().unwrap();
+    assert_eq!(chosen.temporary_password_expires_at(), None);
+    assert!(!chosen.should_change_password());
+}
+
+// Step-up codes: the issued-code counter that bounds resends sees only this user's
+// step-up codes in the window, used or not, and the purpose round-trips.
+#[sqlx::test(migrations = "./migrations")]
+async fn step_up_codes_are_counted_per_user_purpose_and_window(pool: PgPool) {
+    use web_api::domain::repositories::mfa_challenge_repository::MfaChallengeRepository;
+
+    let tenant = seed_tenant(&pool, &cipher(), "pepper-step-up").await;
+    let user = seed_user(&pool, &tenant).await;
+    let other = seed_user(&pool, &tenant).await;
+    let challenges = DbMfaChallengeRepository::new(pool.clone());
+    let code = |user_id, purpose| {
+        MfaChallenge::new_email_otp(
+            tenant.id(),
+            user_id,
+            None,
+            purpose,
+            "code-hash".to_string(),
+            Utc::now() + Duration::minutes(10),
+        )
+    };
+
+    let before = Utc::now() - Duration::seconds(1);
+    let first = code(user.id(), MfaChallengePurpose::StepUp);
+    challenges.add(&first).await.unwrap();
+    challenges
+        .invalidate_active_by_user(user.id(), &MfaChallengePurpose::StepUp, &MfaMethod::Email)
+        .await
+        .unwrap();
+    challenges
+        .add(&code(user.id(), MfaChallengePurpose::StepUp))
+        .await
+        .unwrap();
+    // Not counted: another purpose, another user.
+    challenges
+        .add(&code(user.id(), MfaChallengePurpose::Enroll))
+        .await
+        .unwrap();
+    challenges
+        .add(&code(other.id(), MfaChallengePurpose::StepUp))
+        .await
+        .unwrap();
+
+    let count = |since| {
+        let challenges = &challenges;
+        let user_id = user.id();
+        async move {
+            challenges
+                .count_issued_since(
+                    user_id,
+                    &MfaChallengePurpose::StepUp,
+                    &MfaMethod::Email,
+                    since,
+                )
+                .await
+                .unwrap()
+        }
+    };
+    assert_eq!(count(before).await, 2);
+    assert_eq!(count(Utc::now() + Duration::seconds(1)).await, 0);
+
+    let stored = challenges
+        .find_by_id(tenant.id(), first.id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(*stored.purpose(), MfaChallengePurpose::StepUp);
+    assert!(stored.is_consumed());
 }

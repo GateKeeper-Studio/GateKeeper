@@ -94,6 +94,13 @@ To go back and forth, give master its own database (`DATABASE_URL`).
    - any `Sec-Fetch-Site` other than `same-origin`;
    - any state-changing request whose `Origin` is not the origin of `AUTH_UI_BASE_URL`.
 
+   In development (`APP_ENV=development`) the console also runs on the server's
+   plain-HTTP loopback listener (`http://localhost:PORT`, `http://127.0.0.1:PORT`), so
+   it keeps working on localhost when `AUTH_UI_BASE_URL` is a LAN or TLS address for
+   phones. Each request is checked against the origin its `Host` header names, and
+   gets that origin's cookie (`gk_admin` over plain http). Production accepts the one
+   origin only.
+
 ### Found along the way
 
 - **zod and the CSP.** zod 4 probes for `eval` with `new Function`. The strict CSP had no `'unsafe-eval'`, before the port as well, so each probe raised a reported violation, although zod caught the error and nothing broke. `src/hooks.client.ts` sets `z.config({ jitless: true })`, which stops the probe.
@@ -609,6 +616,52 @@ Each step can ship on its own.
   - only `/_app/immutable/*` is cacheable as `immutable`.
 
 ---
+
+## Console guided tour
+
+A first-visit walkthrough of the console shell, built on [driver.js](https://driverjs.com).
+It runs once the first time an admin opens the console, and the **?** button in the header
+(`tour-button.svelte`) replays it on any page. Each step points at an element marked
+`data-tour="<id>"`; a step whose element is not on screen (a section that has not loaded, a
+collapsed panel) is dropped rather than shown floating over nothing.
+
+**What it covers.** The shell every time — tenant switcher, the four navigation groups,
+search, language/theme, the account menu, and the replay button — plus the current page's
+own steps when it has them. Page steps live in `PAGE_STEPS`, keyed by SvelteKit route id:
+tenant home, the users list, user details, OAuth clients, and the security overview.
+
+**"Seen" state is on the server.** `admin_users.console_tour_version` holds the highest
+tour version the admin has finished or closed (migration
+`20261126000000_admin_console_tour`, `0` = never). `GET /session` surfaces it as
+`consoleTourVersion`; closing the tour writes it with `PUT /admin/me/console-tour`
+(`record_console_tour` use case, `GREATEST` so an older tab cannot lower it). So the tour
+follows the admin across browsers and devices instead of relying on one browser's storage.
+`localStorage` is still written as a same-browser fallback that covers the moment before the
+server answers and a failed write. The client treats the tour as seen when either source
+says so; a blocked `localStorage` plus an unseen server value shows it once, and closing it
+records it server-side.
+
+**Showing it again.** Bump `TOUR_VERSION` in `src/lib/tour/console-tour.ts` (the server
+accepts `1..1000`) after the tour changes substantially; every admin then sees it once more.
+
+**Mobile.** The sidebar is an off-canvas sheet, so when it is closed its per-item steps are
+replaced by a single step on the menu button (`data-tour="sidebar-trigger"`). An element
+must be laid out *and* within the viewport horizontally to earn a step, so a panel slid
+off-screen is skipped.
+
+**Loading.** driver.js and its stylesheet are a dynamic `import()` that runs only when the
+tour starts, so they stay out of every console page's bundle.
+
+**Security.** driver.js renders a step's title and description as HTML. Only the fixed,
+translated strings in `console-tour.ts` (Paraglide messages) ever go into them — never data
+from the API (tenant names, emails). Navigating to another page ends the tour (its steps
+point at that page's elements); a query-string-only change (a tab, a filter) keeps it.
+
+**Adding a step.** Mark the element with `data-tour="<id>"`, add a `{ target, side, title,
+description }` entry to the right `PAGE_STEPS` route (or `SIDEBAR`/`SHELL_END` for the
+shell), and add the `tour_*` message keys to `dashboard/messages/{en,pt-br,es}.json`. Files:
+`src/lib/tour/console-tour.ts`, `src/lib/components/tour-button.svelte`, the `data-tour`
+markers across the console, and server-side `application/use_cases/admin_account/record_console_tour/`.
 
 ## Appendix: files examined
 
