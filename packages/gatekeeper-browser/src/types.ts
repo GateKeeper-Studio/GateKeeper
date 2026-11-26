@@ -119,10 +119,46 @@ export interface WebAuthnStartResponse {
   options: PasskeyCreationOptions;
 }
 
+export interface PasskeyRequestOptionsJson
+  extends Omit<PublicKeyCredentialRequestOptions, 'challenge' | 'allowCredentials'> {
+  challenge: string;
+  allowCredentials?: Array<Omit<PublicKeyCredentialDescriptor, 'id'> & { id: string }>;
+}
+
+/** A passkey assertion request, as the identity provider sends it (base64url fields). */
+export interface PasskeyRequestOptions {
+  publicKey: PasskeyRequestOptionsJson;
+}
+
+/**
+ * How the account proves itself before a sensitive change (`POST /me/step-up`): its
+ * current password, a passkey assertion, or a 6-digit code just emailed to it.
+ */
+export type StepUpStart =
+  | { method: 'password' }
+  | { method: 'passkey'; challengeId: string; options: PasskeyRequestOptions }
+  | { method: 'email'; challengeId: string; expiresAt: string };
+
+/**
+ * The proof sent with a sensitive change. A plain string is the current password;
+ * the other shapes come from a started step-up.
+ */
+export type StepUpProof =
+  | string
+  | { currentPassword: string }
+  | { challengeId: string; assertion: unknown }
+  | { challengeId: string; code: string };
+
+/** Asked for what only the user can give: the current password or the emailed code. */
+export type StepUpPrompt = (
+  kind: 'password' | 'email'
+) => string | null | undefined | Promise<string | null | undefined>;
+
 export interface MfaClientOptions {
   basePath?: string;
   fetch?: typeof fetch;
   registerPasskey?: (options: PasskeyCreationOptions) => Promise<unknown>;
+  getPasskeyAssertion?: (options: PasskeyRequestOptions) => Promise<unknown>;
 }
 
 export interface MfaClient {
@@ -130,18 +166,33 @@ export interface MfaClient {
   setPreferredMethod(method: MfaMethod | null): Promise<void>;
   renameMethod(id: string, name: string | null): Promise<MfaMethodEntry>;
   /**
-   * Removes an enrollment. The identity provider requires the account's current
-   * password for this (step-up), so a stolen session alone cannot strip the
-   * second factor. Accounts without a password (social sign-in only) may omit it.
+   * Removes an enrollment. The identity provider asks for a step-up first, so a
+   * stolen session alone cannot strip a sign-in method: the current password (a
+   * string), or for an account without one the proof of a started step-up
+   * (`collectStepUp`).
    */
-  removeMethod(id: string, currentPassword?: string): Promise<void>;
+  removeMethod(id: string, proof?: StepUpProof): Promise<void>;
   startTotpEnrollment(): Promise<TotpEnrollment>;
   confirmTotpEnrollment(code: string): Promise<MfaMethodEntry>;
-  startPasskeyEnrollment(): Promise<WebAuthnStartResponse>;
+  /**
+   * An account without a password must send a step-up proof: there a passkey signs
+   * in on its own, so a stolen session must not be able to add one. Accounts with a
+   * password need none.
+   */
+  startPasskeyEnrollment(proof?: StepUpProof): Promise<WebAuthnStartResponse>;
   finishPasskeyEnrollment(input: {
     mfaId: string;
     name?: string | null;
     attestation: unknown;
   }): Promise<MfaMethodEntry>;
-  addPasskey(name?: string | null): Promise<MfaMethodEntry>;
+  addPasskey(name?: string | null, proof?: StepUpProof): Promise<MfaMethodEntry>;
+  /** Asks the identity provider which proof the account gives, and opens its ceremony. */
+  startStepUp(): Promise<StepUpStart>;
+  /**
+   * Turns a started step-up into its proof: runs the passkey assertion, or asks
+   * `ask` for the password or the emailed code. `undefined` when the user cancels.
+   */
+  proveStepUp(start: StepUpStart, ask: StepUpPrompt): Promise<StepUpProof | undefined>;
+  /** `startStepUp` then `proveStepUp`. */
+  collectStepUp(ask: StepUpPrompt): Promise<StepUpProof | undefined>;
 }
