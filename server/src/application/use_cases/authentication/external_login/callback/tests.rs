@@ -28,9 +28,9 @@ mod tests {
             in_memory_repositories::{
                 in_memory_auth_session_repository::InMemoryAuthSessionRepository,
                 in_memory_authorization_code_repository::InMemoryAuthorizationCodeRepository,
-                in_memory_mfa_enrollment_repository::InMemoryMfaEnrollmentRepository,
                 in_memory_external_identity_provider_repository::InMemoryExternalIdentityProviderRepository,
                 in_memory_external_login_flow_repository::InMemoryExternalLoginFlowRepository,
+                in_memory_mfa_enrollment_repository::InMemoryMfaEnrollmentRepository,
                 in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
                 in_memory_outbox_event_repository::InMemoryOutboxEventRepository,
                 in_memory_social_identity_repository::InMemorySocialIdentityRepository,
@@ -436,7 +436,10 @@ mod tests {
         assert_eq!(continuation["email"], "returning@example.com");
         assert_eq!(continuation["login"]["mfaType"], "totp");
         assert_eq!(continuation["login"]["mfaId"], enrollment_id.to_string());
-        assert_eq!(continuation["oidc"]["redirect_uri"], "https://app.example.com/cb");
+        assert_eq!(
+            continuation["oidc"]["redirect_uri"],
+            "https://app.example.com/cb"
+        );
         assert_eq!(continuation["oidc"]["state"], "client-state");
         assert_eq!(continuation["oidc"]["code_challenge"], "challenge");
 

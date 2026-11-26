@@ -47,9 +47,8 @@ struct PublicOnlyResolver;
 impl Resolve for PublicOnlyResolver {
     fn resolve(&self, name: Name) -> Resolving {
         Box::pin(async move {
-            let addresses: Vec<SocketAddr> = tokio::net::lookup_host((name.as_str(), 0))
-                .await?
-                .collect();
+            let addresses: Vec<SocketAddr> =
+                tokio::net::lookup_host((name.as_str(), 0)).await?.collect();
             if addresses.iter().any(|address| is_blocked_ip(&address.ip())) {
                 return Err(PRIVATE_TARGET.into());
             }

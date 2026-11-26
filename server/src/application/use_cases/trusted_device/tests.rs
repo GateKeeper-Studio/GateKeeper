@@ -327,7 +327,11 @@ async fn wrong_authenticator_codes_run_out() {
     let fx = build();
     fx.seed_totp();
     let current = fx.current_code();
-    let wrong_code = if current == "000000" { "000001" } else { "000000" };
+    let wrong_code = if current == "000000" {
+        "000001"
+    } else {
+        "000000"
+    };
 
     for _ in 0..5 {
         let mut wrong = fx.command(&key(6));

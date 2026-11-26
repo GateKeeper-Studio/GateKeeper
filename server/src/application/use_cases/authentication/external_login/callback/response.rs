@@ -16,7 +16,9 @@ pub enum Response {
     // A second factor is due (the client's policy, the user's own enrollment, or a
     // risk step-up). No code exists yet: the browser goes to the hosted login page at
     // `continue_url`, which finishes the sign-in like after a password.
-    SecondFactor { continue_url: String },
+    SecondFactor {
+        continue_url: String,
+    },
 }
 
 // What the hosted page needs to continue: carried in the FRAGMENT of `continue_url`

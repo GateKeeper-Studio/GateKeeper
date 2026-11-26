@@ -266,9 +266,8 @@ fn build_transport(
     address: IpAddr,
     password: String,
 ) -> Result<AsyncSmtpTransport<Tokio1Executor>, DomainError> {
-    let tls_parameters = || {
-        TlsParameters::new(provider.host().trim().to_string()).map_err(map_smtp_build_error)
-    };
+    let tls_parameters =
+        || TlsParameters::new(provider.host().trim().to_string()).map_err(map_smtp_build_error);
     let tls = match provider.encryption() {
         SmtpEncryption::StartTls => Tls::Required(tls_parameters()?),
         SmtpEncryption::Tls => Tls::Wrapper(tls_parameters()?),

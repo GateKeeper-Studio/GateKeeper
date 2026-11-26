@@ -84,7 +84,10 @@ impl UseCase {
         let now = Utc::now();
         let recent = uow
             .email_verification_token_repository()
-            .count_issued_since(user.id(), now - Duration::minutes(VERIFICATION_CODE_TTL_MINUTES))
+            .count_issued_since(
+                user.id(),
+                now - Duration::minutes(VERIFICATION_CODE_TTL_MINUTES),
+            )
             .await?;
         if recent >= MAX_CODES_PER_WINDOW {
             tracing::warn!(user_id = %user.id(), "confirmation code not resent: limit reached");
