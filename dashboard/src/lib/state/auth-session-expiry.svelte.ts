@@ -55,6 +55,41 @@ export function clearSession(clientId: string) {
 	sessionStorage.removeItem(sessionKey(clientId));
 	sessionStorage.removeItem(expiryKey(clientId));
 	sessionStorage.removeItem(ceilingKey(clientId));
+	sessionStorage.removeItem(passwordChangeKey(clientId));
+}
+
+const passwordChangeKey = (clientId: string) => `auth_session_${clientId}_password_change`;
+
+/** A forced password change the sign-in must finish (a temporary password was used). */
+export type PendingPasswordChange = { code: string; userId: string };
+
+/**
+ * Keep the one-time change code with the session it belongs to, never in a URL: an
+ * address ends up in the browser history, where the next person at this computer
+ * could finish the change. It dies with the session (`clearSession`) and with the tab.
+ */
+export function storePendingPasswordChange(clientId: string, change: PendingPasswordChange) {
+	if (!browser) return;
+	sessionStorage.setItem(passwordChangeKey(clientId), JSON.stringify(change));
+}
+
+/** The change is made: its code is spent. */
+export function clearPendingPasswordChange(clientId: string) {
+	if (!browser) return;
+	sessionStorage.removeItem(passwordChangeKey(clientId));
+}
+
+export function readPendingPasswordChange(clientId: string): PendingPasswordChange | null {
+	if (!browser) return null;
+	try {
+		const parsed = JSON.parse(sessionStorage.getItem(passwordChangeKey(clientId)) || 'null');
+		if (typeof parsed?.code === 'string' && typeof parsed?.userId === 'string' && parsed.code) {
+			return { code: parsed.code, userId: parsed.userId };
+		}
+	} catch {
+		// A corrupt entry is no change to make.
+	}
+	return null;
 }
 
 function readStoredTime(key: string): number | null {

@@ -57,15 +57,21 @@ export async function getTenantUser(
 }
 
 // What the create endpoint accepts (camelCase here, mapped to the IdP's snake_case
-// Command below). `temporaryPassword` is set once and the user must change it on
-// first sign-in; `isEmailVerified` skips the confirmation email when true.
+// Command below). No password: the IdP emails the user a single-use temporary one.
+// `isEmailVerified` skips the confirmation email when true.
 export type CreateTenantUserInput = {
 	email: string;
 	displayName: string | null;
 	firstName: string;
 	lastName: string;
 	isEmailVerified: boolean;
-	temporaryPassword: string;
+};
+
+// The created user, plus whether the welcome email with the temporary password went
+// out (never the password itself).
+export type CreatedTenantUser = TenantUserView & {
+	temporary_password_expires_at: string;
+	temporary_password_emailed: boolean;
 };
 
 // The editable details of an existing user. The IdP's update command only accepts
@@ -79,15 +85,14 @@ export type UpdateTenantUserInput = {
 export async function createTenantUser(
 	tenantId: string,
 	input: CreateTenantUserInput
-): Promise<Result<TenantUserView>> {
+): Promise<Result<CreatedTenantUser>> {
 	try {
-		const data = await api.post<TenantUserView>(`/tenants/${tenantId}/users`, {
+		const data = await api.post<CreatedTenantUser>(`/tenants/${tenantId}/users`, {
 			email: input.email,
 			display_name: input.displayName,
 			first_name: input.firstName,
 			last_name: input.lastName,
-			is_email_verified: input.isEmailVerified,
-			temporary_password: input.temporaryPassword
+			is_email_verified: input.isEmailVerified
 		});
 		return [data, null];
 	} catch (error) {
@@ -151,6 +156,30 @@ export async function getUserAuthenticationMethods(
 		const data = await api.get<UserAuthenticationMethods>(
 			`/tenants/${tenantId}/users/${userId}/authentication-methods`,
 			fetchFn
+		);
+		return [data, null];
+	} catch (error) {
+		return [null, error as ApiError];
+	}
+}
+
+export type PasswordResetResult = {
+	userId: string;
+	email: string;
+	temporaryPasswordExpiresAt: string;
+};
+
+// POST /tenants/:tenantId/users/:userId/password-reset
+// The IdP makes a temporary password and emails it to the user; the answer never
+// carries it.
+export async function resetUserPassword(
+	tenantId: string,
+	userId: string
+): Promise<Result<PasswordResetResult>> {
+	try {
+		const data = await api.post<PasswordResetResult>(
+			`/tenants/${tenantId}/users/${userId}/password-reset`,
+			{}
 		);
 		return [data, null];
 	} catch (error) {

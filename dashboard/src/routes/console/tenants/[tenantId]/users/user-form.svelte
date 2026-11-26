@@ -6,9 +6,6 @@
 	import UserIcon from '@lucide/svelte/icons/user';
 	import MailIcon from '@lucide/svelte/icons/mail';
 	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
-	import EyeIcon from '@lucide/svelte/icons/eye';
-	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
-	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 	import LockIcon from '@lucide/svelte/icons/lock';
 	import SaveIcon from '@lucide/svelte/icons/save';
 
@@ -45,8 +42,6 @@
 	let lastName = $state(user?.last_name ?? '');
 	let email = $state(user?.email ?? '');
 	let isEmailVerified = $state(false);
-	let temporaryPassword = $state('');
-	let showPassword = $state(false);
 
 	let errors = $state<Record<string, string>>({});
 	let isLoading = $state(false);
@@ -59,23 +54,15 @@
 			m.users_form_preview_default_name()
 	);
 	const previewInitials = $derived(
-		(previewName
-			.split(/\s+/)
-			.filter(Boolean)
-			.slice(0, 2)
-			.map((p) => p[0])
-			.join('') || '?'
+		(
+			previewName
+				.split(/\s+/)
+				.filter(Boolean)
+				.slice(0, 2)
+				.map((p) => p[0])
+				.join('') || '?'
 		).toUpperCase()
 	);
-
-	// Fills a strong random temporary password and reveals it so the admin can
-	// hand it off. Uses the crypto RNG, not Math.random.
-	function generatePassword() {
-		const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
-		const bytes = crypto.getRandomValues(new Uint8Array(16));
-		temporaryPassword = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
-		showPassword = true;
-	}
 
 	async function onSubmit(event: SubmitEvent) {
 		event.preventDefault();
@@ -86,8 +73,7 @@
 				firstName: firstName.trim(),
 				lastName: lastName.trim(),
 				email: email.trim(),
-				isEmailVerified,
-				temporaryPassword
+				isEmailVerified
 			});
 
 			if (!result.success) {
@@ -102,8 +88,7 @@
 				displayName: result.data.displayName || null,
 				firstName: result.data.firstName,
 				lastName: result.data.lastName,
-				isEmailVerified: result.data.isEmailVerified,
-				temporaryPassword: result.data.temporaryPassword
+				isEmailVerified: result.data.isEmailVerified
 			});
 			isLoading = false;
 
@@ -113,7 +98,13 @@
 			}
 
 			queryClient.invalidateQueries({ queryKey: ['tenant-users', tenantId] });
-			toast.success(m.users_form_create_success({ email: data.email }));
+			// The account exists either way; without the email nobody can sign in to it
+			// until a reset sends a new temporary password.
+			if (data.temporary_password_emailed) {
+				toast.success(m.users_form_create_success({ email: data.email }));
+			} else {
+				toast.warning(m.users_form_create_email_failed({ email: data.email }));
+			}
 			await goto(listHref);
 			return;
 		}
@@ -153,7 +144,7 @@
 
 <form onsubmit={onSubmit} class="mt-4 grid max-w-[700px] gap-6">
 	<!-- Live identity preview -->
-	<div class="bg-muted/40 flex items-center gap-3 rounded-xl border p-4">
+	<div class="flex items-center gap-3 rounded-xl border bg-muted/40 p-4">
 		<span
 			class="flex size-12 shrink-0 items-center justify-center rounded-full bg-sky-500/10 text-base font-semibold text-sky-600 dark:text-sky-400"
 		>
@@ -161,7 +152,7 @@
 		</span>
 		<div class="min-w-0">
 			<p class="truncate font-semibold">{previewName}</p>
-			<p class="text-muted-foreground truncate text-sm">
+			<p class="truncate text-sm text-muted-foreground">
 				{email.trim() || m.users_form_no_email_yet()}
 			</p>
 		</div>
@@ -170,7 +161,7 @@
 	<!-- Identity -->
 	<div class="grid gap-4">
 		<div class="flex items-center gap-2">
-			<UserIcon class="text-muted-foreground size-4" />
+			<UserIcon class="size-4 text-muted-foreground" />
 			<span class="text-sm font-medium">{m.users_form_section_identity()}</span>
 		</div>
 
@@ -184,7 +175,7 @@
 				bind:value={displayName}
 			/>
 			{#if errors.displayName}
-				<p class="text-destructive text-sm font-medium">{errors.displayName}</p>
+				<p class="text-sm font-medium text-destructive">{errors.displayName}</p>
 			{/if}
 		</div>
 
@@ -202,7 +193,7 @@
 					bind:value={firstName}
 				/>
 				{#if errors.firstName}
-					<p class="text-destructive text-sm font-medium">{errors.firstName}</p>
+					<p class="text-sm font-medium text-destructive">{errors.firstName}</p>
 				{/if}
 			</div>
 
@@ -219,7 +210,7 @@
 					bind:value={lastName}
 				/>
 				{#if errors.lastName}
-					<p class="text-destructive text-sm font-medium">{errors.lastName}</p>
+					<p class="text-sm font-medium text-destructive">{errors.lastName}</p>
 				{/if}
 			</div>
 		</div>
@@ -230,7 +221,7 @@
 	<!-- Contact -->
 	<div class="grid gap-4">
 		<div class="flex items-center gap-2">
-			<MailIcon class="text-muted-foreground size-4" />
+			<MailIcon class="size-4 text-muted-foreground" />
 			<span class="text-sm font-medium">{m.users_form_section_contact()}</span>
 		</div>
 
@@ -248,20 +239,20 @@
 				disabled={mode === 'edit'}
 			/>
 			{#if mode === 'edit'}
-				<p class="text-muted-foreground text-sm">
+				<p class="text-sm text-muted-foreground">
 					{m.users_form_email_readonly_note()}
 				</p>
 			{:else if errors.email}
-				<p class="text-destructive text-sm font-medium">{errors.email}</p>
+				<p class="text-sm font-medium text-destructive">{errors.email}</p>
 			{/if}
 		</div>
 
 		{#if mode === 'create'}
-			<label class="bg-muted/40 flex items-start gap-3 rounded-lg border p-3">
+			<label class="flex items-start gap-3 rounded-lg border bg-muted/40 p-3">
 				<Checkbox class="mt-0.5" bind:checked={isEmailVerified} />
 				<span class="space-y-0.5">
 					<span class="block text-sm font-medium">{m.users_form_email_verified_label()}</span>
-					<span class="text-muted-foreground block text-sm">
+					<span class="block text-sm text-muted-foreground">
 						{m.users_form_email_verified_description()}
 					</span>
 				</span>
@@ -275,50 +266,16 @@
 		<!-- Security -->
 		<div class="grid gap-4">
 			<div class="flex items-center gap-2">
-				<KeyRoundIcon class="text-muted-foreground size-4" />
+				<KeyRoundIcon class="size-4 text-muted-foreground" />
 				<span class="text-sm font-medium">{m.users_form_section_security()}</span>
 			</div>
 
-			<div class="space-y-2">
-				<Label for="temporaryPassword" class="flex gap-1">
-					{m.users_form_label_temp_password()}
-					<span class="text-red-500">*</span>
-				</Label>
-				<div class="flex gap-2">
-					<div class="relative flex-1">
-						<Input
-							id="temporaryPassword"
-							type={showPassword ? 'text' : 'password'}
-							placeholder={m.users_form_placeholder_temp_password()}
-							autocomplete="new-password"
-							class="pr-10 font-mono"
-							bind:value={temporaryPassword}
-						/>
-						<button
-							type="button"
-							onclick={() => (showPassword = !showPassword)}
-							class="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2"
-							aria-label={showPassword ? m.users_form_hide_password() : m.users_form_show_password()}
-						>
-							{#if showPassword}<EyeOffIcon class="size-4" />{:else}<EyeIcon class="size-4" />{/if}
-						</button>
-					</div>
-					<Button type="button" variant="outline" onclick={generatePassword}>
-						<SparklesIcon />
-						{m.users_form_generate_password_button()}
-					</Button>
-				</div>
-				{#if errors.temporaryPassword}
-					<p class="text-destructive text-sm font-medium">{errors.temporaryPassword}</p>
-				{/if}
-				<div
-					class="text-muted-foreground flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm"
-				>
-					<LockIcon class="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-					<span>
-						{m.users_form_temp_password_warning()}
-					</span>
-				</div>
+			<!-- The server makes the first password and emails it; this page never sees it. -->
+			<div
+				class="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-muted-foreground"
+			>
+				<LockIcon class="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+				<span>{m.users_form_temp_password_emailed_note()}</span>
 			</div>
 		</div>
 	{/if}

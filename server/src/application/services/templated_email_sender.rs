@@ -145,6 +145,53 @@ impl TemplatedEmailSender {
             .await
     }
 
+    /// The single-use temporary password of an admin action: `TemporaryPassword`
+    /// (a reset) or `AccountCreated` (a new account's welcome email).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn send_temporary_password(
+        &self,
+        tenant_id: Uuid,
+        template_type: EmailTemplateType,
+        provider: Option<&EmailProvider>,
+        to: &str,
+        password: &str,
+        app_name: &str,
+        expiry: &str,
+    ) -> Result<(), DomainError> {
+        debug_assert!(matches!(
+            template_type,
+            EmailTemplateType::TemporaryPassword | EmailTemplateType::AccountCreated
+        ));
+        let vars = vec![
+            ("password".to_string(), password.to_string()),
+            ("app_name".to_string(), app_name.to_string()),
+            ("expiry".to_string(), expiry.to_string()),
+            ("support_email".to_string(), support_email(provider)),
+        ];
+        self.send_templated(tenant_id, template_type, provider, to, vars)
+            .await
+    }
+
+    /// The code an account without a password confirms a sensitive change with.
+    pub async fn send_step_up_code(
+        &self,
+        tenant_id: Uuid,
+        provider: Option<&EmailProvider>,
+        to: &str,
+        code: &str,
+        app_name: &str,
+        expiry: &str,
+    ) -> Result<(), DomainError> {
+        let vars = vec![
+            ("code".to_string(), code.to_string()),
+            ("app_name".to_string(), app_name.to_string()),
+            ("expiry".to_string(), expiry.to_string()),
+            ("support_email".to_string(), support_email(provider)),
+        ];
+        self.send_templated(tenant_id, EmailTemplateType::StepUpCode, provider, to, vars)
+            .await
+    }
+
     /// Sign-in second-factor email carrying the MFA code.
     pub async fn send_mfa_code(
         &self,

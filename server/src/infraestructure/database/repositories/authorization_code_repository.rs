@@ -32,6 +32,10 @@ impl DbAuthorizationCodeRepository {
 
 #[async_trait]
 impl AuthorizationCodeRepository for DbAuthorizationCodeRepository {
+    // SECURITY: `FOR UPDATE`. A code is single-use (RFC 6749 §4.1.2). The token
+    // endpoint reads it here and marks it consumed afterwards; without the row lock
+    // two requests racing with the same code both saw it unconsumed and both got
+    // tokens. The second one now waits and then reads the consumed row.
     async fn find_by_code_hash(
         &self,
         tenant_id: Uuid,
@@ -45,6 +49,7 @@ impl AuthorizationCodeRepository for DbAuthorizationCodeRepository {
             code_challenge, code_challenge_method, nonce, consumed_at, expires_at, created_at
           FROM authorization_codes
           WHERE tenant_id = $1 AND code_hash = $2
+          FOR UPDATE
         "#,
                 tenant_id,
                 code_hash
@@ -114,7 +119,7 @@ impl AuthorizationCodeRepository for DbAuthorizationCodeRepository {
                 r#"
           UPDATE authorization_codes
           SET consumed_at = $2
-          WHERE id = $1
+          WHERE id = $1 AND consumed_at IS NULL
         "#,
                 code.id(),
                 code.consumed_at(),

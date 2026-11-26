@@ -11,6 +11,8 @@ mod tests {
         },
         domain::{
             entities::{
+                auth_session::AuthSession,
+                mfa_method::MfaMethod,
                 oauth_client::{ClientType, MfaPolicy, OAuthClient},
                 password_change_token::PasswordChangeToken,
                 refresh_token::RefreshToken,
@@ -22,6 +24,7 @@ mod tests {
         },
         testing::{
             in_memory_repositories::{
+                in_memory_auth_session_repository::InMemoryAuthSessionRepository,
                 in_memory_oauth_client_repository::InMemoryOAuthClientRepository,
                 in_memory_password_change_token_repository::InMemoryPasswordChangeTokenRepository,
                 in_memory_refresh_token_repository::InMemoryRefreshTokenRepository,
@@ -42,10 +45,13 @@ mod tests {
     const TEMP_PASSWORD: &str = "temp-password-123";
     const NEW_PASSWORD: &str = "new-password-456";
     const RAW_CODE: &str = "raw-change-code-value";
+    const RAW_SESSION: &str = "raw-session-code-value";
 
     struct Ctx {
         use_case: UseCase,
         users: Arc<InMemoryUserRepository>,
+        sessions: Arc<InMemoryAuthSessionRepository>,
+        session_id: Uuid,
         tokens: Arc<InMemoryPasswordChangeTokenRepository>,
         refresh: Arc<InMemoryRefreshTokenRepository>,
         user_id: Uuid,
@@ -83,6 +89,7 @@ mod tests {
         let clients = Arc::new(InMemoryOAuthClientRepository::new());
         let mut client = make_client(tenant_id);
         client.set_external_login_only(external_login_only);
+        let client_pk = client.id();
         clients
             .memory
             .data
@@ -151,10 +158,35 @@ mod tests {
         let refresh_id = rt.id();
         refresh.memory.data.lock().unwrap().insert(rt.id(), rt);
 
+        // The sign-in session the temporary password opened, past any second factor.
+        let sessions = Arc::new(InMemoryAuthSessionRepository::new());
+        let mut session = AuthSession::new(
+            tenant_id,
+            sha256_hex(RAW_SESSION),
+            client_pk,
+            REDIRECT_URI.to_string(),
+            vec!["openid".to_string()],
+            "state".to_string(),
+            "challenge".to_string(),
+            "S256".to_string(),
+            None,
+            Utc::now() + Duration::minutes(30),
+            Utc::now() + Duration::hours(12),
+        );
+        session.authenticate(user_id, Utc::now());
+        let session_id = session.id();
+        sessions
+            .memory
+            .data
+            .lock()
+            .unwrap()
+            .insert(session_id, session);
+
         let factory = InMemoryUnitOfWorkFactory::new(users.clone(), tenants)
             .with_oauth_client_repository(clients)
             .with_password_change_token_repository(tokens.clone())
-            .with_refresh_token_repository(refresh.clone());
+            .with_refresh_token_repository(refresh.clone())
+            .with_auth_session_repository(sessions.clone());
 
         Ctx {
             use_case: UseCase::new(
@@ -162,6 +194,8 @@ mod tests {
                 crate::testing::password_hasher::test_password_hasher(),
             ),
             users,
+            sessions,
+            session_id,
             tokens,
             refresh,
             user_id,
@@ -174,6 +208,7 @@ mod tests {
         Command {
             client_id: CLIENT_ID.to_string(),
             user_id: ctx.user_id.to_string(),
+            session_code: RAW_SESSION.to_string(),
             change_password_code: raw_code.to_string(),
             new_password: NEW_PASSWORD.to_string(),
         }
@@ -305,5 +340,76 @@ mod tests {
 
         let err = ctx.use_case.execute(cmd).await.unwrap_err();
         assert!(matches!(err, DomainError::Validation(_)));
+    }
+
+    fn edit_session(ctx: &Ctx, edit: impl FnOnce(&mut AuthSession)) {
+        let mut sessions = ctx.sessions.memory.data.lock().unwrap();
+        edit(sessions.get_mut(&ctx.session_id).unwrap());
+    }
+
+    async fn assert_refused_and_unchanged(ctx: &Ctx, cmd: Command) {
+        let before = current_credentials(ctx);
+        let err = ctx.use_case.execute(cmd).await.unwrap_err();
+        assert!(
+            matches!(err, DomainError::AuthenticationError(_)),
+            "{err:?}"
+        );
+        assert_eq!(current_credentials(ctx), before);
+        let token = ctx.tokens.memory.data.lock().unwrap()[&ctx.token_id].clone();
+        assert!(!token.is_consumed());
+    }
+
+    // The temporary password alone must not choose the next password: the sign-in
+    // it opened has to pass the user's second factor first.
+    #[tokio::test]
+    async fn refuses_while_the_second_factor_is_pending() {
+        let ctx = setup(false, false);
+        edit_session(&ctx, |s| s.require_mfa());
+        assert_refused_and_unchanged(&ctx, command(&ctx, RAW_CODE)).await;
+
+        edit_session(&ctx, |s| s.verify_mfa(&MfaMethod::Totp, Utc::now()));
+        ctx.use_case.execute(command(&ctx, RAW_CODE)).await.unwrap();
+        assert!(!current_credentials(&ctx).1);
+    }
+
+    #[tokio::test]
+    async fn refuses_without_this_users_live_session() {
+        let ctx = setup(false, false);
+        let mut cmd = command(&ctx, RAW_CODE);
+        cmd.session_code = "not-the-session".to_string();
+        assert_refused_and_unchanged(&ctx, cmd).await;
+
+        // Someone else's sign-in.
+        edit_session(&ctx, |s| s.authenticate(Uuid::now_v7(), Utc::now()));
+        assert_refused_and_unchanged(&ctx, command(&ctx, RAW_CODE)).await;
+    }
+
+    #[tokio::test]
+    async fn refuses_an_expired_session() {
+        let ctx = setup(false, false);
+        edit_session(&ctx, |s| s.expire_now(Utc::now()));
+        assert_refused_and_unchanged(&ctx, command(&ctx, RAW_CODE)).await;
+    }
+
+    // A magic link (or QR) sign-in mints the change code too: the user may set the new
+    // password from it without ever typing the temporary one.
+    #[tokio::test]
+    async fn a_magic_link_sign_in_may_finish_the_change() {
+        let ctx = setup(false, false);
+        edit_session(&ctx, |s| {
+            s.await_magic_link();
+            s.authenticate(ctx.user_id, Utc::now());
+        });
+        ctx.use_case.execute(command(&ctx, RAW_CODE)).await.unwrap();
+        assert!(!current_credentials(&ctx).1);
+    }
+
+    // A passkey session binds the user before any proof; until the assertion it stays
+    // MFA-pending, so it cannot set a password.
+    #[tokio::test]
+    async fn an_unproven_passkey_session_is_refused() {
+        let ctx = setup(false, false);
+        edit_session(&ctx, |s| s.identify_for_passkey(ctx.user_id));
+        assert_refused_and_unchanged(&ctx, command(&ctx, RAW_CODE)).await;
     }
 }

@@ -4,6 +4,8 @@ import { ApiError, type VoidResult } from '../types';
 type Request = {
 	clientId: string;
 	userId: string;
+	/** The sign-in session the temporary password opened (past its second factor). */
+	sessionCode: string;
 	changePasswordCode: string;
 	newPassword: string;
 };

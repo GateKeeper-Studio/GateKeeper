@@ -20,6 +20,12 @@ pub struct InMemoryUserRepository {
 }
 
 impl InMemoryUserRepository {
+    // The user as this unit of work sees it: its own pending write, else the data.
+    fn current(&self, user_id: Uuid) -> Option<User> {
+        let draft = self.memory.draft.lock().unwrap().get(&user_id).cloned();
+        draft.or_else(|| self.memory.data.lock().unwrap().get(&user_id).cloned())
+    }
+
     pub fn new() -> Self {
         Self {
             memory: Arc::new(InMemoryRepository {
@@ -179,12 +185,44 @@ impl UserRepository for InMemoryUserRepository {
     }
 
     async fn update(&self, user: &User) -> Result<(), crate::domain::errors::DomainError> {
-        self.memory
-            .draft
-            .lock()
-            .unwrap()
-            .insert(user.id(), user.clone());
+        let mut saved = user.clone();
+        // Mirrors the database upsert: with the same password, the earlier temporary
+        // password expiry wins, so a stale copy cannot revive a burned one.
+        if let (Some(stored), Some(incoming)) = (self.current(user.id()), user.credentials()) {
+            if let Some(stored) = stored.credentials()
+                && stored.password_hash() == incoming.password_hash()
+                && let Some(stored_expiry) = stored.temporary_password_expires_at()
+            {
+                let mut credentials = incoming.clone();
+                credentials.burn_temporary_password(stored_expiry);
+                saved.set_credentials(credentials);
+            }
+        }
+        self.memory.draft.lock().unwrap().insert(user.id(), saved);
         Ok(())
+    }
+
+    async fn burn_temporary_password(
+        &self,
+        user_id: Uuid,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<bool, crate::domain::errors::DomainError> {
+        let Some(mut user) = self.current(user_id) else {
+            return Ok(false);
+        };
+        let Some(mut credentials) = user.credentials().cloned() else {
+            return Ok(false);
+        };
+        if !credentials
+            .temporary_password_expires_at()
+            .is_some_and(|expires_at| expires_at > now)
+        {
+            return Ok(false);
+        }
+        credentials.burn_temporary_password(now);
+        user.set_credentials(credentials);
+        self.memory.draft.lock().unwrap().insert(user_id, user);
+        Ok(true)
     }
 
     async fn get_preferred_2fa_method(

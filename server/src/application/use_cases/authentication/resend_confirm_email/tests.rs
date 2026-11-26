@@ -140,6 +140,28 @@ mod tests {
         );
     }
 
+    // Each code has its own five wrong tries: without a limit on new codes, the
+    // six-digit space could be guessed through by asking again and again.
+    #[tokio::test]
+    async fn stops_issuing_codes_past_the_limit() {
+        use crate::application::use_cases::authentication::resend_confirm_email::use_case::MAX_CODES_PER_WINDOW;
+
+        let ctx = setup_with_unverified_user(Uuid::now_v7());
+
+        for _ in 0..MAX_CODES_PER_WINDOW + 4 {
+            ctx.use_case.execute(make_command()).await.unwrap();
+        }
+
+        assert_eq!(
+            ctx.emails.sent.lock().unwrap().len() as i64,
+            MAX_CODES_PER_WINDOW
+        );
+        let tokens = ctx.tokens.memory.data.lock().unwrap();
+        assert_eq!(tokens.len() as i64, MAX_CODES_PER_WINDOW);
+        // The last code issued is still usable.
+        assert_eq!(tokens.values().filter(|t| !t.is_consumed()).count(), 1);
+    }
+
     #[tokio::test]
     async fn consumes_old_code_before_issuing_new_one() {
         use crate::domain::entities::email_verification_token::EmailVerificationToken;

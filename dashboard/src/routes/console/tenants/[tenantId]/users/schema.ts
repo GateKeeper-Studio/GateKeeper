@@ -9,15 +9,12 @@ const baseFields = {
 	lastName: z.string().trim().min(1, 'Last name is required.')
 };
 
-// Create also collects the email and a temporary password the user must rotate on
-// first sign-in, plus whether the email is already verified.
+// Create also collects the email and whether it is already verified. No password:
+// the IdP emails the user a temporary one.
 export const createUserFormSchema = z.object({
 	...baseFields,
 	email: z.string().trim().min(1, 'Email is required.').email('Enter a valid email address.'),
-	isEmailVerified: z.boolean(),
-	temporaryPassword: z
-		.string()
-		.min(8, 'Temporary password must have at least 8 characters.')
+	isEmailVerified: z.boolean()
 });
 
 // Edit only touches the name fields — the IdP manages email and password through

@@ -22,5 +22,9 @@ pub struct Command {
 
     pub is_email_verified: bool,
 
-    pub temporary_password: String,
+    // No longer accepted: the server makes the temporary password and emails it, so
+    // the admin never knows it. Kept only to refuse a caller that still sends one,
+    // instead of silently ignoring a password it believes it set.
+    #[serde(default, skip_serializing)]
+    pub temporary_password: Option<String>,
 }

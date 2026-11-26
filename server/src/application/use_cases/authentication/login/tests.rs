@@ -14,6 +14,7 @@ mod tests {
                 mfa_method::MfaMethod,
                 oauth_client::{ClientType, MfaPolicy, OAuthClient},
                 tenant::Tenant,
+                user_credentials::UserCredentials,
             },
             errors::DomainError,
         },
@@ -324,6 +325,61 @@ mod tests {
         assert_eq!(ctx.sessions.memory.data.lock().unwrap().len(), 0);
     }
 
+    // An admin reset's temporary password: same hash as TEST_PASSWORD, but single-use
+    // and expiring.
+    fn make_password_temporary(ctx: &Ctx, expires_at: chrono::DateTime<Utc>) {
+        let mut users = ctx.users.memory.data.lock().unwrap();
+        let user = users.get_mut(&ctx.user_id).unwrap();
+        let hash = user.credentials().unwrap().password_hash().to_string();
+        user.set_credentials(UserCredentials::temporary(
+            ctx.user_id,
+            hash,
+            "argon2".to_string(),
+            expires_at,
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_temporary_password_signs_in_once_to_choose_a_new_password() {
+        let ctx = setup(Uuid::now_v7(), true);
+        make_password_temporary(&ctx, Utc::now() + chrono::Duration::hours(24));
+
+        let response = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap();
+        assert!(response.change_password_code.is_some());
+
+        // Burned by that sign-in: the same password now fails like a wrong one.
+        let credentials = ctx.users.memory.data.lock().unwrap()[&ctx.user_id]
+            .credentials()
+            .cloned()
+            .unwrap();
+        assert!(!credentials.accepts_password_at(Utc::now()));
+        let err = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::AuthenticationError(_)));
+        assert_eq!(ctx.sessions.memory.data.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_expired_temporary_password_fails_like_a_wrong_one() {
+        let ctx = setup(Uuid::now_v7(), true);
+        make_password_temporary(&ctx, Utc::now() - chrono::Duration::minutes(1));
+
+        let err = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::AuthenticationError(_)));
+        assert_eq!(ctx.sessions.memory.data.lock().unwrap().len(), 0);
+    }
+
     #[tokio::test]
     async fn rejects_unknown_user() {
         let tenant_id = Uuid::now_v7();
@@ -529,6 +585,42 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, DomainError::AuthenticationError(_)));
+    }
+
+    // A user who enrolled an authenticator app is asked for it by every application,
+    // also one whose own policy does not require a second factor.
+    #[tokio::test]
+    async fn an_enrolled_authenticator_is_asked_for_on_a_client_that_does_not_require_mfa() {
+        let ctx = setup(Uuid::now_v7(), true);
+        assert!(!ctx.client.mfa_required());
+        let enrollment_id = seed_totp(&ctx);
+
+        let response = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap();
+
+        assert_eq!(response.mfa_type.as_deref(), Some(MfaMethod::Totp.as_str()));
+        assert_eq!(response.mfa_id, Some(enrollment_id.to_string()));
+        let sessions = ctx.sessions.memory.data.lock().unwrap();
+        assert!(sessions.values().next().unwrap().is_mfa_pending());
+    }
+
+    // Without an enrolled factor nothing changes for such a client.
+    #[tokio::test]
+    async fn no_second_factor_is_asked_for_without_an_enrollment_or_a_policy() {
+        let ctx = setup(Uuid::now_v7(), true);
+
+        let response = ctx
+            .use_case
+            .execute(make_command(&ctx.email))
+            .await
+            .unwrap();
+
+        assert!(response.mfa_type.is_none());
+        let sessions = ctx.sessions.memory.data.lock().unwrap();
+        assert!(!sessions.values().next().unwrap().is_mfa_pending());
     }
 
     #[tokio::test]

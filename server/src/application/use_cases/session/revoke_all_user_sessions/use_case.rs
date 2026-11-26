@@ -57,6 +57,10 @@ impl UseCase {
         uow.refresh_token_repository()
             .revoke_by_user(command.tenant_id, command.user_id)
             .await?;
+        // "Sign out everywhere" includes the phones trusted to approve sign-ins.
+        uow.trusted_device_repository()
+            .delete_all_for_user(command.tenant_id, command.user_id)
+            .await?;
 
         uow.audit_event_repository()
             .record(

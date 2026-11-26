@@ -26,6 +26,16 @@ pub const WEBAUTHN_CHALLENGE_TTL_MINUTES: i64 = 5;
 /// Password-reset links.
 pub const RESET_TOKEN_TTL_MINUTES: i64 = 30;
 
+/// The temporary password an admin reset emails. Longer than a reset link because
+/// someone else started it and the user may not be reading email; it still signs
+/// in only once.
+pub const TEMPORARY_PASSWORD_TTL_HOURS: i64 = 24;
+
+/// The temporary password a new account's welcome email carries. Longer still: the
+/// user may not know the account exists yet. Also signs in only once; an admin
+/// reset sends a fresh one.
+pub const NEW_ACCOUNT_PASSWORD_TTL_HOURS: i64 = 72;
+
 /// External (social) login round trips.
 pub const EXTERNAL_LOGIN_FLOW_TTL_MINUTES: i64 = 10;
 

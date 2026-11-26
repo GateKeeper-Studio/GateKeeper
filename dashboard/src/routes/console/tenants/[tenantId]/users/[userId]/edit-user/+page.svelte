@@ -15,7 +15,7 @@
 
 	const tenantId = $derived(page.params.tenantId!);
 	const userId = $derived(page.params.userId!);
-	const listHref = $derived(`/console/tenants/${tenantId}/users`);
+	const listHref = $derived(`/console/tenants/${tenantId}/users/${userId}`);
 
 	const userQuery = createQuery(() => ({
 		queryKey: ['tenant-users', tenantId, userId],

@@ -7,6 +7,7 @@ use crate::{
     infraestructure::database::executor::{DbExecutor, SharedTx, run},
 };
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -116,8 +117,8 @@ impl UserRepository for DbUserRepository {
       sqlx::query!(
         r#"
           SELECT u.id as "id!", u.email as "email!", u.tenant_id as "tenant_id!", u.is_email_verified as "is_email_verified!",
-            c.password_hash, c.password_algorithm, c.should_change_pass, u.is_active,
-            u.created_at, u.updated_at
+            c.password_hash, c.password_algorithm, c.should_change_pass, c.temporary_password_expires_at,
+            u.is_active, u.created_at, u.updated_at
           FROM users u
           LEFT JOIN user_credentials c ON c.user_id = u.id
           WHERE u.id = $1
@@ -136,6 +137,7 @@ impl UserRepository for DbUserRepository {
                     r.password_algorithm.unwrap(),
                     r.should_change_pass.unwrap_or(false),
                 )
+                .with_temporary_password_expires_at(r.temporary_password_expires_at)
             });
 
             User::reconstruct(
@@ -460,14 +462,16 @@ impl UserRepository for DbUserRepository {
         self.executor,
         sqlx::query!(
           r#"
-            INSERT INTO user_credentials (id, user_id, password_hash, password_algorithm, should_change_pass, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO user_credentials (id, user_id, password_hash, password_algorithm, should_change_pass,
+                                          temporary_password_expires_at, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
           "#,
           Uuid::now_v7(),
           credentials.user_id(),
           credentials.password_hash(),
           credentials.password_hash_algorithm(),
           credentials.should_change_password(),
+          credentials.temporary_password_expires_at(),
           credentials.created_at(),
         ),
         execute
@@ -528,12 +532,21 @@ impl UserRepository for DbUserRepository {
         self.executor,
         sqlx::query!(
           r#"
-            INSERT INTO user_credentials (id, user_id, password_hash, password_algorithm, should_change_pass, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO user_credentials (id, user_id, password_hash, password_algorithm, should_change_pass,
+                                          temporary_password_expires_at, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (user_id) DO UPDATE
             SET password_hash = EXCLUDED.password_hash,
                 password_algorithm = EXCLUDED.password_algorithm,
                 should_change_pass = EXCLUDED.should_change_pass,
+                -- Same password: keep the earlier expiry (LEAST skips NULL), so a copy
+                -- read before a sign-in burned the temporary password cannot revive it.
+                temporary_password_expires_at = CASE
+                    WHEN user_credentials.password_hash = EXCLUDED.password_hash
+                        THEN LEAST(user_credentials.temporary_password_expires_at,
+                                   EXCLUDED.temporary_password_expires_at)
+                    ELSE EXCLUDED.temporary_password_expires_at
+                END,
                 updated_at = EXCLUDED.updated_at
           "#,
           Uuid::now_v7(),
@@ -541,6 +554,7 @@ impl UserRepository for DbUserRepository {
           credentials.password_hash(),
           credentials.password_hash_algorithm(),
           credentials.should_change_password(),
+          credentials.temporary_password_expires_at(),
           credentials.created_at(),
           credentials.updated_at(),
         ),
@@ -550,6 +564,30 @@ impl UserRepository for DbUserRepository {
         }
 
         Ok(())
+    }
+
+    async fn burn_temporary_password(
+        &self,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<bool, DomainError> {
+        // Of two sign-ins racing with the same password, the second waits on the row
+        // lock and then finds the condition false.
+        let result = run!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          UPDATE user_credentials
+          SET temporary_password_expires_at = $2
+          WHERE user_id = $1 AND temporary_password_expires_at > $2
+        "#,
+                user_id,
+                now,
+            ),
+            execute
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(result.rows_affected() == 1)
     }
 }
 

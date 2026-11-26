@@ -112,7 +112,7 @@
 		<UserPageHeader {user} {tenantId} {userId} {listHref} />
 
 		<Tabs.Root class="mt-4" value={currentTab} onValueChange={(tab) => setTab(tab as Tab)}>
-			<Tabs.List>
+			<Tabs.List data-tour="user-tabs">
 				{#each TABS as tab (tab)}
 					{@const Icon = TAB_ICONS[tab]}
 					<Tabs.Trigger value={tab}>
@@ -135,7 +135,7 @@
 			</Tabs.Content>
 
 			<Tabs.Content value="security">
-				<SecurityTab {tenantId} {userId} />
+				<SecurityTab {tenantId} {userId} email={user.email} />
 			</Tabs.Content>
 
 			<Tabs.Content value="custom-fields">

@@ -9,7 +9,7 @@
 	import AuthenticationMethodsSection from './authentication-methods-section.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
-	let { tenantId, userId }: { tenantId: string; userId: string } = $props();
+	let { tenantId, userId, email }: { tenantId: string; userId: string; email: string } = $props();
 
 	let page = $state(1);
 	const pageSize = 10;
@@ -46,7 +46,7 @@
 	}
 </script>
 
-<AuthenticationMethodsSection {tenantId} {userId} />
+<AuthenticationMethodsSection {tenantId} {userId} {email} />
 
 <div class="mt-8">
 	<SessionsSection {tenantId} {userId} />

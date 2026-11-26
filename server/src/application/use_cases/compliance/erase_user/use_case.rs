@@ -70,6 +70,9 @@ impl UseCase {
         uow.consent_grant_repository()
             .delete_by_user_id(command.user_id)
             .await?;
+        uow.trusted_device_repository()
+            .delete_all_for_user(command.tenant_id, command.user_id)
+            .await?;
 
         uow.commit().await?;
 

@@ -81,7 +81,7 @@
 			</p>
 		</div>
 
-		<Button href={`/console/tenants/${tenantId}/users/create-user`}>
+		<Button href={`/console/tenants/${tenantId}/users/create-user`} data-tour="users-create">
 			<PlusIcon />
 			{m.users_add_user_title()}
 		</Button>
@@ -99,7 +99,7 @@
 		{:else if usersQuery.isError}
 			<ErrorAlert title={m.users_load_error_title()} message={usersQuery.error.message} />
 		{:else}
-			<div class="flex gap-4">
+			<div class="flex gap-4" data-tour="users-stats">
 				{@render statTile(
 					m.users_stat_total_users(),
 					String(users.length),
@@ -120,7 +120,7 @@
 				)}
 			</div>
 
-			<div class="mt-4">
+			<div class="mt-4" data-tour="users-table">
 				<UsersTable {tenantId} />
 			</div>
 		{/if}

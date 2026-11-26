@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::{entities::user::User, errors::DomainError};
@@ -45,7 +46,20 @@ pub trait UserRepository: Send + Sync {
     async fn anonymize(&self, user_id: Uuid) -> Result<(), DomainError>;
 
     async fn add(&self, user: &User) -> Result<(), DomainError>;
+    // Saves the user. A copy of the credentials read earlier can never extend or
+    // revive a temporary password: with the same hash, the earlier of the stored and
+    // the saved expiry wins.
     async fn update(&self, user: &User) -> Result<(), DomainError>;
+
+    // Spends the user's temporary password (an admin reset's): from `now` on it no
+    // longer signs in. One conditional statement, so of two sign-ins racing with the
+    // same password only one gets `true`; `false` when it was already used, expired,
+    // or the user has no such password.
+    async fn burn_temporary_password(
+        &self,
+        user_id: Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<bool, DomainError>;
 
     // The user's default second factor ("email" | "totp" | "webauthn"). Kept out
     // of the User aggregate (like legal_hold/anonymized_at): only the MFA use

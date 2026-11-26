@@ -173,13 +173,17 @@ impl UseCase {
         // registered.
         let credentials_valid = match &credentials {
             Some(creds) => {
-                self.password_hasher
+                let matches = self
+                    .password_hasher
                     .verify(
                         creds.password_hash(),
                         password,
                         tenant.password_hash_secret(),
                     )
-                    .await
+                    .await;
+                // An admin reset's temporary password that expired or was already
+                // used fails exactly like a wrong one (same work, same error).
+                matches && creds.accepts_password_at(Utc::now())
             }
             None => self.password_hasher.verify_dummy(password).await,
         };
@@ -269,6 +273,17 @@ impl UseCase {
         // 6. A forced password change (e.g. an admin-issued temporary password) must be
         //    completed at /v1/auth/change-password before authorization.
         let change_password_code = if credentials.should_change_password() {
+            // An admin reset's temporary password signs in once: burn it now, in one
+            // conditional statement, so of two sign-ins racing with it only one gets
+            // through. From here the change code and this session are the only way on.
+            if credentials.temporary_password_expires_at().is_some()
+                && !uow
+                    .user_repository()
+                    .burn_temporary_password(user_id, Utc::now())
+                    .await?
+            {
+                return Err(auth_failed());
+            }
             Some(issue_change_password_code(uow.as_ref(), tenant_id, user_id).await?)
         } else {
             None

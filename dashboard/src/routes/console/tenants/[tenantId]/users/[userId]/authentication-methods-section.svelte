@@ -10,15 +10,19 @@
 	import UsersIcon from '@lucide/svelte/icons/users';
 
 	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import ErrorAlert from '$lib/components/error-alert.svelte';
 	import GithubLogo from '$lib/components/icons/github-logo.svelte';
 	import GoogleLogo from '$lib/components/icons/google-logo.svelte';
 	import { getUserAuthenticationMethods } from '$lib/services/admin/users';
+	import ResetPasswordDialog from './reset-password-dialog.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
-	let { tenantId, userId }: { tenantId: string; userId: string } = $props();
+	let { tenantId, userId, email }: { tenantId: string; userId: string; email: string } = $props();
+
+	let resetOpen = $state(false);
 
 	// How this user can sign in: read-only, account-level. Whether a given app offers a
 	// method (email links, passkeys, a social provider) is that app's own setting.
@@ -157,6 +161,14 @@
 						</li>
 					</ul>
 				</Card.Content>
+				{#if a.password.set}
+					<Card.Footer>
+						<Button variant="outline" size="sm" onclick={() => (resetOpen = true)}>
+							<KeyRoundIcon class="size-4" />
+							{m.users_reset_password_button()}
+						</Button>
+					</Card.Footer>
+				{/if}
 			</Card.Root>
 
 			<Card.Root>
@@ -237,3 +249,11 @@
 		<p class="mt-2 text-xs text-muted-foreground">{m.users_auth_methods_footnote()}</p>
 	{/if}
 </div>
+
+<ResetPasswordDialog
+	{tenantId}
+	{userId}
+	{email}
+	open={resetOpen}
+	onOpenChange={(o) => (resetOpen = o)}
+/>
