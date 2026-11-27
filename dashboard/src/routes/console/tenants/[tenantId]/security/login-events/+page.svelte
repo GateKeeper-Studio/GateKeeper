@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page as pageState } from '$app/state';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
@@ -17,7 +18,8 @@
 	let riskLevel = $state('');
 	let decision = $state('');
 	let successFilter = $state('');
-	let ipAddress = $state('');
+	// `?ip=` prefills the filter: the security maps link here for one address.
+	let ipAddress = $state(pageState.url.searchParams.get('ip') ?? '');
 
 	// Reset to page 1 whenever a filter changes.
 	function onFilterChange() {

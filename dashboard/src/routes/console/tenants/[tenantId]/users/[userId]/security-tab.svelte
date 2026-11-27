@@ -7,6 +7,7 @@
 	import { listLoginEvents, type LoginEventView } from '$lib/services/admin/security';
 	import SessionsSection from './sessions-section.svelte';
 	import AuthenticationMethodsSection from './authentication-methods-section.svelte';
+	import IpLocationMap from '$lib/components/security/ip-location-map.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { tenantId, userId, email }: { tenantId: string; userId: string; email: string } = $props();
@@ -50,6 +51,17 @@
 
 <div class="mt-8">
 	<SessionsSection {tenantId} {userId} />
+</div>
+
+<div class="mt-8 space-y-1">
+	<h2 class="text-lg font-semibold">{m.security_map_title_user()}</h2>
+	<p class="max-w-2xl text-sm text-muted-foreground">
+		{m.security_map_description_user()}
+	</p>
+</div>
+
+<div class="mt-4">
+	<IpLocationMap {tenantId} {userId} defaultRange="90d" />
 </div>
 
 <div class="mt-8 space-y-1">

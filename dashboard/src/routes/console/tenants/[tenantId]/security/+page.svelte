@@ -8,6 +8,7 @@
 
 	import { selectedTenant } from '$lib/state/selected-tenant.svelte';
 	import { getSecurityOverview } from '$lib/services/admin/security';
+	import IpLocationMap from '$lib/components/security/ip-location-map.svelte';
 	import { m } from '$lib/paraglide/messages.js';
 
 	const tenantId = $derived(selectedTenant.tenantId!);
@@ -60,6 +61,16 @@
 			{@render kpi(m.security_overview_kpi_high_risk(), metrics.high_risk_attempts, 'text-orange-600')}
 			{@render kpi(m.security_overview_kpi_critical_risk(), metrics.critical_risk_attempts, 'text-red-700')}
 			{@render kpi(m.security_overview_kpi_password_spraying(), metrics.password_spraying_events, 'text-red-600')}
+		</div>
+
+		<div class="mt-8 space-y-1">
+			<h2 class="text-lg font-semibold">{m.security_map_title_tenant()}</h2>
+			<p class="text-muted-foreground max-w-2xl text-sm">
+				{m.security_map_description_tenant()}
+			</p>
+		</div>
+		<div class="mt-4">
+			<IpLocationMap {tenantId} defaultRange="7d" />
 		</div>
 
 		<div class="mt-8 grid gap-6 lg:grid-cols-2" data-tour="security-insights">

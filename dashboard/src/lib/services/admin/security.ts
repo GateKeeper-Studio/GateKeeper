@@ -91,6 +91,42 @@ export type SuspiciousIpView = {
 	block_id: string | null;
 };
 
+// One point of the security maps, mirroring the API's IpLocationView: an IP, where it
+// geolocates (from its latest attempt), what it did in the window, and whether it is
+// blocked right now.
+export type IpLocationView = {
+	ip_address: string;
+	latitude: number;
+	longitude: number;
+	country_code: string | null;
+	region: string | null;
+	city: string | null;
+	asn: number | null;
+	isp: string | null;
+	attempts: number;
+	successful_logins: number;
+	failed_attempts: number;
+	blocked_attempts: number;
+	distinct_users: number;
+	max_risk_score: number;
+	max_risk_level: string;
+	first_seen: string;
+	last_seen: string;
+	blocked: boolean;
+	block_id: string | null;
+	block_expires_at: string | null;
+};
+
+export type IpLocations = {
+	items: IpLocationView[];
+	// Attempts with no coordinates: private addresses, or no GeoIP database.
+	unlocated_attempts: number;
+	// The credit the server's geolocation database asks for (DB-IP Lite, GeoLite2).
+	attribution: { name: string; url: string } | null;
+};
+
+export type IpLocationParams = RangeParams & { userId?: string };
+
 export type CountryCountView = { country_code: string | null; count: number };
 
 export type SecurityOverview = {
@@ -232,6 +268,25 @@ export async function listSuspiciousIps(
 			`${base(tenantId)}/suspicious-ips?${q}`,
 			fetchFn
 		);
+		return [data, null];
+	} catch (error) {
+		return [null, error as ApiError];
+	}
+}
+
+// GET /tenants/{tenantId}/security/ip-locations
+export async function listIpLocations(
+	tenantId: string,
+	params: IpLocationParams = {},
+	fetchFn: typeof fetch = fetch
+): Promise<Result<IpLocations>> {
+	const q = new URLSearchParams();
+	if (params.userId) q.set('user_id', params.userId);
+	if (params.from) q.set('from', params.from);
+	if (params.to) q.set('to', params.to);
+	if (params.limit) q.set('limit', String(params.limit));
+	try {
+		const data = await api.get<IpLocations>(`${base(tenantId)}/ip-locations?${q}`, fetchFn);
 		return [data, null];
 	} catch (error) {
 		return [null, error as ApiError];
