@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     application::use_cases::security::{
         block_ip, get_login_event, get_overview, get_risk_policy, label_login_event,
-        list_attacked_users, list_login_events, list_suspicious_ips, unblock_ip,
+        list_attacked_users, list_ip_locations, list_login_events, list_suspicious_ips, unblock_ip,
         update_risk_policy,
     },
     domain::entities::audit_action::{
@@ -224,6 +224,37 @@ pub async fn list_suspicious_ips(
         .list_suspicious_ips
         .execute(list_suspicious_ips::Query {
             tenant_id,
+            from: params.from,
+            to: params.to,
+            limit: params.limit,
+        })
+        .await?;
+    Ok((StatusCode::OK, Json(response)))
+}
+
+#[derive(Deserialize)]
+pub struct IpLocationParams {
+    pub user_id: Option<Uuid>,
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
+    pub limit: Option<i64>,
+}
+
+// GET /tenants/:tenant_id/security/ip-locations?user_id=&from=&to=&limit=
+//
+// The security maps: one point per IP with where it geolocates. `user_id` narrows it
+// to one user's sign-ins (the user page's map).
+pub async fn list_ip_locations(
+    State(state): State<AppState>,
+    TenantScope { tenant_id, .. }: TenantScope,
+    Query(params): Query<IpLocationParams>,
+) -> Result<impl IntoResponse, ApiError> {
+    let response = state
+        .security
+        .list_ip_locations
+        .execute(list_ip_locations::Query {
+            tenant_id,
+            user_id: params.user_id,
             from: params.from,
             to: params.to,
             limit: params.limit,

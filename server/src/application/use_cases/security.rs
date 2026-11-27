@@ -9,6 +9,7 @@ pub mod get_overview;
 pub mod get_risk_policy;
 pub mod label_login_event;
 pub mod list_attacked_users;
+pub mod list_ip_locations;
 pub mod list_login_events;
 pub mod list_suspicious_ips;
 pub mod unblock_ip;

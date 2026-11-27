@@ -179,14 +179,32 @@ pub struct WebauthnConfig {
     pub additional_origins: Vec<String>,
 }
 
-// MaxMind GeoLite2/GeoIP2 database paths for IP enrichment. Optional: when
-// GEOIP_CITY_DB_PATH is unset the composition root wires a no-op resolver, so geo
+// IP geolocation databases (MMDB: DB-IP or MaxMind). Optional: with neither GEOIP_DIR
+// nor GEOIP_CITY_DB_PATH set, the composition root wires a no-op resolver, so geo
 // rules (new country, impossible travel) simply never fire and the login flow keeps
 // working.
+//
+// GEOIP_DIR is the managed setup: the server reads `city.mmdb` / `asn.mmdb` there and,
+// with `auto_update` (the default), downloads them when missing and refreshes them
+// when DB-IP publishes a new month (`infraestructure/geoip/dbip_updater.rs`).
+// GEOIP_CITY_DB_PATH / GEOIP_ASN_DB_PATH name files explicitly and win over the
+// directory's; files the server did not download are never replaced.
 #[derive(Debug, Clone)]
 pub struct GeoIpConfig {
     pub city_db_path: String,
     pub asn_db_path: Option<String>,
+    pub dir: Option<std::path::PathBuf>,
+    pub auto_update: bool,
+    pub update_interval_hours: u64,
+}
+
+impl GeoIpConfig {
+    // The GeoIP paths alone (.env included), for tools that need nothing else — the
+    // `geoip_lookup` CLI — without AppConfig's full validation.
+    pub fn from_env() -> Option<Self> {
+        load_dotenv();
+        resolve_geoip_config()
+    }
 }
 
 const DEFAULT_ISSUER: &str = "http://localhost:8080";
@@ -377,12 +395,43 @@ fn resolve_metrics_port() -> Option<u16> {
     }
 }
 
-// Returns None when GEOIP_CITY_DB_PATH is absent (geo enrichment disabled).
+// Returns None when neither GEOIP_DIR nor GEOIP_CITY_DB_PATH is set (geo enrichment
+// disabled).
 fn resolve_geoip_config() -> Option<GeoIpConfig> {
-    let city_db_path = env_string("GEOIP_CITY_DB_PATH")?;
+    geoip_config_from(|key| std::env::var(key).ok())
+}
+
+// Kept apart from `std::env` so the rules can be unit-tested (`set_var` is unsafe).
+fn geoip_config_from(var: impl Fn(&str) -> Option<String>) -> Option<GeoIpConfig> {
+    let value = |key: &str| {
+        var(key)
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+    };
+    let dir = value("GEOIP_DIR").map(std::path::PathBuf::from);
+    let in_dir = |file: &str| {
+        dir.as_ref()
+            .map(|d| d.join(file).to_string_lossy().into_owned())
+    };
+    let explicit_city = value("GEOIP_CITY_DB_PATH");
+    // Same reading as `env_flag(.., true)`: only an explicit "false"/"0" turns it off.
+    let auto_update_flag = var("GEOIP_AUTO_UPDATE")
+        .is_none_or(|raw| !matches!(raw.trim().to_ascii_lowercase().as_str(), "false" | "0" | ""));
+    // Only the directory's own files are kept up to date: a file named explicitly
+    // is the operator's to update.
+    let auto_update = dir.is_some() && explicit_city.is_none() && auto_update_flag;
+    let city_db_path = explicit_city.or_else(|| in_dir("city.mmdb"))?;
+    let asn_db_path = value("GEOIP_ASN_DB_PATH").or_else(|| in_dir("asn.mmdb"));
+    let update_interval_hours = value("GEOIP_UPDATE_INTERVAL_HOURS")
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .unwrap_or(24)
+        .max(1);
     Some(GeoIpConfig {
         city_db_path,
-        asn_db_path: env_string("GEOIP_ASN_DB_PATH"),
+        asn_db_path,
+        dir,
+        auto_update,
+        update_interval_hours,
     })
 }
 
@@ -689,6 +738,64 @@ fn decode_key_material(value: &str) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    fn geoip(vars: &[(&str, &str)]) -> Option<GeoIpConfig> {
+        let vars: HashMap<String, String> = vars
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        geoip_config_from(|key| vars.get(key).cloned())
+    }
+
+    #[test]
+    fn geoip_is_off_without_a_directory_or_a_path() {
+        assert!(geoip(&[]).is_none());
+        assert!(geoip(&[("GEOIP_DIR", "  ")]).is_none());
+    }
+
+    #[test]
+    fn a_geoip_directory_is_managed_by_default() {
+        let config = geoip(&[("GEOIP_DIR", "/var/lib/geoip")]).unwrap();
+        assert_eq!(config.city_db_path, "/var/lib/geoip/city.mmdb");
+        assert_eq!(
+            config.asn_db_path.as_deref(),
+            Some("/var/lib/geoip/asn.mmdb")
+        );
+        assert!(config.auto_update);
+        assert_eq!(config.update_interval_hours, 24);
+    }
+
+    #[test]
+    fn geoip_auto_update_can_be_turned_off() {
+        let config = geoip(&[("GEOIP_DIR", "/g"), ("GEOIP_AUTO_UPDATE", "false")]).unwrap();
+        assert!(!config.auto_update);
+        // A typo does not silently turn it off.
+        let config = geoip(&[("GEOIP_DIR", "/g"), ("GEOIP_AUTO_UPDATE", "flase")]).unwrap();
+        assert!(config.auto_update);
+    }
+
+    #[test]
+    fn an_explicit_geoip_file_is_never_auto_updated() {
+        let config = geoip(&[
+            ("GEOIP_DIR", "/g"),
+            ("GEOIP_CITY_DB_PATH", "/opt/GeoLite2-City.mmdb"),
+        ])
+        .unwrap();
+        assert_eq!(config.city_db_path, "/opt/GeoLite2-City.mmdb");
+        assert!(!config.auto_update);
+
+        let config = geoip(&[("GEOIP_CITY_DB_PATH", "/opt/c.mmdb")]).unwrap();
+        assert_eq!(config.asn_db_path, None);
+        assert!(!config.auto_update);
+    }
+
+    #[test]
+    fn the_geoip_interval_is_at_least_an_hour() {
+        let config = geoip(&[("GEOIP_DIR", "/g"), ("GEOIP_UPDATE_INTERVAL_HOURS", "0")]).unwrap();
+        assert_eq!(config.update_interval_hours, 1);
+        let config = geoip(&[("GEOIP_DIR", "/g"), ("GEOIP_UPDATE_INTERVAL_HOURS", "x")]).unwrap();
+        assert_eq!(config.update_interval_hours, 24);
+    }
 
     // A fully-valid strict-environment configuration; tests remove or corrupt one
     // entry at a time so each assertion pins exactly one rule.

@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use axum::http::{HeaderValue, Method, StatusCode};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tower_http::{
     compression::CompressionLayer,
     cors::{Any, CorsLayer},
@@ -14,7 +14,7 @@ use tower_http::{
 const REQUEST_TIMEOUT_SECONDS: u64 = 30;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 use web_api::{
-    bootstrap::build_router,
+    bootstrap::{build_geoip_resolver, build_router},
     infraestructure::{
         config::{self, AppConfig},
         crypto::{aes_gcm_secret_cipher::AesGcmSecretCipher, secret_reseal::reseal_legacy_secrets},
@@ -22,6 +22,7 @@ use web_api::{
             database_pool::create_database_pool,
             migrations::{Adoption, MIGRATOR, adopt_pre_squash_history},
         },
+        geoip::scheduler::spawn_geoip_updater,
         observability::metrics::install as install_metrics,
         retention::scheduler::spawn_retention_purge,
         webhooks::dispatcher::spawn_dispatcher,
@@ -211,6 +212,16 @@ async fn main() {
         None
     };
 
+    // IP geolocation. With GEOIP_DIR (and GEOIP_AUTO_UPDATE, the default) the server
+    // downloads the DB-IP Lite databases when missing and refreshes them monthly,
+    // swapping each new one in without a restart. Off the request path: until the
+    // first download lands, sign-ins are simply not geolocated.
+    let geoip = build_geoip_resolver(&config);
+    let geoip_updater = match config.geoip.as_ref() {
+        Some(cfg) if cfg.auto_update => Some(spawn_geoip_updater(cfg, Arc::clone(&geoip))),
+        _ => None,
+    };
+
     let metrics_server = match config.metrics_port {
         Some(port) => Some(spawn_metrics_server(port, metrics_handle)),
         None => {
@@ -219,7 +230,7 @@ async fn main() {
         }
     };
 
-    let app = build_router(&config, db_pool.clone()).layer(
+    let app = build_router(&config, db_pool.clone(), geoip).layer(
         // Tower layers compose from outermost to innermost. The request
         // passes through each layer before reaching the handler.
         tower::ServiceBuilder::new()
@@ -318,6 +329,14 @@ async fn main() {
         if let Err(e) = handle.await {
             tracing::error!("retention purge did not shut down cleanly: {e:?}");
         }
+    }
+
+    // The GeoIP updater holds no state worth finishing: a download cut off here
+    // leaves only a hidden partial file, never a half-written database.
+    if let Some((handle, shutdown)) = geoip_updater {
+        let _ = shutdown.send(true);
+        handle.abort();
+        let _ = handle.await;
     }
 }
 

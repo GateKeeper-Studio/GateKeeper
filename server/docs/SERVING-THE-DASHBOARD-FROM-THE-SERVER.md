@@ -475,7 +475,8 @@ For UI documents:
 
 ```
 Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-<bootstrap>'; style-src 'self' 'unsafe-inline';
-                         img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none';
+                         img-src 'self' data: blob:; font-src 'self' data:;
+                         connect-src 'self' https://basemaps.cartocdn.com https://tiles.basemaps.cartocdn.com; object-src 'none';
                          base-uri 'self'; frame-ancestors 'none'; form-action 'self'
 X-Frame-Options: DENY      (SAMEORIGIN, and frame-ancestors 'self', only for /auth/* with ?preview=1)
 X-Content-Type-Options: nosniff
@@ -484,7 +485,8 @@ Strict-Transport-Security: max-age=63072000; includeSubDomains
 Cache-Control: no-cache
 ```
 
-- **`connect-src 'self'`** is tighter than today, which also has to allow the IdP's origin.
+- **`connect-src`** is this origin plus the console maps' base-map host (Carto: the style JSON on `basemaps.cartocdn.com`; tiles, sprites and glyphs on `tiles.basemaps.cartocdn.com`). That is tighter than before the port, which also had to allow the IdP's origin. The list is `MAP_TILE_ORIGINS` in `presentation/ui.rs`. A different base map means changing it together with `defaultStyles` in `dashboard/src/lib/components/ui/map/map.svelte`.
+- **Workers.** MapLibre runs a same-origin module worker (`/_app/immutable/assets/maplibre-gl-worker.*.mjs`), so the document's `script-src 'self'` admits it. A dedicated worker takes its CSP from the response that delivered its script, not from the page. Every `.js`/`.mjs` asset therefore carries `default-src 'none'; connect-src 'self'` plus the map origins (`WORKER_SCRIPT_CSP`). That header changes nothing for a `<script>`, but without it the app-wide `default-src 'none'` would stop the worker's tile fetches.
 - **Script hash.** The fallback `index.html` has one inline bootstrap script. Rust can compute its SHA-256 at startup, or a build step can write it. That drops `'unsafe-inline'` from `script-src`, which today's `hooks.server.ts` leaves as follow-up work. A first iteration may keep `'unsafe-inline'` and still match today.
   - `style-src 'unsafe-inline'` stays, because Svelte and bits-ui apply inline styles at runtime.
 - **Preview exception.** Scope the `?preview=1` framing exception to `/auth/*` only. Today it applies to any HTML path with `?preview=1`, so this is a small tightening.

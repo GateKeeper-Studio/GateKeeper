@@ -10,8 +10,8 @@ use crate::{
         },
         errors::DomainError,
         repositories::login_event_repository::{
-            AsnShare, AttackedUser, CountryCount, IpHistory, LastSuccessfulLogin, LoginEventFilter,
-            LoginEventRepository, SecurityOverviewMetrics, SuspiciousIp,
+            AsnShare, AttackedUser, CountryCount, IpHistory, IpLocation, LastSuccessfulLogin,
+            LoginEventFilter, LoginEventRepository, SecurityOverviewMetrics, SuspiciousIp,
         },
     },
     infraestructure::database::executor::{DbExecutor, SharedTx, run, run_custom_plan},
@@ -704,6 +704,114 @@ impl LoginEventRepository for DbLoginEventRepository {
                 last_seen: r.last_seen,
             })
             .collect())
+    }
+
+    async fn ip_locations(
+        &self,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<IpLocation>, DomainError> {
+        // `$2 IS NULL OR user_id = $2` is a catch-all filter: planned with its values
+        // each time, so the one-user case can use the (tenant_id, user_id, created_at)
+        // index. The CASE ranks levels like `RiskLevel::rank`.
+        let rows = run_custom_plan!(
+            self.executor,
+            sqlx::query!(
+                r#"
+          SELECT
+            ip_address AS "ip_address!",
+            (ARRAY_AGG(latitude ORDER BY created_at DESC))[1] AS "latitude!",
+            (ARRAY_AGG(longitude ORDER BY created_at DESC))[1] AS "longitude!",
+            (ARRAY_AGG(country_code ORDER BY created_at DESC))[1] AS country_code,
+            (ARRAY_AGG(region ORDER BY created_at DESC))[1] AS region,
+            (ARRAY_AGG(city ORDER BY created_at DESC))[1] AS city,
+            (ARRAY_AGG(asn ORDER BY created_at DESC))[1] AS asn,
+            (ARRAY_AGG(isp ORDER BY created_at DESC))[1] AS isp,
+            COUNT(*) AS "attempts!",
+            COUNT(*) FILTER (WHERE success) AS "successful_logins!",
+            COUNT(*) FILTER (WHERE NOT credentials_valid) AS "failed_attempts!",
+            COUNT(*) FILTER (WHERE decision = 'BLOCK_TEMPORARILY') AS "blocked_attempts!",
+            COUNT(DISTINCT COALESCE(username_normalized, user_id::text)) AS "distinct_users!",
+            MAX(risk_score) AS "max_risk_score!",
+            MAX(CASE risk_level
+                  WHEN 'CRITICAL' THEN 3 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 1 ELSE 0
+                END) AS "max_risk_rank!",
+            MIN(created_at) AS "first_seen!",
+            MAX(created_at) AS "last_seen!"
+          FROM "login_events"
+          WHERE tenant_id = $1
+            AND ($2::uuid IS NULL OR user_id = $2)
+            AND created_at >= $3 AND created_at <= $4
+            AND ip_address IS NOT NULL
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+          GROUP BY ip_address
+          ORDER BY "max_risk_rank!" DESC, "failed_attempts!" DESC, "attempts!" DESC
+          LIMIT $5
+        "#,
+                tenant_id,
+                user_id,
+                from,
+                to,
+                limit
+            ),
+            fetch_all
+        )
+        .map_err(map_sqlx_error)?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| IpLocation {
+                ip_address: r.ip_address,
+                latitude: r.latitude,
+                longitude: r.longitude,
+                country_code: r.country_code,
+                region: r.region,
+                city: r.city,
+                asn: r.asn,
+                isp: r.isp,
+                attempts: r.attempts,
+                successful_logins: r.successful_logins,
+                failed_attempts: r.failed_attempts,
+                blocked_attempts: r.blocked_attempts,
+                distinct_users: r.distinct_users,
+                max_risk_score: r.max_risk_score,
+                max_risk_level: RiskLevel::from_rank(r.max_risk_rank),
+                first_seen: r.first_seen,
+                last_seen: r.last_seen,
+            })
+            .collect())
+    }
+
+    async fn count_unlocated(
+        &self,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<i64, DomainError> {
+        let count = run_custom_plan!(
+            self.executor,
+            sqlx::query_scalar!(
+                r#"
+          SELECT COUNT(*) AS "count!"
+          FROM "login_events"
+          WHERE tenant_id = $1
+            AND ($2::uuid IS NULL OR user_id = $2)
+            AND created_at >= $3 AND created_at <= $4
+            AND (latitude IS NULL OR longitude IS NULL)
+        "#,
+                tenant_id,
+                user_id,
+                from,
+                to
+            ),
+            fetch_one
+        )
+        .map_err(map_sqlx_error)?;
+        Ok(count)
     }
 
     async fn attacked_users(

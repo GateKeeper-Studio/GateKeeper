@@ -60,6 +60,11 @@ services:
       # Dev-only fallback; a JWT_SECRET in .env takes precedence.
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
       LOG_FORMAT: text
+      # The container keeps its own GeoIP copy (downloaded on first start, refreshed
+      # monthly); .env's GEOIP_DIR is a host path that does not exist in here.
+      GEOIP_DIR: /var/lib/geoip
+    volumes:
+      - geoip_data:/var/lib/geoip
     healthcheck:
       # /health is static liveness and never touches the DB.
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
@@ -75,3 +80,4 @@ services:
 
 volumes:
   postgres_data:
+  geoip_data:

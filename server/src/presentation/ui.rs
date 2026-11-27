@@ -400,11 +400,36 @@ impl UiAssets {
     }
 }
 
+// Where the console's maps load their base map from: the Carto style JSON, then its
+// vector tiles, sprites and glyphs. Fetched with `fetch`, so they belong in
+// `connect-src` (MapLibre turns the images into bitmaps itself; `img-src` already has
+// `blob:`). A different base map means changing this list and `defaultStyles` in
+// `dashboard/src/lib/components/ui/map/map.svelte` together.
+macro_rules! map_tile_origins {
+    () => {
+        "https://basemaps.cartocdn.com https://tiles.basemaps.cartocdn.com"
+    };
+}
+const MAP_TILE_ORIGINS: &str = map_tile_origins!();
+
+// Script assets carry a policy of their own. It has no effect on a `<script>` (the
+// document's policy governs those) but it is THE policy of a dedicated worker, which
+// takes its CSP from the response that delivered its script: MapLibre's worker
+// (`maplibre-gl-worker.*.mjs`) fetches the tiles. Without it the app-wide
+// `default-src 'none'` would apply and the map would stay blank.
+const WORKER_SCRIPT_CSP: &str = concat!(
+    "default-src 'none'; connect-src 'self' ",
+    map_tile_origins!()
+);
+
 // The console and hosted-login documents' policy. Same directives as the former
 // SvelteKit server, two of them tighter:
 //   - `script-src` lists the inline bootstrap's hashes instead of 'unsafe-inline';
-//   - `connect-src 'self'`: the login UI now calls the API on its own origin.
+//   - `connect-src` is this origin (the login UI calls the API on its own origin) plus
+//     the map tiles, and nothing else. The hosted login pages never draw a map;
+//     they share the policy because one entry page serves both.
 // `style-src` keeps 'unsafe-inline': Svelte and bits-ui set inline styles at runtime.
+// Workers fall back to `script-src`: MapLibre's is a same-origin module script.
 fn content_security_policy(script_hashes: &[String], frame_ancestors: &str) -> HeaderValue {
     let scripts = std::iter::once("'self'".to_string())
         .chain(script_hashes.iter().map(|h| format!("'{h}'")))
@@ -416,7 +441,7 @@ fn content_security_policy(script_hashes: &[String], frame_ancestors: &str) -> H
         "style-src 'self' 'unsafe-inline'".to_string(),
         "img-src 'self' data: blob:".to_string(),
         "font-src 'self' data:".to_string(),
-        "connect-src 'self'".to_string(),
+        format!("connect-src 'self' {MAP_TILE_ORIGINS}"),
         "object-src 'none'".to_string(),
         "base-uri 'self'".to_string(),
         format!("frame-ancestors {frame_ancestors}"),
@@ -454,9 +479,13 @@ fn inline_script_hashes(html: &str) -> Vec<String> {
 }
 
 // `/_app/immutable/*` is content-hashed by Vite, so browsers may keep it forever.
-// Everything else under `/_app` (version.json, env.js) must be revalidated.
+// Everything else under `/_app` (version.json, env.js) must be revalidated. Scripts
+// also get `WORKER_SCRIPT_CSP`; the app-wide headers layer only fills in a CSP that is
+// missing, so this one stays.
 async fn asset_cache_headers(request: Request, next: Next) -> Response {
-    let immutable = request.uri().path().starts_with("/_app/immutable/");
+    let path = request.uri().path();
+    let immutable = path.starts_with("/_app/immutable/");
+    let script = path.ends_with(".js") || path.ends_with(".mjs");
     let mut response = next.run(request).await;
     if response.status() == StatusCode::OK || response.status() == StatusCode::NOT_MODIFIED {
         response.headers_mut().insert(
@@ -467,6 +496,12 @@ async fn asset_cache_headers(request: Request, next: Next) -> Response {
                 "no-cache"
             }),
         );
+        if script {
+            response.headers_mut().insert(
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static(WORKER_SCRIPT_CSP),
+            );
+        }
     }
     response
 }
@@ -522,7 +557,7 @@ mod tests {
         let csp = content_security_policy(&["sha256-abc".to_string()], "'none'");
         let csp = csp.to_str().unwrap();
         assert!(csp.contains("script-src 'self' 'sha256-abc';"));
-        assert!(csp.contains("connect-src 'self';"));
+        assert!(csp.contains(&format!("connect-src 'self' {MAP_TILE_ORIGINS};")));
         assert!(csp.contains("frame-ancestors 'none';"));
         assert!(!csp.contains("script-src 'self' 'unsafe-inline'"));
     }
@@ -667,6 +702,11 @@ mod tests {
             "public, max-age=31536000, immutable"
         );
         assert!(header(&chunk, header::CONTENT_TYPE).contains("javascript"));
+        // A script's own policy is the one it runs under as a worker.
+        assert_eq!(
+            header(&chunk, header::CONTENT_SECURITY_POLICY),
+            WORKER_SCRIPT_CSP
+        );
 
         let version = get(&router, "/_app/version.json").await;
         assert_eq!(header(&version, header::CACHE_CONTROL), "no-cache");

@@ -4033,6 +4033,7 @@ dependencies = [
  "chrono",
  "dotenvy",
  "fake",
+ "flate2",
  "hex",
  "hmac 0.12.1",
  "html2text",

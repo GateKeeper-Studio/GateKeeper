@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::{
-    entities::login_event::{LoginEvent, RiskSignal},
+    entities::login_event::{LoginEvent, RiskLevel, RiskSignal},
     errors::DomainError,
 };
 
@@ -70,6 +70,31 @@ pub struct SuspiciousIp {
     pub distinct_users: i64,
     pub country_code: Option<String>,
     pub max_risk_score: i32,
+    pub first_seen: DateTime<Utc>,
+    pub last_seen: DateTime<Utc>,
+}
+
+// One IP's sign-in footprint, placed where it geolocates: a point on the security
+// maps. Only geolocated events count; the place is the one of the IP's latest event
+// (a GeoIP database update can move an address).
+#[derive(Debug, Clone)]
+pub struct IpLocation {
+    pub ip_address: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub country_code: Option<String>,
+    pub region: Option<String>,
+    pub city: Option<String>,
+    pub asn: Option<i32>,
+    pub isp: Option<String>,
+    pub attempts: i64,
+    pub successful_logins: i64,
+    pub failed_attempts: i64,
+    // Attempts the Risk Engine refused (`BLOCK_TEMPORARILY`).
+    pub blocked_attempts: i64,
+    pub distinct_users: i64,
+    pub max_risk_score: i32,
+    pub max_risk_level: RiskLevel,
     pub first_seen: DateTime<Utc>,
     pub last_seen: DateTime<Utc>,
 }
@@ -206,6 +231,25 @@ pub trait LoginEventRepository: Send + Sync {
         to: DateTime<Utc>,
         limit: i64,
     ) -> Result<Vec<SuspiciousIp>, DomainError>;
+    // Per-IP footprint for the security maps, riskiest first (highest risk level, then
+    // failed attempts, then attempts). `user_id` narrows it to one user's sign-ins.
+    async fn ip_locations(
+        &self,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<IpLocation>, DomainError>;
+    // Attempts in the same window that have no coordinates (a private address, or no
+    // GeoIP database), so the map can say what it cannot show.
+    async fn count_unlocated(
+        &self,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<i64, DomainError>;
     async fn attacked_users(
         &self,
         tenant_id: Uuid,

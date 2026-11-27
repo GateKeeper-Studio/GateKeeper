@@ -187,6 +187,8 @@ injects the infra implementation (e.g. `JwtSigningService`, `SmtpEmailSender`,
 DENY`, `Referrer-Policy: no-referrer`, a restrictive CSP, and HSTS to every
 response. The dashboard's documents set their own CSP and `X-Frame-Options` (scripts
 limited to this origin plus the entry page's inline-bootstrap hashes), which it keeps.
+That CSP's `connect-src` also admits the console maps' tile host (`MAP_TILE_ORIGINS`),
+and `/_app` scripts carry `WORKER_SCRIPT_CSP`, the policy MapLibre's worker runs under.
 
 The app-wide `capture_client_context` middleware records each request's client IP and
 User-Agent into a `RequestContext`. The IP is the TCP peer (`ConnectInfo`) unless that
@@ -423,8 +425,9 @@ See [`.env.example`](.env.example) for the annotated template.
 | `WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN` / `WEBAUTHN_ADDITIONAL_ORIGINS` | WebAuthn relying-party config |
 | `SECRETS_ENCRYPTION_KEY` / `SECRETS_ENCRYPTION_PREVIOUS_KEYS` | 32-byte AES-256-GCM key (base64/hex) sealing every secret at rest (legacy name `EMAIL_ENCRYPTION_KEY`), plus retired keys still accepted for decryption. **Required outside development**; dev falls back to a fixed, publicly-known key |
 | `POLICY_TERMS_VERSION` / `POLICY_PRIVACY_VERSION` | Current required policy versions |
-| `GEOIP_CITY_DB_PATH` | Path to a MaxMind `GeoLite2-City.mmdb`. Unset ⇒ GeoIP enrichment disabled (a no-op resolver is wired) and geo rules (new country, impossible travel) never fire — the login flow is otherwise unaffected. |
-| `GEOIP_ASN_DB_PATH` | Optional path to `GeoLite2-ASN.mmdb` for ASN/ISP enrichment. |
+| `GEOIP_DIR` | Directory of the IP geolocation databases (`city.mmdb`, `asn.mmdb`). The server downloads DB-IP Lite there when missing (in the background at startup) and refreshes it when a new month is out, swapping it in without a restart (`infraestructure/geoip/`). Files it did not download are never replaced. Unset (and no `GEOIP_CITY_DB_PATH`) ⇒ a no-op resolver: geo rules (new country, impossible travel) never fire; sign-ins are unaffected. See `docs/fraud-specification.md` §12.4 |
+| `GEOIP_AUTO_UPDATE` / `GEOIP_UPDATE_INTERVAL_HOURS` | Download/refresh into `GEOIP_DIR` (default `true`) / how often to check (default `24`) |
+| `GEOIP_CITY_DB_PATH` / `GEOIP_ASN_DB_PATH` | Explicit files instead (e.g. MaxMind GeoLite2 from `scripts/geoip-update.sh`); win over `GEOIP_DIR` and are never auto-updated. `cargo run --bin geoip_lookup -- <ip>` checks an address |
 | `RISK_SCORING` | Risk Engine adapter: `rules` (default, deterministic engine) or `hybrid` (rules + statistical score, which each tenant opts into with its risk policy's `scoring_mode`). Any other value stops the boot. See [`docs/RISK-SCORING.md`](docs/RISK-SCORING.md) |
 | `RISK_MODEL_MAX_AGE_DAYS` / `RISK_MODEL_CACHE_TTL_SECONDS` | An active risk model older than this stops scoring (default `90`) / how long it is cached per process (default `60`) |
 | `WEBHOOKS_ENABLED` | Run the outbound-webhook dispatcher (default `true`). Off does not lose events — the outbox keeps filling. |
@@ -450,9 +453,13 @@ See [`.env.example`](.env.example) for the annotated template.
 - **Do not add an OAuth-client cache the same way.** Secret rotation writes go through
   the Unit of Work, not the read-side decorator, so a cached entry would keep accepting
   a rotated-away client secret until it expired.
-- **Two background tasks**, both idempotent and safe on every replica: the webhook
-  dispatcher and the retention purge (`infraestructure/retention/`). Both are signalled
-  and awaited on shutdown so in-flight work finishes.
+- **Three background tasks**, all safe on every replica: the webhook dispatcher and the
+  retention purge (`infraestructure/retention/`), both idempotent, signalled and awaited
+  on shutdown so in-flight work finishes. The third is the GeoIP updater
+  (`infraestructure/geoip/scheduler.rs`), which downloads into a hidden partial file and
+  renames atomically, so it is simply stopped. Use cases hold the GeoIP port as
+  `ReloadableGeoIpResolver`: read the database through it on every call, never cache
+  a lookup result or the attribution at construction.
 - **`/health` vs `/ready`:** `/health` is static liveness and must never touch the
   database (a blip would restart-loop every replica). `/ready` runs `SELECT 1` and
   returns 503 when the pool is unusable.

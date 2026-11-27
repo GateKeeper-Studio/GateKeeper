@@ -1,0 +1,144 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT\n            ip_address AS \"ip_address!\",\n            (ARRAY_AGG(latitude ORDER BY created_at DESC))[1] AS \"latitude!\",\n            (ARRAY_AGG(longitude ORDER BY created_at DESC))[1] AS \"longitude!\",\n            (ARRAY_AGG(country_code ORDER BY created_at DESC))[1] AS country_code,\n            (ARRAY_AGG(region ORDER BY created_at DESC))[1] AS region,\n            (ARRAY_AGG(city ORDER BY created_at DESC))[1] AS city,\n            (ARRAY_AGG(asn ORDER BY created_at DESC))[1] AS asn,\n            (ARRAY_AGG(isp ORDER BY created_at DESC))[1] AS isp,\n            COUNT(*) AS \"attempts!\",\n            COUNT(*) FILTER (WHERE success) AS \"successful_logins!\",\n            COUNT(*) FILTER (WHERE NOT credentials_valid) AS \"failed_attempts!\",\n            COUNT(*) FILTER (WHERE decision = 'BLOCK_TEMPORARILY') AS \"blocked_attempts!\",\n            COUNT(DISTINCT COALESCE(username_normalized, user_id::text)) AS \"distinct_users!\",\n            MAX(risk_score) AS \"max_risk_score!\",\n            MAX(CASE risk_level\n                  WHEN 'CRITICAL' THEN 3 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 1 ELSE 0\n                END) AS \"max_risk_rank!\",\n            MIN(created_at) AS \"first_seen!\",\n            MAX(created_at) AS \"last_seen!\"\n          FROM \"login_events\"\n          WHERE tenant_id = $1\n            AND ($2::uuid IS NULL OR user_id = $2)\n            AND created_at >= $3 AND created_at <= $4\n            AND ip_address IS NOT NULL\n            AND latitude IS NOT NULL AND longitude IS NOT NULL\n          GROUP BY ip_address\n          ORDER BY \"max_risk_rank!\" DESC, \"failed_attempts!\" DESC, \"attempts!\" DESC\n          LIMIT $5\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ip_address!",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "login_events",
+            "name": "ip_address"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "latitude!",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "longitude!",
+        "type_info": "Float8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "country_code",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "region",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 5,
+        "name": "city",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 6,
+        "name": "asn",
+        "type_info": "Int4",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 7,
+        "name": "isp",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 8,
+        "name": "attempts!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 9,
+        "name": "successful_logins!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 10,
+        "name": "failed_attempts!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 11,
+        "name": "blocked_attempts!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 12,
+        "name": "distinct_users!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 13,
+        "name": "max_risk_score!",
+        "type_info": "Int4",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 14,
+        "name": "max_risk_rank!",
+        "type_info": "Int4",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 15,
+        "name": "first_seen!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 16,
+        "name": "last_seen!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "02446b3fb586f66fe9288c0428265ae3edd8100603720927961d09a33ce7b19a"
+}

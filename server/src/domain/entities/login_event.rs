@@ -30,6 +30,26 @@ impl RiskLevel {
         }
     }
 
+    // Severity order (LOW = 0 … CRITICAL = 3), for picking the worst of several levels.
+    // The SQL of `ip_locations` ranks the stored strings the same way.
+    pub fn rank(&self) -> i32 {
+        match self {
+            RiskLevel::Low => 0,
+            RiskLevel::Medium => 1,
+            RiskLevel::High => 2,
+            RiskLevel::Critical => 3,
+        }
+    }
+
+    pub fn from_rank(rank: i32) -> Self {
+        match rank {
+            3.. => RiskLevel::Critical,
+            2 => RiskLevel::High,
+            1 => RiskLevel::Medium,
+            _ => RiskLevel::Low,
+        }
+    }
+
     // Map an accumulated score to a level using the tenant's configured thresholds
     // (spec §4.4). Thresholds are inclusive lower bounds.
     pub fn from_score(score: i32, medium: i32, high: i32, critical: i32) -> Self {

@@ -5,11 +5,11 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::domain::{
-    entities::login_event::{LoginEvent, RiskSignal},
+    entities::login_event::{LoginEvent, RiskDecision, RiskLevel, RiskSignal},
     errors::DomainError,
     repositories::login_event_repository::{
-        AsnShare, AttackedUser, CountryCount, IpHistory, LastSuccessfulLogin, LoginEventFilter,
-        LoginEventRepository, SecurityOverviewMetrics, SuspiciousIp,
+        AsnShare, AttackedUser, CountryCount, IpHistory, IpLocation, LastSuccessfulLogin,
+        LoginEventFilter, LoginEventRepository, SecurityOverviewMetrics, SuspiciousIp,
     },
 };
 
@@ -437,6 +437,126 @@ impl LoginEventRepository for InMemoryLoginEventRepository {
         });
         out.truncate(limit.max(0) as usize);
         Ok(out)
+    }
+
+    async fn ip_locations(
+        &self,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        limit: i64,
+    ) -> Result<Vec<IpLocation>, DomainError> {
+        let store = self.store.lock().unwrap();
+        let mut by_ip: std::collections::HashMap<String, (IpLocation, DateTime<Utc>)> =
+            std::collections::HashMap::new();
+        let mut users: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for s in store.iter().filter(|s| {
+            s.event.tenant_id() == tenant_id
+                && user_id.is_none_or(|uid| s.event.user_id() == Some(uid))
+                && s.event.created_at() >= from
+                && s.event.created_at() <= to
+                && s.event.ip_address().is_some()
+                && s.event.latitude().is_some()
+                && s.event.longitude().is_some()
+        }) {
+            let e = &s.event;
+            let ip = e.ip_address().unwrap().to_string();
+            let (entry, latest) = by_ip.entry(ip.clone()).or_insert_with(|| {
+                (
+                    IpLocation {
+                        ip_address: ip.clone(),
+                        latitude: 0.0,
+                        longitude: 0.0,
+                        country_code: None,
+                        region: None,
+                        city: None,
+                        asn: None,
+                        isp: None,
+                        attempts: 0,
+                        successful_logins: 0,
+                        failed_attempts: 0,
+                        blocked_attempts: 0,
+                        distinct_users: 0,
+                        max_risk_score: 0,
+                        max_risk_level: RiskLevel::Low,
+                        first_seen: e.created_at(),
+                        last_seen: e.created_at(),
+                    },
+                    DateTime::<Utc>::MIN_UTC,
+                )
+            });
+            // The place comes from the IP's latest event, like the SQL.
+            if e.created_at() >= *latest {
+                *latest = e.created_at();
+                entry.latitude = e.latitude().unwrap();
+                entry.longitude = e.longitude().unwrap();
+                entry.country_code = e.country_code().map(str::to_string);
+                entry.region = e.region().map(str::to_string);
+                entry.city = e.city().map(str::to_string);
+                entry.asn = e.asn();
+                entry.isp = e.isp().map(str::to_string);
+            }
+            entry.attempts += 1;
+            if e.success() {
+                entry.successful_logins += 1;
+            }
+            if !e.credentials_valid() {
+                entry.failed_attempts += 1;
+            }
+            if e.decision() == RiskDecision::BlockTemporarily {
+                entry.blocked_attempts += 1;
+            }
+            entry.max_risk_score = entry.max_risk_score.max(e.risk_score());
+            if e.risk_level().rank() > entry.max_risk_level.rank() {
+                entry.max_risk_level = e.risk_level();
+            }
+            entry.first_seen = entry.first_seen.min(e.created_at());
+            entry.last_seen = entry.last_seen.max(e.created_at());
+            if let Some(k) = identity_key(e) {
+                users.entry(ip).or_default().insert(k);
+            }
+        }
+        let mut out: Vec<IpLocation> = by_ip
+            .into_values()
+            .map(|(mut entry, _)| {
+                entry.distinct_users = users
+                    .get(&entry.ip_address)
+                    .map(|u| u.len() as i64)
+                    .unwrap_or(0);
+                entry
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            b.max_risk_level
+                .rank()
+                .cmp(&a.max_risk_level.rank())
+                .then(b.failed_attempts.cmp(&a.failed_attempts))
+                .then(b.attempts.cmp(&a.attempts))
+        });
+        out.truncate(limit.max(0) as usize);
+        Ok(out)
+    }
+
+    async fn count_unlocated(
+        &self,
+        tenant_id: Uuid,
+        user_id: Option<Uuid>,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<i64, DomainError> {
+        let store = self.store.lock().unwrap();
+        Ok(store
+            .iter()
+            .filter(|s| {
+                s.event.tenant_id() == tenant_id
+                    && user_id.is_none_or(|uid| s.event.user_id() == Some(uid))
+                    && s.event.created_at() >= from
+                    && s.event.created_at() <= to
+                    && (s.event.latitude().is_none() || s.event.longitude().is_none())
+            })
+            .count() as i64)
     }
 
     async fn attacked_users(

@@ -12,8 +12,10 @@ Rust with Axum, SQLx and PostgreSQL, following Clean Architecture.
   clients, groups, roles, signing keys and email setup.
 - **Sign-in:** password, email OTP, TOTP and WebAuthn/passkeys; social login (Google,
   GitHub); registration, email confirmation, password reset.
-- **Adaptive risk engine:** new-country, impossible-travel and new-device signals
-  (optional MaxMind GeoIP), IP blocks, per-tenant risk policy.
+- **Adaptive risk engine:** new-country, impossible-travel and new-device signals, IP
+  blocks, per-tenant risk policy. IP geolocation comes from DB-IP Lite, which the server
+  downloads and keeps current by itself (or MaxMind GeoLite2), and feeds the console's
+  sign-in and threat maps.
 - **Admin API** for the dashboard, and a self-service **`/me` API** for users.
 - **Webhooks:** user-lifecycle events through a transactional outbox, HMAC-signed.
 - **Compliance:** append-only audit log, data export, erasure, retention purge, policy
@@ -31,6 +33,10 @@ cargo run --bin create_admin -- admin@example.com   # asks for the password (12+
 
 The server applies pending migrations at startup. Check it with
 `curl localhost:8080/ready` and `curl localhost:8080/.well-known/openid-configuration`.
+
+On first start it also downloads the IP geolocation databases into `server/.geoip/`
+(`GEOIP_DIR` in `.env.example`, about 65 MB, in the background). It refreshes them on
+its own every month; see [IP geolocation](#ip-geolocation).
 
 The build checks every SQL query against `DATABASE_URL`, so the database must already
 have the newest migrations: run `sqlx migrate run` before building. A database created
@@ -50,6 +56,8 @@ cache), then build as usual.
 | `cargo test --features db-tests` | Repository tests against a real PostgreSQL (needs `CREATEDB`). |
 | `sqlx migrate run` | Apply migrations by hand. |
 | `cargo sqlx prepare -- --lib` | Refresh the `.sqlx/` offline query cache after changing a `query!`. |
+| `cargo run --bin geoip_lookup -- <ip>...` | Show what the server would record for an address (country, city, network). |
+| `scripts/geoip-update.sh` | Download the GeoIP databases by hand: MaxMind GeoLite2 with an account, or a host without outbound access. |
 
 ## Configuration
 
@@ -71,6 +79,24 @@ the server refuses to start until the production settings are complete.
 | `TRUSTED_PROXIES` | Reverse proxies and BFFs whose `X-Forwarded-For` is trusted. |
 | `METRICS_PORT` | Internal Prometheus port (default 9090, `off` to disable). |
 | `TLS_CERT_FILE`, `TLS_KEY_FILE`, `TLS_PORT` | Optional HTTPS listener (default port 8443) next to HTTP, for local development. |
+| `GEOIP_DIR` | IP geolocation databases, downloaded and refreshed by the server (`GEOIP_AUTO_UPDATE=false` to only read them). |
+
+### IP geolocation
+
+The risk engine and the console maps need to know where an IP address is. That comes
+from a database file; nothing is computed or scraped, and no sign-in calls an outside
+service. With `GEOIP_DIR` set:
+
+1. On first start the server downloads DB-IP Lite (city and network databases; free,
+   no account) into that directory, in the background.
+2. It checks once a day and installs DB-IP's new monthly release without a restart.
+3. Every file is checked before it replaces the old one, and a file it did not download
+   (MaxMind GeoLite2 from `scripts/geoip-update.sh`) is never touched.
+
+Sign-ins from `localhost` or a LAN have no public location, so in development the maps
+stay empty until a sign-in arrives from a public address. Details, the MaxMind option and
+SQL to inspect the data: [`docs/fraud-specification.md`](docs/fraud-specification.md)
+§12.4.
 
 ### HTTPS on the local network (phones, passkeys)
 
@@ -131,7 +157,9 @@ Tenant-scoped write use cases also check the caller (`Actor`) themselves.
 [`docker-compose.prod.yml`](docker-compose.prod.yml) runs PostgreSQL, a one-shot
 `migrate` job (owner role) and the server (DML-only role, created by
 [`deploy/postgres/`](deploy/postgres/)). Put a TLS-terminating reverse proxy in front and
-list it in `TRUSTED_PROXIES`. Expose port 9090 to your Prometheus scraper only.
+list it in `TRUSTED_PROXIES`. Expose port 9090 to your Prometheus scraper only. The
+server keeps its GeoIP data on the `gatekeeper_geoip` volume and needs outbound HTTPS
+to `download.db-ip.com` to fetch it; without that, geolocation stays off.
 
 Before you deploy a new version, read the checklist in section 6 of
 [`docs/ARCHITECTURE-REVIEW.md`](docs/ARCHITECTURE-REVIEW.md).

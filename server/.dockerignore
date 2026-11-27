@@ -6,6 +6,10 @@ target/
 # Local Postgres data directory from docker-compose.yml.
 postgres_data/
 
+# Downloaded GeoIP databases (scripts/geoip-update.sh): mounted at run time, not
+# baked into the image.
+.geoip/
+
 # Secrets. Never let a real .env reach the build context; configuration is
 # supplied as environment variables at run time.
 .env

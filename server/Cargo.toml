@@ -121,6 +121,9 @@ mrml = "6.0.1"
 html2text = "0.17.1"
 lol_html = "3.0.0"
 maxminddb = "0.29.0"
+# Decompresses the DB-IP downloads (infraestructure/geoip/dbip_updater.rs). Already in
+# the tree through tower-http compression.
+flate2 = "1.1"
 
 # ── Rate limiting ────────────────────────────────────────────────────────────
 # GCRA (leaky-bucket) rate limiting as a Tower layer, keyed on client IP. An IdP

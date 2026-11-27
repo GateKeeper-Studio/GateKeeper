@@ -96,8 +96,8 @@ use crate::{
             },
             security::{
                 block_ip, get_login_event, get_overview, get_risk_policy, label_login_event,
-                list_attacked_users, list_login_events, list_suspicious_ips, unblock_ip,
-                update_risk_policy,
+                list_attacked_users, list_ip_locations, list_login_events, list_suspicious_ips,
+                unblock_ip, update_risk_policy,
             },
             session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
             step_up,
@@ -201,7 +201,10 @@ use crate::{
         },
         email::{mjml_renderer::MjmlEmailRenderer, smtp_email_sender::SmtpEmailSender},
         external_providers::reqwest_client::ReqwestExternalIdentityProviderClient,
-        geoip::maxmind_geoip_resolver::{MaxmindGeoIpResolver, NoopGeoIpResolver},
+        geoip::{
+            maxmind_geoip_resolver::{MaxmindGeoIpResolver, NoopGeoIpResolver},
+            reloadable_geoip_resolver::ReloadableGeoIpResolver,
+        },
         runtime::tokio_task_spawner::TokioTaskSpawner,
         webhooks::reqwest_webhook_sender::ReqwestWebhookSender,
     },
@@ -217,7 +220,48 @@ use crate::{
     },
 };
 
-pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
+// The resolver every use case shares. It starts with the configured database (an MMDB
+// city file: DB-IP or MaxMind), or with none — then geo rules (new country, impossible
+// travel) simply never fire. With GEOIP_DIR and auto-update, the updater
+// (`infraestructure/geoip/scheduler.rs`) downloads a missing database and swaps it in.
+pub fn build_geoip_resolver(config: &AppConfig) -> Arc<ReloadableGeoIpResolver> {
+    let initial: Arc<dyn GeoIpResolver> = match config.geoip.as_ref() {
+        None => {
+            tracing::info!(
+                "GeoIP enrichment disabled (no GEOIP_DIR or GEOIP_CITY_DB_PATH); geo rules off"
+            );
+            Arc::new(NoopGeoIpResolver)
+        }
+        Some(cfg) if cfg.auto_update && !std::path::Path::new(&cfg.city_db_path).exists() => {
+            tracing::info!(
+                path = cfg.city_db_path,
+                "GeoIP database not downloaded yet: fetching it in the background; \
+                 sign-ins are geolocated once it is in"
+            );
+            Arc::new(NoopGeoIpResolver)
+        }
+        Some(cfg) => {
+            match MaxmindGeoIpResolver::open(&cfg.city_db_path, cfg.asn_db_path.as_deref()) {
+                Some(resolver) => {
+                    tracing::info!(
+                        database = resolver.database_type(),
+                        "GeoIP enrichment enabled"
+                    );
+                    Arc::new(resolver)
+                }
+                None => {
+                    tracing::info!(
+                        "GeoIP enrichment disabled (the database did not open); geo rules off"
+                    );
+                    Arc::new(NoopGeoIpResolver)
+                }
+            }
+        }
+    };
+    Arc::new(ReloadableGeoIpResolver::new(initial))
+}
+
+pub fn build_router(config: &AppConfig, db_pool: PgPool, geoip: Arc<dyn GeoIpResolver>) -> Router {
     // The OIDC issuer URL. Clients pin this as the `iss` claim, so it must match the
     // public base URL of this provider.
     let issuer = config.oauth_issuer.clone();
@@ -414,21 +458,9 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
     let tenant_risk_policy_repository: Arc<dyn TenantRiskPolicyRepository> =
         Arc::new(DbTenantRiskPolicyRepository::new(db_pool.clone()));
 
-    // GeoIP enrichment: MaxMind GeoLite2 when configured, else a no-op resolver that
-    // returns None so geo rules (new country, impossible travel) simply never fire.
-    let geoip: Arc<dyn GeoIpResolver> =
-        match config.geoip.as_ref().and_then(|cfg| {
-            MaxmindGeoIpResolver::open(&cfg.city_db_path, cfg.asn_db_path.as_deref())
-        }) {
-            Some(resolver) => {
-                tracing::info!("GeoIP enrichment enabled (MaxMind GeoLite2)");
-                Arc::new(resolver)
-            }
-            None => {
-                tracing::info!("GeoIP enrichment disabled (no GEOIP_CITY_DB_PATH); geo rules off");
-                Arc::new(NoopGeoIpResolver)
-            }
-        };
+    // GeoIP enrichment: built by `build_geoip_resolver` (main.rs), which the GeoIP
+    // updater can swap a newer database into while the server runs.
+    let geoip: Arc<dyn GeoIpResolver> = geoip;
 
     let rules_engine = DefaultRiskEngine::new(
         Arc::clone(&login_event_repository),
@@ -1046,6 +1078,11 @@ pub fn build_router(config: &AppConfig, db_pool: PgPool) -> Router {
             list_suspicious_ips: Arc::new(list_suspicious_ips::UseCase::new(
                 Arc::clone(&login_event_repository),
                 Arc::clone(&security_block_repository),
+            )),
+            list_ip_locations: Arc::new(list_ip_locations::UseCase::new(
+                Arc::clone(&login_event_repository),
+                Arc::clone(&security_block_repository),
+                Arc::clone(&geoip),
             )),
             list_attacked_users: Arc::new(list_attacked_users::UseCase::new(Arc::clone(
                 &login_event_repository,

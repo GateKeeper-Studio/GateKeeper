@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n          SELECT COUNT(*) AS \"count!\"\n          FROM \"login_events\"\n          WHERE tenant_id = $1\n            AND ($2::uuid IS NULL OR user_id = $2)\n            AND created_at >= $3 AND created_at <= $4\n            AND (latitude IS NULL OR longitude IS NULL)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "696974eadd2a63e77530df5a3dd2875a0d5c3178e37b4bc29fcee255adc1b01f"
+}

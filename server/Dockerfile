@@ -51,6 +51,11 @@ RUN apt-get update \
 # Unprivileged runtime user — nothing here needs root.
 RUN useradd --system --uid 10001 --user-group --no-create-home gatekeeper
 
+# GEOIP_DIR: the server downloads and refreshes its IP geolocation databases here
+# (infraestructure/geoip/). Owned by the runtime user, so a volume mounted on it
+# starts writable.
+RUN mkdir -p /var/lib/geoip && chown gatekeeper:gatekeeper /var/lib/geoip
+
 WORKDIR /app
 
 COPY --from=builder /build/target/release/web-api /usr/local/bin/web-api

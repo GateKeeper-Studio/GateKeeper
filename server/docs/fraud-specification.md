@@ -932,6 +932,32 @@ Privacy recommendation:
 - Avoid showing overly precise latitude/longitude for end users.
 - Do not expose full personal location history to low-privilege admins.
 
+**Implemented (2026-11-26).** Two maps, both fed by
+`GET /tenants/{tenant_id}/security/ip-locations?user_id=&from=&to=&limit=` (admin router,
+`TenantScope`; use case `security/list_ip_locations`):
+
+- **Security overview:** every IP that tried to sign in to the tenant (default: the last
+  7 days). Each point is colored by what the server reports. *Blocked now* means an
+  active IP block. *High risk* means HIGH/CRITICAL risk, or refused by the engine.
+  *Warning* means MEDIUM risk, or any wrong password. *Normal* is everything else. A
+  point's popup shows its place, network, counts, highest risk, and first and last
+  seen. It links to the login events for that IP (`?ip=`) and can block or unblock
+  the IP.
+- **User page, Security tab:** the same map narrowed to one user (`user_id`), by default
+  the last 90 days.
+
+The API returns one point per IP, aggregated over the window, and places it where the IP's
+latest geolocated event put it. Riskiest IPs come first, at most 500 (default 200), and
+each point carries its current block status. Coordinates are rounded to 0.1° (about 11 km),
+city or region level as recommended above. Events with no coordinates (private
+addresses, or no GeoIP database yet; see §12.4) are not placed; the response counts them in
+`unlocated_attempts` and the map says so. The endpoint is admin-only, like the
+login-events list.
+
+The base map comes from Carto. The console's CSP allows its two origins in
+`connect-src`, and script assets carry a worker policy so MapLibre's worker can
+fetch tiles (`presentation/ui.rs`; see SERVING-THE-DASHBOARD-FROM-THE-SERVER.md §6.5).
+
 ---
 
 ## 10. Frontend Best Practices
@@ -1112,6 +1138,109 @@ fc00::/7
 ```
 
 For private/local IPs, geolocation should be skipped.
+
+### 12.4 Getting the Databases (implemented)
+
+An IP address carries no location. It comes from a database that maps address ranges to
+places, built by a provider from registry allocations, routing data and measurements.
+The server holds one in the MMDB format (`MaxmindGeoIpResolver`) and looks up each
+sign-in's IP in memory. No sign-in calls an outside service.
+
+**Setup: set `GEOIP_DIR` and start the server.** Nothing else is needed:
+
+```bash
+GEOIP_DIR=.geoip          # server/.env (already in .env.example); production: /var/lib/geoip
+```
+
+- **First start:** `city.mmdb` and `asn.mmdb` are missing, so the server downloads DB-IP
+  Lite into the directory in the background, about 65 MB. Startup does not wait for it.
+  Sign-ins are geolocated from the moment the files are in, usually seconds later. The
+  log line is `GeoIP database loaded; sign-ins are geolocated with it from now on`.
+- **Later starts** load the files at once.
+- **Staying current:** every `GEOIP_UPDATE_INTERVAL_HOURS` (default 24) the server checks
+  whether DB-IP has published a newer month. DB-IP publishes on the 1st. A new file is
+  downloaded, checked and swapped into the running server, with no restart
+  (`ReloadableGeoIpResolver`). In practice that is one download a month.
+- **Checks:**
+  - Each download is decompressed next to the old file, with size caps (256 MB
+    compressed, 1 GB decompressed).
+  - It is opened like the server will use it, and must be the right DB-IP edition and
+    place `8.8.8.8`.
+  - Only then is it renamed over the old file. A failed or partial download changes
+    nothing.
+- **Files the server did not download are never replaced.** Examples are a GeoLite2
+  file from the script below, or a paid database.
+- **Turning it off:** `GEOIP_AUTO_UPDATE=false` loads whatever is in `GEOIP_DIR` and
+  never downloads. Naming the files with `GEOIP_CITY_DB_PATH` / `GEOIP_ASN_DB_PATH`
+  also turns updates off, since those files are the operator's.
+- **Outbound access:** the server needs HTTPS to `download.db-ip.com`, and honours
+  `HTTPS_PROXY`. Without it, geolocation stays off and a warning is logged.
+
+The code is in `infraestructure/geoip/`: `dbip_updater.rs` (what to fetch, checks,
+install), `scheduler.rs` (the background task, stopped on shutdown) and
+`reloadable_geoip_resolver.rs`.
+
+| Source | How | Account | Updates | Licence |
+|---|---|---|---|---|
+| **DB-IP Lite** City + ASN | The server, with `GEOIP_DIR` (default) | None | Monthly | CC BY 4.0: credit DB-IP |
+| **MaxMind GeoLite2** City + ASN | `MAXMIND_ACCOUNT_ID=… MAXMIND_LICENSE_KEY=… scripts/geoip-update.sh` | Free account | Twice a week | GeoLite2 EULA: keep it current, credit MaxMind |
+
+Both give country, region, city, coordinates, ASN and network owner, at city-level
+accuracy. The resolver reads both layouts. MaxMind gives the region as an ISO code
+(`SP`), DB-IP as a name (`São Paulo`). The console map shows the credit that the loaded
+database's licence asks for, read from its database type.
+
+**MaxMind instead.** GeoLite2 updates more often. Run the script into the same
+directory: `GEOIP_DIR=.geoip MAXMIND_ACCOUNT_ID=… MAXMIND_LICENSE_KEY=…
+scripts/geoip-update.sh`. It checks MaxMind's published SHA-256. The server then sees
+GeoLite2 files, leaves them alone, and loads them at its next start. Keep the script on
+a schedule (cron: `0 4 * * 3,6`, after MaxMind's Tuesday and Friday releases), followed
+by a restart.
+
+Fedora's `geolite2-city` package (`/usr/share/GeoIP/GeoLite2-City.mmdb`) stopped at
+the 2019-12-17 data, when MaxMind began requiring an account. Do not use it: address
+ranges have moved since.
+
+**Containers.** The image creates `/var/lib/geoip`, owned by the runtime user. Both
+compose files set `GEOIP_DIR=/var/lib/geoip` on a named volume (`gatekeeper_geoip` in
+production, `geoip_data` in development), so the data survives restarts and is
+downloaded once.
+
+**Checking it:**
+
+```bash
+# What the server would record for an address (same resolver and private-address rules)
+cargo run --bin geoip_lookup -- 8.8.8.8 2804:14c::1
+# The real files, and a real first start (downloads about 65 MB)
+cargo test --lib geoip -- --ignored
+```
+
+```sql
+-- Located vs. total attempts per day (located only once a database is configured;
+-- earlier events stay unplaced)
+SELECT date_trunc('day', created_at) AS day,
+       count(*) FILTER (WHERE latitude IS NOT NULL) AS located,
+       count(*) AS total
+FROM login_events WHERE tenant_id = :tenant
+GROUP BY 1 ORDER BY 1 DESC LIMIT 14;
+
+-- Where one IP was placed over time
+SELECT created_at, country_code, region, city, latitude, longitude, asn, isp
+FROM login_events WHERE tenant_id = :tenant AND ip_address = :ip
+ORDER BY created_at DESC LIMIT 20;
+
+-- Countries and networks behind failed attempts this week
+SELECT country_code, isp, count(*) AS failed
+FROM login_events
+WHERE tenant_id = :tenant AND NOT credentials_valid AND created_at > now() - interval '7 days'
+GROUP BY 1, 2 ORDER BY failed DESC LIMIT 20;
+```
+
+Sign-ins from `localhost` or a LAN never get a location (§12.3). To see points in
+development, sign in through a trusted proxy that forwards a public address. One way:
+`TRUSTED_PROXIES=127.0.0.1/32` in the dev `.env`, then send
+`X-Forwarded-For: <public ip>` with the sign-in request. Never trust loopback that way in
+production.
 
 ---
 

@@ -338,6 +338,10 @@ pub(super) fn router(state: &AppState) -> Router<AppState> {
             get(security_handler::list_attacked_users),
         )
         .route(
+            "/tenants/{tenant_id}/security/ip-locations",
+            get(security_handler::list_ip_locations),
+        )
+        .route(
             "/tenants/{tenant_id}/security/risk-policy",
             get(security_handler::get_risk_policy).put(security_handler::update_risk_policy),
         )

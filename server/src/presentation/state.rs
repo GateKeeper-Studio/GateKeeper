@@ -76,8 +76,8 @@ use crate::{
             },
             security::{
                 block_ip, get_login_event, get_overview, get_risk_policy, label_login_event,
-                list_attacked_users, list_login_events, list_suspicious_ips, unblock_ip,
-                update_risk_policy,
+                list_attacked_users, list_ip_locations, list_login_events, list_suspicious_ips,
+                unblock_ip, update_risk_policy,
             },
             session::{list_user_sessions, revoke_all_user_sessions, revoke_user_session},
             step_up,
@@ -322,6 +322,7 @@ pub struct SecurityUseCases {
     pub list_login_events: Arc<list_login_events::UseCase>,
     pub get_login_event: Arc<get_login_event::UseCase>,
     pub list_suspicious_ips: Arc<list_suspicious_ips::UseCase>,
+    pub list_ip_locations: Arc<list_ip_locations::UseCase>,
     pub list_attacked_users: Arc<list_attacked_users::UseCase>,
     pub get_risk_policy: Arc<get_risk_policy::UseCase>,
     pub update_risk_policy: Arc<update_risk_policy::UseCase>,

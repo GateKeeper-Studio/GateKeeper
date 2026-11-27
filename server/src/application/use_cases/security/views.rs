@@ -1,6 +1,7 @@
 use serde::Serialize;
 use uuid::Uuid;
 
+use crate::application::ports::geoip_resolver::GeoIpAttribution;
 use crate::domain::{
     entities::{
         login_event::{LoginEvent, RiskSignal},
@@ -8,7 +9,7 @@ use crate::domain::{
         tenant_risk_policy::TenantRiskPolicy,
     },
     repositories::login_event_repository::{
-        AttackedUser, CountryCount, SecurityOverviewMetrics, SuspiciousIp,
+        AttackedUser, CountryCount, IpLocation, SecurityOverviewMetrics, SuspiciousIp,
     },
 };
 
@@ -203,6 +204,83 @@ impl SuspiciousIpView {
             last_seen: ip.last_seen.to_rfc3339(),
             blocked: block_id.is_some(),
             block_id: block_id.map(|id| id.to_string()),
+        }
+    }
+}
+
+// The licence credit of the geolocation database, shown under the maps.
+#[derive(Debug, Serialize)]
+pub struct GeoAttributionView {
+    pub name: &'static str,
+    pub url: &'static str,
+}
+
+impl From<GeoIpAttribution> for GeoAttributionView {
+    fn from(a: GeoIpAttribution) -> Self {
+        GeoAttributionView {
+            name: a.name,
+            url: a.url,
+        }
+    }
+}
+
+// Map coordinates are rounded to 0.1° (about 11 km): the map shows the city or region
+// a sign-in came from, never a precise spot (fraud-specification.md §9.1.7). GeoIP
+// positions are city-level estimates anyway.
+fn city_level(degrees: f64) -> f64 {
+    (degrees * 10.0).round() / 10.0
+}
+
+// A point on the security maps: one IP, where it geolocates, what it did, and whether
+// it is blocked right now.
+#[derive(Debug, Serialize)]
+pub struct IpLocationView {
+    pub ip_address: String,
+    pub latitude: f64,
+    pub longitude: f64,
+    pub country_code: Option<String>,
+    pub region: Option<String>,
+    pub city: Option<String>,
+    pub asn: Option<i32>,
+    pub isp: Option<String>,
+    pub attempts: i64,
+    pub successful_logins: i64,
+    pub failed_attempts: i64,
+    pub blocked_attempts: i64,
+    pub distinct_users: i64,
+    pub max_risk_score: i32,
+    pub max_risk_level: String,
+    pub first_seen: String,
+    pub last_seen: String,
+    pub blocked: bool,
+    // The active block's id, when blocked — lets the dashboard offer "unblock".
+    pub block_id: Option<String>,
+    pub block_expires_at: Option<String>,
+}
+
+impl IpLocationView {
+    pub fn from_parts(location: IpLocation, block: Option<&SecurityBlock>) -> Self {
+        IpLocationView {
+            ip_address: location.ip_address,
+            latitude: city_level(location.latitude),
+            longitude: city_level(location.longitude),
+            country_code: location.country_code,
+            region: location.region,
+            city: location.city,
+            asn: location.asn,
+            isp: location.isp,
+            attempts: location.attempts,
+            successful_logins: location.successful_logins,
+            failed_attempts: location.failed_attempts,
+            blocked_attempts: location.blocked_attempts,
+            distinct_users: location.distinct_users,
+            max_risk_score: location.max_risk_score,
+            max_risk_level: location.max_risk_level.as_str().to_string(),
+            first_seen: location.first_seen.to_rfc3339(),
+            last_seen: location.last_seen.to_rfc3339(),
+            blocked: block.is_some(),
+            block_id: block.map(|b| b.id().to_string()),
+            block_expires_at: block.map(|b| b.expires_at().to_rfc3339()),
         }
     }
 }

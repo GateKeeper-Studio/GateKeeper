@@ -2669,3 +2669,158 @@ async fn step_up_codes_are_counted_per_user_purpose_and_window(pool: PgPool) {
     assert_eq!(*stored.purpose(), MfaChallengePurpose::StepUp);
     assert!(stored.is_consumed());
 }
+
+#[sqlx::test(migrations = "./migrations")]
+async fn ip_locations_group_by_ip_at_the_latest_place_riskiest_first(pool: PgPool) {
+    use web_api::{
+        domain::{
+            entities::login_event::{LoginEvent, RiskDecision, RiskLevel},
+            repositories::login_event_repository::LoginEventRepository,
+        },
+        infraestructure::database::repositories::login_event_repository::DbLoginEventRepository,
+    };
+
+    let cipher = cipher();
+    let tenant = seed_tenant(&pool, &cipher, "pepper").await;
+    let other_tenant = seed_tenant(&pool, &cipher, "pepper-2").await;
+    let user = seed_user(&pool, &tenant).await;
+    let events = DbLoginEventRepository::new(pool.clone());
+    let from = Utc::now() - Duration::days(1);
+
+    let attempt = |tenant_id: Uuid, user_id: Option<Uuid>, ip: &str, ok: bool| {
+        LoginEvent::new(tenant_id, user_id, None, ok, ok).with_network(
+            Some(ip.to_string()),
+            None,
+            None,
+            None,
+        )
+    };
+    let placed = |event: LoginEvent, city: &str, lat: f64, lon: f64| {
+        event.with_geo(
+            Some("BR".to_string()),
+            None,
+            Some(city.to_string()),
+            Some(lat),
+            Some(lon),
+            Some(64512),
+            Some("Example ISP".to_string()),
+        )
+    };
+
+    // The user's IP moves from Campinas to São Paulo; the later place wins.
+    let home = "203.0.113.7";
+    events
+        .add(
+            &placed(
+                attempt(tenant.id(), Some(user.id()), home, false),
+                "Campinas",
+                -22.9,
+                -47.06,
+            ),
+            &[],
+        )
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    events
+        .add(
+            &placed(
+                attempt(tenant.id(), Some(user.id()), home, true),
+                "São Paulo",
+                -23.55,
+                -46.63,
+            ),
+            &[],
+        )
+        .await
+        .unwrap();
+    // An attacker spraying two other accounts, refused once.
+    let attacker = "198.51.100.66";
+    for name in ["alice", "bob"] {
+        let event = placed(
+            attempt(tenant.id(), None, attacker, false),
+            "Moscow",
+            55.75,
+            37.6,
+        )
+        .with_identity(Some(name.to_string()), None)
+        .with_risk(90, RiskLevel::Critical, RiskDecision::BlockTemporarily);
+        events.add(&event, &[]).await.unwrap();
+    }
+    // Not placed: a private address. Another tenant's attempt: never visible.
+    events
+        .add(
+            &attempt(tenant.id(), Some(user.id()), "10.0.0.5", true),
+            &[],
+        )
+        .await
+        .unwrap();
+    events
+        .add(
+            &placed(
+                attempt(other_tenant.id(), None, "192.0.2.1", true),
+                "Lima",
+                -12.05,
+                -77.04,
+            ),
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let to = Utc::now() + Duration::minutes(1);
+    let points = events
+        .ip_locations(tenant.id(), None, from, to, 10)
+        .await
+        .unwrap();
+    assert_eq!(points.len(), 2, "one point per IP, this tenant only");
+    let first = &points[0];
+    assert_eq!(first.ip_address, attacker, "the riskiest IP comes first");
+    assert_eq!(first.max_risk_level, RiskLevel::Critical);
+    assert_eq!(
+        (
+            first.attempts,
+            first.failed_attempts,
+            first.blocked_attempts
+        ),
+        (2, 2, 2)
+    );
+    assert_eq!(first.distinct_users, 2);
+    let second = &points[1];
+    assert_eq!(second.ip_address, home);
+    assert_eq!(second.city.as_deref(), Some("São Paulo"));
+    assert_eq!((second.latitude, second.longitude), (-23.55, -46.63));
+    assert_eq!((second.attempts, second.successful_logins), (2, 1));
+    assert_eq!(second.max_risk_level, RiskLevel::Low);
+
+    let users_points = events
+        .ip_locations(tenant.id(), Some(user.id()), from, to, 10)
+        .await
+        .unwrap();
+    assert_eq!(users_points.len(), 1);
+    assert_eq!(users_points[0].ip_address, home);
+
+    assert_eq!(
+        events
+            .count_unlocated(tenant.id(), None, from, to)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        events
+            .count_unlocated(tenant.id(), Some(user.id()), from, to)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        events
+            .ip_locations(tenant.id(), None, from, to, 1)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "the limit caps the points"
+    );
+}

@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 
-use crate::application::ports::geoip_resolver::{GeoIpResolver, GeoLocation};
+use crate::application::ports::geoip_resolver::{GeoIpAttribution, GeoIpResolver, GeoLocation};
 
 // GeoIP fake for Risk Engine tests: returns a per-IP location seeded up front.
 // Unseeded IPs resolve to None (like a private IP or missing DB).
 #[derive(Default)]
 pub struct FakeGeoIpResolver {
     locations: HashMap<String, GeoLocation>,
+    attribution: Option<GeoIpAttribution>,
 }
 
 impl FakeGeoIpResolver {
@@ -16,6 +17,12 @@ impl FakeGeoIpResolver {
 
     pub fn with(mut self, ip: &str, location: GeoLocation) -> Self {
         self.locations.insert(ip.to_string(), location);
+        self
+    }
+
+    // The licence credit the loaded database would ask for.
+    pub fn with_attribution(mut self, attribution: GeoIpAttribution) -> Self {
+        self.attribution = Some(attribution);
         self
     }
 
@@ -40,5 +47,9 @@ impl FakeGeoIpResolver {
 impl GeoIpResolver for FakeGeoIpResolver {
     fn lookup(&self, ip: &str) -> Option<GeoLocation> {
         self.locations.get(ip).cloned()
+    }
+
+    fn attribution(&self) -> Option<GeoIpAttribution> {
+        self.attribution
     }
 }

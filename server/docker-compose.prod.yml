@@ -117,6 +117,13 @@ services:
       # Schema changes belong to the migrate job; the runtime role cannot do them.
       RUN_MIGRATIONS: "false"
       DATABASE_MIGRATION_URL: ""
+      # IP geolocation for the risk engine and the console maps. The server downloads
+      # DB-IP Lite into this volume on first start and refreshes it monthly, without
+      # a restart; it needs outbound HTTPS to download.db-ip.com. If that is blocked,
+      # geolocation just stays off.
+      GEOIP_DIR: /var/lib/geoip
+    volumes:
+      - gatekeeper_geoip:/var/lib/geoip
     ports:
       - "${SERVER_BIND:-127.0.0.1:8080}:8080"
     # The metrics port is reachable on the compose network only (for a Prometheus
@@ -138,3 +145,4 @@ services:
 
 volumes:
   gatekeeper_pgdata:
+  gatekeeper_geoip:
